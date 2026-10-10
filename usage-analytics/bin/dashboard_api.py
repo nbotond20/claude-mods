@@ -285,11 +285,24 @@ def make_handler(db, html_path, coster, ingest):
             self.send_response(code)
             self.send_header('Content-Type', ctype)
             self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.send_header('X-Frame-Options', 'DENY')
             self.send_header('Content-Length', str(len(b)))
             self.end_headers()
             self.wfile.write(b)
 
+        def host_ok(self):
+            # DNS rebinding: a page on evil.example can point its name at 127.0.0.1, but its requests still carry
+            # Host: evil.example. Only answer requests addressed to the loopback names.
+            port = self.server.server_address[1]
+            if self.headers.get('Host') in (f'127.0.0.1:{port}', f'localhost:{port}', f'[::1]:{port}'):
+                return True
+            self.send(421, {'error': 'unexpected Host header'})
+            return False
+
         def do_GET(self):
+            if not self.host_ok():
+                return
             u = urlparse(self.path)
             qs = parse_qs(u.query)
             try:
@@ -325,6 +338,8 @@ def make_handler(db, html_path, coster, ingest):
                 self.send(500, {'error': str(ex)})
 
         def do_POST(self):
+            if not self.host_ok():
+                return
             u = urlparse(self.path)
             body = self.rfile.read(int(self.headers.get('Content-Length') or 0))
             # A page on another origin must not drive this server.
@@ -354,7 +369,7 @@ def make_handler(db, html_path, coster, ingest):
 def port_answers(port):
     try:
         with socket.create_connection(('127.0.0.1', port), timeout=0.5) as s:
-            s.sendall(b'GET /api/ping HTTP/1.0\r\nHost: 127.0.0.1\r\n\r\n')
+            s.sendall(f'GET /api/ping HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n'.encode())
             return b'claude-usage' in s.recv(4096)
     except OSError:
         return False

@@ -68,4 +68,18 @@ describe('usage-analytics', () => {
     await cmd('analytics', 'tools --days 3')
     expect(tail()).toEqual(['report', '--ingest', 'tools', '--days', '3'])
   })
+
+  test('blanks secrets in commands and output before writing them', async ($, on) => {
+    const files = engine(on, ENV)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const secrets = ['sk-ant-api03-abcdefghijklmnopqrstuvwx', 'ghp_abcdefghijklmnopqrstuvwxyz0123', 'hunter2-very-secret', 'eyJhbGciOiJIUzI1.eyJzdWIiOiIxMjM0.c2lnbmF0dXJlMTIz', 'cfsecret0123456789']
+    const command = `curl -H "Authorization: Bearer ${secrets[0]}" -H "CF-Access-Client-Secret: ${secrets[4]}" https://x && GH_TOKEN=${secrets[1]} gh api && mysql --password=${secrets[2]} && echo ${secrets[3]}`
+    await $.tool.call({ tool: 'Bash', tool_use_id: 'b1', command } as any)
+    await $.session.end({ sessionId: 'sess-1', reason: 'exit' } as any)
+    const text = [...files.entries()].filter(([p]) => p.includes('/events/')).map(([, t]) => t).join('')
+    for (const s of secrets) expect(text.includes(s)).toBe(false)
+    expect(text).toContain('[REDACTED]')
+    expect(text).toContain('curl -H')
+    for (const line of text.trim().split('\n')) JSON.parse(line)
+  })
 })

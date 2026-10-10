@@ -85,6 +85,29 @@ async function emit($: EngineInterface, ev: string, data: Ev) {
   if (buf.length >= FLUSH_AT) void flush($).catch(() => {})
 }
 
+// Secrets that show up in commands, tool output and telemetry are blanked before anything is written.
+const SECRET_PATTERNS: [RegExp, string][] = [
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)/g, '[REDACTED PRIVATE KEY]'],
+  [/\b(sk-(?:ant-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[abprs]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})/g, '[REDACTED]'],
+  [/\b((?:bearer|basic|token)\s+)[A-Za-z0-9._~+/=-]{12,}/gi, '$1[REDACTED]'],
+  [/([A-Za-z0-9_-]*(?:token|secret|passw(?:or)?d|api[_-]?key|access[_-]?key|credential|authorization)[A-Za-z0-9_-]*["']?\s*[:=]\s*["']?)(?![0-9.]+(?:\W|$))[^\s"',;&|}]{6,}/gi, '$1[REDACTED]'],
+  [/(:\/\/[^\s/:@]+:)[^\s/@]{3,}@/g, '$1[REDACTED]@'],
+]
+const SECRET_KEY = /(token|secret|passw(or)?d|api[_-]?key|access[_-]?key|credential|authorization|cookie)$/i
+
+function redact(text: string): string {
+  let out = text
+  for (const [re, by] of SECRET_PATTERNS) out = out.replace(re, by)
+  return out
+}
+
+function scrub(v: unknown, key = ''): unknown {
+  if (typeof v === 'string') return SECRET_KEY.test(key) && v.length >= 6 ? '[REDACTED]' : redact(v)
+  if (Array.isArray(v)) return v.map(x => scrub(x))
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrub(x, k)]))
+  return v
+}
+
 async function flush($: EngineInterface) {
   if (!root || buf.length === 0) return
   const batch = buf
@@ -93,7 +116,7 @@ async function flush($: EngineInterface) {
   const t = first.ts as number
   const path = `${root}/events/${profile}/${localDay(t)}/${first.sid}.${t}.${tag}${chunk++}.jsonl`
   try {
-    await $.fs.write(path, batch.map(x => JSON.stringify(x)).join('\n') + '\n')
+    await $.fs.write(path, batch.map(x => JSON.stringify(scrub(x))).join('\n') + '\n')
   } catch {
     buf = batch.concat(buf)
   }

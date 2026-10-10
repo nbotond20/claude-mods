@@ -33,7 +33,7 @@ One central store for everything about how every profile spends tokens, with a t
 
 ## The dashboard
 
-It is served only on 127.0.0.1; `/api/sql` is read-only and cross-origin POSTs are refused. The page is a single file, `usage-analytics/dashboard/index.html`. It uses Chart.js 4.4.1 from jsDelivr, pinned with SRI. The queries are in `bin/dashboard_api.py` (dict `Q`): add one there and reference it from a panel in `TABS`.
+It is served only on 127.0.0.1. It answers only requests addressed to `127.0.0.1`/`localhost`, which blocks DNS rebinding. `/api/sql` is read-only, and cross-origin POSTs are refused. The page is a single file, `usage-analytics/dashboard/index.html`. It uses Chart.js 4.4.1 from jsDelivr, pinned with SRI. The queries are in `bin/dashboard_api.py` (dict `Q`): add one there and reference it from a panel in `TABS`.
 
 The filters (period, profiles, model, project) apply to every panel. Click any session id to open its drill-down.
 
@@ -97,6 +97,10 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 - `usage-analytics/dashboard/index.html`: the page.
 - `usage-analytics/tests/usage-analytics.test.ts`: event paths, ordering, facets, and a check that no secret leaks.
 - Data lives in `~/.claude-shared/usage-analytics/`: `usage.db`, `events/`, `pricing.json`, `config.json`, `dashboard.log`, `ingest.lock`.
+
+## Secrets
+
+Before anything is written, the mod (event files) and the ingester (`usage.db`) blank anything that looks like a credential: API keys (`sk-…`, `ghp_…`, AWS, Slack), JWTs, `Bearer`/`Basic` values, `*TOKEN*=`/`*SECRET*:`/`--password=` values, URL passwords, private keys, and string values under keys such as `apiKey` or `authorization`. `claude-usage scrub` applies the same redaction to data stored earlier (DB rows and event files) and vacuums the DB. Claude Code's own transcripts in `~/.claude*/projects` are untouched.
 
 ## Troubleshooting
 

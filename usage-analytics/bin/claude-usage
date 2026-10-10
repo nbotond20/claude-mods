@@ -181,6 +181,37 @@ def make_coster():
     return cost
 
 
+# Secrets that show up in commands, prompts and tool output are blanked before they reach the database.
+SECRET_PATTERNS = [
+    (re.compile(r'-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(-----END [A-Z ]*PRIVATE KEY-----|$)'), '[REDACTED PRIVATE KEY]'),
+    (re.compile(r'\b(sk-(?:ant-)?[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}'
+                r'|xox[abprs]-[A-Za-z0-9-]{10,}|eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,})'), '[REDACTED]'),
+    (re.compile(r'\b((?:bearer|basic|token)\s+)[A-Za-z0-9._~+/=-]{12,}', re.I), r'\1[REDACTED]'),
+    (re.compile(r'''([A-Za-z0-9_-]*(?:token|secret|passw(?:or)?d|api[_-]?key|access[_-]?key|credential|authorization)[A-Za-z0-9_-]*'''
+                r'''["']?\s*[:=]\s*["']?)(?![0-9.]+(?:\W|$))[^\s"',;&|}]{6,}''', re.I), r'\1[REDACTED]'),
+    (re.compile(r'(://[^\s/:@]+:)[^\s/@]{3,}@'), r'\1[REDACTED]@'),
+]
+SECRET_KEY = re.compile(r'(token|secret|passw(or)?d|api[_-]?key|access[_-]?key|credential|authorization|cookie)$', re.I)
+
+
+def redact(text):
+    if not isinstance(text, str):
+        return text
+    for pat, by in SECRET_PATTERNS:
+        text = pat.sub(by, text)
+    return text
+
+
+def scrub(v, key=''):
+    if isinstance(v, str):
+        return '[REDACTED]' if SECRET_KEY.search(key) and len(v) >= 6 else redact(v)
+    if isinstance(v, list):
+        return [scrub(x) for x in v]
+    if isinstance(v, dict):
+        return {k: scrub(x, k) for k, x in v.items()}
+    return v
+
+
 def local(ts):
     """ISO UTC timestamp -> (local day, local hour)."""
     try:
@@ -323,7 +354,7 @@ class Ingest:
                 keep = {k: v for k, v in d.items() if k not in ('parentUuid', 'uuid', 'cwd', 'sessionId', 'session_id', 'userType', 'entrypoint', 'version', 'gitBranch', 'type', 'isSidechain', 'timestamp')}
                 con.execute('INSERT OR IGNORE INTO system_events VALUES (?,?,?,?,?,?,?,?,?,?)',
                             (d.get('uuid'), profile, sid, agent_id, ts, day, st, d.get('durationMs'), d.get('messageCount'),
-                             json.dumps(keep, ensure_ascii=False)[:4000]))
+                             json.dumps(scrub(keep), ensure_ascii=False)[:4000]))
             elif t == 'ai-title' and sid:
                 sess_upd.setdefault(sid, {})['title'] = d.get('aiTitle')
             elif t == 'cost-state' and sid:
@@ -393,7 +424,7 @@ class Ingest:
         for b in blocks:
             if isinstance(b, dict) and b.get('type') in ('tool_use', 'server_tool_use', 'mcp_tool_use'):
                 name = b.get('name') or '?'
-                f = tool_facets(name, b.get('input'))
+                f = {k: redact(v) for k, v in tool_facets(name, b.get('input')).items()}
                 self.con.execute('''INSERT INTO tool_uses (id, msg_id, profile, session_id, agent_id, ts, day, project, tool, input_chars,
                     file, ext, cmd, pattern, subagent, skill, mcp_server, detail) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(id) DO UPDATE SET msg_id=excluded.msg_id, tool=excluded.tool, input_chars=excluded.input_chars,
@@ -432,7 +463,7 @@ class Ingest:
         kind = prompt_kind(text, d.get('isMeta'), bool(aid) and d.get('parentUuid') is None)
         self.con.execute('INSERT OR IGNORE INTO prompts VALUES (?,?,?,?,?,?,?,?,?,?)',
                          (d['uuid'], profile, d.get('sessionId'), aid, ts, day, project_of(d.get('cwd')), kind, len(text),
-                          text if kind in ('prompt', 'command', 'agent_prompt') else text[:500]))
+                          redact(text if kind in ('prompt', 'command', 'agent_prompt') else text[:500])))
         self.n['prompts'] += 1
 
     def agent_meta(self, path, profile):
@@ -465,7 +496,7 @@ class Ingest:
             day = datetime.fromtimestamp(ts / 1000).strftime('%Y-%m-%d') if isinstance(ts, (int, float)) else None
             ev, sid, prof = d.pop('ev', None), d.pop('sid', None), d.pop('profile', None)
             self.con.execute('INSERT OR IGNORE INTO events VALUES (?,?,?,?,?,?,?,?)',
-                             (path, start + i, ts, day, ev, sid, prof, json.dumps(d, ensure_ascii=False)))
+                             (path, start + i, ts, day, ev, sid, prof, json.dumps(scrub(d), ensure_ascii=False)))
             if ev == 'session_start' and sid:
                 self.con.execute('INSERT OR IGNORE INTO sessions (session_id, profile) VALUES (?,?)', (sid, prof))
             n += 1
@@ -749,6 +780,52 @@ def cmd_serve(args):
                                daemon=args.daemon, tab=args.tab, log_path=os.path.join(DATA, 'dashboard.log'))
 
 
+def cmd_scrub(args):
+    """Blank secrets in rows ingested before redaction existed."""
+    con = connect()
+    targets = [('prompts', 'uuid', ['text'], False), ('tool_uses', 'id', ['cmd', 'pattern', 'detail', 'file'], False),
+               ('system_events', 'uuid', ['data'], True), ('events', 'rowid', ['data'], True)]
+    total = 0
+    for table, key, cols, is_json in targets:
+        changed = 0
+        for row in con.execute(f'SELECT {key}, {", ".join(cols)} FROM {table}').fetchall():
+            new = []
+            for v in row[1:]:
+                if is_json and v:
+                    try:
+                        new.append(json.dumps(scrub(json.loads(v)), ensure_ascii=False))
+                        continue
+                    except Exception:
+                        pass
+                new.append(redact(v))
+            if list(row[1:]) != new and not (is_json and [json.loads(x) if x else x for x in row[1:]] == [json.loads(x) if x else x for x in new]):
+                con.execute(f'UPDATE {table} SET {", ".join(c + " = ?" for c in cols)} WHERE {key} = ?', (*new, row[0]))
+                changed += 1
+        con.commit()
+        print(f'{table:<14} {changed:>6} rows redacted')
+        total += changed
+    files = 0
+    for path in glob.glob(os.path.join(DATA, 'events', '**', '*.jsonl'), recursive=True):
+        text = open(path, encoding='utf-8').read()
+        out = []
+        for line in text.splitlines():
+            try:
+                out.append(json.dumps(scrub(json.loads(line)), ensure_ascii=False, separators=(',', ':')))
+            except Exception:
+                out.append(redact(line))
+        new = '\n'.join(out) + '\n'
+        if redact(text) != text or SECRET_KEY.search(text) and new != text:
+            if [json.loads(x) for x in out if x.startswith('{')] != [json.loads(x) for x in text.splitlines() if x.startswith('{')]:
+                with open(path + '.tmp', 'w', encoding='utf-8') as f:
+                    f.write(new)
+                os.replace(path + '.tmp', path)
+                files += 1
+    print(f'{"event files":<14} {files:>6} rewritten')
+    if total:
+        con.execute('VACUUM')  # drop the old pages that still hold the values
+    return 0
+
+
 def cmd_stop(args):
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import dashboard_api
@@ -812,6 +889,7 @@ def main(argv=None):
     m.add_argument('--json', action='store_true'); m.add_argument('--ingest', action='store_true'); m.set_defaults(fn=cmd_impact)
     st = sub.add_parser('stop', help='stop the background dashboard'); st.add_argument('--port', type=int, default=8787)
     st.set_defaults(fn=cmd_stop)
+    sub.add_parser('scrub', help='blank secrets in rows already in the database').set_defaults(fn=cmd_scrub)
     sub.add_parser('status', help='data, ingest and dashboard status').set_defaults(fn=cmd_status)
     sub.add_parser('path').set_defaults(fn=lambda a: print(DATA) or 0)
     args = ap.parse_args(argv)
