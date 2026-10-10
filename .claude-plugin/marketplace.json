@@ -1,0 +1,24 @@
+{
+  "name": "my-mods",
+  "owner": {
+    "name": "nbotond"
+  },
+  "plugins": [
+    {
+      "name": "budget-guard",
+      "source": "./budget-guard"
+    },
+    {
+      "name": "usage-analytics",
+      "source": "./usage-analytics"
+    },
+    {
+      "name": "lsp-first",
+      "source": "./lsp-first"
+    },
+    {
+      "name": "lean-tools",
+      "source": "./lean-tools"
+    }
+  ]
+}

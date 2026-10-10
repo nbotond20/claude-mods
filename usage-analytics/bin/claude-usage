@@ -1,0 +1,825 @@
+#!/usr/bin/env python3
+"""claude-usage: one SQLite database of every Claude Code profile's token spend.
+
+Sources, all folded incrementally into ~/.claude-shared/usage-analytics/usage.db:
+  * every profile's transcripts   ~/.claude*/projects/**/*.jsonl  (incl. subagents/)
+  * the usage-analytics mod's log ~/.claude-shared/usage-analytics/events/**.jsonl
+
+Commands:
+  ingest  [--quiet] [--full]          fold new data in (lock-protected, incremental by byte offset)
+  report  [what] [--days N] [--profile P[,P]] [--project S] [--limit N] [--ingest]
+          what: overview (default) | profiles | daily | models | projects | tools | bash | files |
+                agents | sessions | context | hours | cache | prompts | all
+  sql     "SELECT ..."                run any query (tables: see `schema`)
+  schema                              list tables and views
+  export  TABLE|VIEW [--format csv|jsonl] [--out FILE]
+  reprice                             recompute cost_usd after editing pricing.json
+  serve   [--port 8787] [--daemon] [--open]   the web dashboard (127.0.0.1 only)
+  path                                print the data directory
+Only the Python standard library is used.
+"""
+import argparse, csv, fcntl, glob, json, os, re, sqlite3, sys, time
+from datetime import datetime, timedelta, timezone
+
+HOME = os.path.expanduser('~')
+DATA = os.environ.get('CLAUDE_USAGE_DIR', os.path.join(HOME, '.claude-shared', 'usage-analytics'))
+DB = os.path.join(DATA, 'usage.db')
+PRICING = os.path.join(DATA, 'pricing.json')
+SCHEMA_VERSION = 1
+
+# USD per million tokens. cache write = 1.25x input (5 minute TTL) or 2x input (1 hour TTL) unless given.
+DEFAULT_PRICING = {
+    "_note": "USD per million tokens. Keys match as substrings of the model name, longest key first. "
+             "Edit freely, then run `claude-usage reprice`.",
+    "fast_multiplier": 2.0,
+    "models": {
+        "fable-5-1":  {"in": 10, "out": 50, "cache_read": 0.25},
+        "fable-5":    {"in": 10, "out": 50, "cache_read": 0.25},
+        "opus-5-5":   {"in": 4, "out": 20, "cache_read": 0.20},
+        "opus-5":     {"in": 5, "out": 25},
+        "opus-4-8":   {"in": 5, "out": 25},
+        "opus-4-7":   {"in": 5, "out": 25},
+        "opus-4-6":   {"in": 5, "out": 25},
+        "opus-4-5":   {"in": 5, "out": 25},
+        "opus-4-1":   {"in": 15, "out": 75},
+        "opus-4":     {"in": 15, "out": 75},
+        "sonnet-5-5": {"in": 2, "out": 10, "cache_read": 0.20},
+        "sonnet-5":   {"in": 3, "out": 15},
+        "sonnet-4":   {"in": 3, "out": 15},
+        "haiku-5-5":  {"in": 0.10, "out": 0.50},
+        "haiku-4-5":  {"in": 1, "out": 5},
+        "haiku":      {"in": 0.80, "out": 4},
+    },
+}
+
+DDL = """
+CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
+CREATE TABLE IF NOT EXISTS files (path TEXT PRIMARY KEY, kind TEXT, profile TEXT, size INTEGER, mtime REAL, offset INTEGER, lines INTEGER, ingested_at TEXT);
+CREATE TABLE IF NOT EXISTS requests (
+  msg_id TEXT PRIMARY KEY, request_id TEXT, profile TEXT, session_id TEXT, agent_id TEXT, is_sidechain INTEGER,
+  ts TEXT, day TEXT, hour INTEGER, cwd TEXT, project TEXT, git_branch TEXT, version TEXT, entrypoint TEXT,
+  model TEXT, effort TEXT, stop_reason TEXT, service_tier TEXT, speed TEXT, geo TEXT,
+  input INTEGER, output INTEGER, cache_read INTEGER, cache_write INTEGER, cw_5m INTEGER, cw_1h INTEGER,
+  thinking INTEGER, web_search INTEGER, web_fetch INTEGER, iterations INTEGER,
+  text_chars INTEGER DEFAULT 0, thinking_blocks INTEGER DEFAULT 0, tool_blocks INTEGER DEFAULT 0, cost_usd REAL);
+CREATE INDEX IF NOT EXISTS req_day ON requests(day);
+CREATE INDEX IF NOT EXISTS req_session ON requests(session_id);
+CREATE INDEX IF NOT EXISTS req_session_ts ON requests(session_id, ts);
+CREATE TABLE IF NOT EXISTS tool_uses (
+  id TEXT PRIMARY KEY, msg_id TEXT, profile TEXT, session_id TEXT, agent_id TEXT, ts TEXT, day TEXT, project TEXT,
+  tool TEXT, input_chars INTEGER, file TEXT, ext TEXT, cmd TEXT, pattern TEXT, subagent TEXT, skill TEXT, mcp_server TEXT,
+  detail TEXT, result_chars INTEGER, result_images INTEGER, is_error INTEGER, result_ts TEXT);
+CREATE INDEX IF NOT EXISTS tool_msg ON tool_uses(msg_id);
+CREATE INDEX IF NOT EXISTS tool_day ON tool_uses(day);
+CREATE INDEX IF NOT EXISTS tool_session ON tool_uses(session_id);
+CREATE TABLE IF NOT EXISTS prompts (uuid TEXT PRIMARY KEY, profile TEXT, session_id TEXT, agent_id TEXT, ts TEXT, day TEXT, project TEXT, kind TEXT, chars INTEGER, text TEXT);
+CREATE TABLE IF NOT EXISTS attachments (uuid TEXT PRIMARY KEY, profile TEXT, session_id TEXT, agent_id TEXT, ts TEXT, day TEXT, type TEXT, chars INTEGER);
+CREATE TABLE IF NOT EXISTS system_events (uuid TEXT PRIMARY KEY, profile TEXT, session_id TEXT, agent_id TEXT, ts TEXT, day TEXT, subtype TEXT, duration_ms INTEGER, message_count INTEGER, data TEXT);
+CREATE TABLE IF NOT EXISTS sessions (
+  session_id TEXT PRIMARY KEY, profile TEXT, cwd TEXT, project TEXT, git_branch TEXT, version TEXT, entrypoint TEXT,
+  first_ts TEXT, last_ts TEXT, title TEXT, cc_cost_usd REAL, cc_api_ms INTEGER, cc_tool_ms INTEGER, cc_duration_ms INTEGER,
+  lines_added INTEGER, lines_removed INTEGER);
+CREATE TABLE IF NOT EXISTS agents (agent_id TEXT PRIMARY KEY, profile TEXT, session_id TEXT, agent_type TEXT, description TEXT, tool_use_id TEXT, parent_agent_id TEXT, spawn_depth INTEGER, shape TEXT);
+CREATE TABLE IF NOT EXISTS events (src TEXT, line INTEGER, ts INTEGER, day TEXT, ev TEXT, sid TEXT, profile TEXT, data TEXT, PRIMARY KEY (src, line));
+CREATE INDEX IF NOT EXISTS ev_ev ON events(ev, day);
+CREATE INDEX IF NOT EXISTS prompt_session ON prompts(session_id, ts);
+CREATE INDEX IF NOT EXISTS prompt_day ON prompts(day);
+CREATE INDEX IF NOT EXISTS sys_day ON system_events(day);
+CREATE INDEX IF NOT EXISTS att_day ON attachments(day);
+
+CREATE VIEW IF NOT EXISTS v_requests AS
+  SELECT r.*, input + cache_read + cache_write AS context_tokens,
+         COALESCE(a.agent_type, CASE WHEN r.agent_id IS NULL THEN 'main' ELSE 'subagent' END) AS agent_type
+  FROM requests r LEFT JOIN agents a ON a.agent_id = r.agent_id;
+CREATE VIEW IF NOT EXISTS v_mod_steps AS
+  SELECT ts, day, profile, sid, json_extract(data,'$.turnId') turn_id, json_extract(data,'$.index') step,
+         json_extract(data,'$.agentId') agent_id, json_extract(data,'$.model') model, json_extract(data,'$.effort') effort,
+         json_extract(data,'$.messageCount') messages, json_extract(data,'$.usage.in') input, json_extract(data,'$.usage.out') output,
+         json_extract(data,'$.usage.cr') cache_read, json_extract(data,'$.usage.cw') cache_write, json_extract(data,'$.stop') stop,
+         json_extract(data,'$.ms') ms, json_extract(data,'$.ttftMs') ttft_ms, json_extract(data,'$.answerChars') answer_chars
+  FROM events WHERE ev = 'step';
+CREATE VIEW IF NOT EXISTS v_mod_tools AS
+  SELECT ts, day, profile, sid, json_extract(data,'$.tool') tool, json_extract(data,'$.agentId') agent_id,
+         json_extract(data,'$.ms') ms, json_extract(data,'$.inChars') in_chars, json_extract(data,'$.resultChars') result_chars,
+         json_extract(data,'$.isError') is_error, json_extract(data,'$.denied') denied, json_extract(data,'$.file') file,
+         json_extract(data,'$.cmd') cmd, json_extract(data,'$.contextChars') context_chars
+  FROM events WHERE ev = 'tool';
+CREATE VIEW IF NOT EXISTS v_context AS
+  SELECT ts, day, profile, sid, json_extract(data,'$.why') why, json_extract(data,'$.totalTokens') total_tokens,
+         json_extract(data,'$.rawMaxTokens') max_tokens, json_extract(c.value,'$.name') category,
+         json_extract(c.value,'$.tokens') tokens, json_extract(c.value,'$.deferred') deferred
+  FROM events, json_each(events.data, '$.categories') c WHERE ev = 'context';
+CREATE VIEW IF NOT EXISTS v_measure AS
+  SELECT ts, day, profile, sid, json_extract(data,'$.context.tokens') context_tokens, json_extract(data,'$.context.percent') context_pct,
+         json_extract(data,'$.costUsd') cost_usd, json_extract(data,'$.rateLimits') rate_limits
+  FROM events WHERE ev = 'measure';
+CREATE VIEW IF NOT EXISTS v_compactions AS
+  SELECT ts, day, profile, sid, json_extract(data,'$.trigger') trigger_, json_extract(data,'$.tokensBefore') tokens_before,
+         json_extract(data,'$.tokensAfter') tokens_after, json_extract(data,'$.ms') ms, json_extract(data,'$.skipped') skipped
+  FROM events WHERE ev = 'compact';
+CREATE VIEW IF NOT EXISTS v_tool_schemas AS
+  SELECT profile, json_extract(data,'$.tool') tool, MAX(json_extract(data,'$.chars')) chars,
+         json_extract(data,'$.deferred') deferred, MAX(day) last_seen
+  FROM events WHERE ev = 'tool_schema' GROUP BY profile, tool, deferred;
+CREATE VIEW IF NOT EXISTS v_system_prompt AS
+  SELECT ts, day, profile, sid, json_extract(data,'$.model') model, json_extract(data,'$.chars') chars,
+         json_extract(s.value,'$.id') section, json_extract(s.value,'$.chars') section_chars
+  FROM events, json_each(events.data, '$.sections') s WHERE ev = 'system_prompt';
+CREATE VIEW IF NOT EXISTS v_mod_actions AS
+  SELECT ts, day, profile, sid, json_extract(data,'$.mod') mod, json_extract(data,'$.kind') kind, json_extract(data,'$.arm') arm,
+         json_extract(data,'$.nudge') nudge, json_extract(data,'$.chars') chars, json_extract(data,'$.bytesAll') bytes_all,
+         json_extract(data,'$.bytesKept') bytes_kept, json_extract(data,'$.followed') followed, json_extract(data,'$.total') total, data
+  FROM events WHERE ev = 'mod';
+"""
+
+
+def log(args, *a):
+    if not getattr(args, 'quiet', False):
+        print(*a, file=sys.stderr)
+
+
+def connect():
+    os.makedirs(DATA, exist_ok=True)
+    con = sqlite3.connect(DB, timeout=60)
+    con.execute('PRAGMA journal_mode=WAL')
+    con.execute('PRAGMA synchronous=NORMAL')
+    con.executescript(DDL)
+    con.execute("INSERT OR REPLACE INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
+    return con
+
+
+def load_pricing():
+    if not os.path.exists(PRICING):
+        os.makedirs(DATA, exist_ok=True)
+        with open(PRICING, 'w') as f:
+            json.dump(DEFAULT_PRICING, f, indent=2)
+    with open(PRICING) as f:
+        p = json.load(f)
+    models = sorted(p.get('models', {}).items(), key=lambda kv: -len(kv[0]))
+    return models, float(p.get('fast_multiplier', 1))
+
+
+def make_coster():
+    models, fast = load_pricing()
+    cache = {}
+
+    def price(model):
+        if model not in cache:
+            m = (model or '').lower()
+            cache[model] = next((v for k, v in models if k in m), None)
+        return cache[model]
+
+    def cost(model, speed, inp, out, cr, cw5, cw1, cw):
+        p = price(model)
+        if not p:
+            return None
+        i = p['in']
+        c = (inp * i + out * p['out'] + cr * p.get('cache_read', i * 0.1)
+             + cw5 * p.get('cache_write_5m', i * 1.25) + cw1 * p.get('cache_write_1h', i * 2)
+             + max(0, cw - cw5 - cw1) * p.get('cache_write_5m', i * 1.25)) / 1e6
+        return c * (fast if speed == 'fast' else 1)
+    return cost
+
+
+def local(ts):
+    """ISO UTC timestamp -> (local day, local hour)."""
+    try:
+        d = datetime.fromisoformat(ts.replace('Z', '+00:00')).astimezone()
+        return d.strftime('%Y-%m-%d'), d.hour
+    except Exception:
+        return None, None
+
+
+def project_of(cwd):
+    if not cwd:
+        return None
+    cwd = re.split(r'/\.claude/worktrees/|/\.worktrees/|-worktrees/|/worktrees/', cwd)[0]
+    return cwd.replace(HOME, '~')
+
+
+def size_of(x):
+    if x is None:
+        return 0
+    return len(x) if isinstance(x, str) else len(json.dumps(x, ensure_ascii=False))
+
+
+def result_size(content):
+    """Characters of text and number of images in a tool_result's content."""
+    if isinstance(content, str):
+        return len(content), 0
+    chars = imgs = 0
+    for b in content or []:
+        if isinstance(b, dict):
+            if b.get('type') == 'image':
+                imgs += 1
+            else:
+                chars += size_of(b.get('text') if 'text' in b else b)
+    return chars, imgs
+
+
+def tool_facets(name, inp):
+    inp = inp if isinstance(inp, dict) else {}
+    s = lambda k: inp.get(k) if isinstance(inp.get(k), str) else None
+    f = {'file': s('file_path') or s('notebook_path') or s('path'), 'ext': None, 'cmd': None, 'pattern': None,
+         'subagent': None, 'skill': None, 'mcp_server': None, 'detail': None}
+    if f['file']:
+        m = re.search(r'\.([A-Za-z0-9]+)$', f['file'])
+        f['ext'] = m.group(1).lower() if m else None
+    if name == 'Bash':
+        cmd = s('command') or ''
+        m = re.search(r'\{ (.*?)\n\} >"\$__(?:lt|bg)_log"', cmd, re.S)  # unwrap lean-tools / budget-guard output caps
+        if m:
+            cmd = m.group(1)
+            f['detail'] = 'capped'
+        words = cmd.strip().split()
+        # skip env assignments and `cd x &&` prefixes to find the real program
+        while words and ('=' in words[0] and not words[0].startswith('-')):
+            words = words[1:]
+        if len(words) >= 3 and words[0] == 'cd' and words[2] in ('&&', ';'):
+            words = words[3:]
+        elif len(words) >= 2 and words[0] == 'cd' and words[1].endswith(';'):
+            words = words[2:]
+        f['cmd'] = ' '.join(words[:2])[:80] or None
+    elif name in ('Grep', 'Glob'):
+        f['pattern'] = (s('pattern') or '')[:200]
+        f['detail'] = s('output_mode') or s('glob')
+    elif name in ('Agent', 'Task'):
+        f['subagent'] = s('subagent_type') or 'general-purpose'
+        f['detail'] = s('model')
+    elif name == 'Skill':
+        f['skill'] = s('skill')
+    elif name == 'WebFetch':
+        m = re.match(r'https?://([^/]+)', s('url') or '')
+        f['detail'] = m.group(1) if m else None
+    elif name == 'WebSearch':
+        f['detail'] = (s('query') or '')[:200]
+    elif name == 'LSP':
+        f['detail'] = s('operation')
+    elif name == 'Read':
+        f['detail'] = json.dumps({k: inp[k] for k in ('offset', 'limit', 'pages') if k in inp}) if any(k in inp for k in ('offset', 'limit', 'pages')) else None
+    elif name == 'Edit':
+        f['detail'] = 'replace_all' if inp.get('replace_all') else None
+    if name.startswith('mcp__'):
+        f['mcp_server'] = name.split('__')[1] if name.count('__') >= 2 else None
+    return f
+
+
+def prompt_kind(text, is_meta, sidechain_root):
+    if sidechain_root:
+        return 'agent_prompt'
+    if is_meta:
+        return 'meta'
+    t = text.lstrip()
+    if t.startswith('<command-name>') or t.startswith('<command-message>'):
+        return 'command'
+    if t.startswith('<local-command-stdout>') or t.startswith('<local-command-stderr>'):
+        return 'command_output'
+    if t.startswith('<bash-input>') or t.startswith('<bash-stdout>'):
+        return 'shell'
+    if t.startswith('<task-notification>') or t.startswith('<system-reminder>'):
+        return 'notification'
+    if t.startswith('This session is being continued') or t.startswith('Summary:'):
+        return 'compact_summary'
+    return 'prompt'
+
+
+class Ingest:
+    def __init__(self, con, args):
+        self.con, self.args = con, args
+        self.cost = make_coster()
+        self.n = {'requests': 0, 'tools': 0, 'prompts': 0, 'events': 0, 'files': 0}
+
+    # ---- transcripts -------------------------------------------------------
+    def transcript(self, path, profile, agent_id, start):
+        con = self.con
+        sess_upd = {}
+        with open(path, 'rb') as fh:
+            fh.seek(start)
+            data = fh.read()
+        end = data.rfind(b'\n') + 1
+        lines = data[:end].split(b'\n')
+        for raw in lines:
+            if not raw:
+                continue
+            try:
+                d = json.loads(raw)
+            except Exception:
+                continue
+            t = d.get('type')
+            sid = d.get('sessionId')
+            ts = d.get('timestamp')
+            if t == 'assistant':
+                self.assistant(d, profile, agent_id)
+            elif t == 'user':
+                self.user(d, profile, agent_id)
+            elif t == 'attachment':
+                a = d.get('attachment') or {}
+                day, _ = local(ts) if ts else (None, None)
+                con.execute('INSERT OR IGNORE INTO attachments VALUES (?,?,?,?,?,?,?,?)',
+                            (d.get('uuid'), profile, sid, agent_id, ts, day, a.get('type'), size_of(a)))
+            elif t == 'system':
+                day, _ = local(ts) if ts else (None, None)
+                st = d.get('subtype')
+                keep = {k: v for k, v in d.items() if k not in ('parentUuid', 'uuid', 'cwd', 'sessionId', 'session_id', 'userType', 'entrypoint', 'version', 'gitBranch', 'type', 'isSidechain', 'timestamp')}
+                con.execute('INSERT OR IGNORE INTO system_events VALUES (?,?,?,?,?,?,?,?,?,?)',
+                            (d.get('uuid'), profile, sid, agent_id, ts, day, st, d.get('durationMs'), d.get('messageCount'),
+                             json.dumps(keep, ensure_ascii=False)[:4000]))
+            elif t == 'ai-title' and sid:
+                sess_upd.setdefault(sid, {})['title'] = d.get('aiTitle')
+            elif t == 'cost-state' and sid:
+                sess_upd.setdefault(sid, {}).update(cc=d)
+            if sid and ts and t in ('assistant', 'user') and not agent_id:
+                s = sess_upd.setdefault(sid, {})
+                s['first'] = min(s.get('first', ts), ts)
+                s['last'] = max(s.get('last', ts), ts)
+                for k, dk in (('cwd', 'cwd'), ('branch', 'gitBranch'), ('version', 'version'), ('entrypoint', 'entrypoint')):
+                    if d.get(dk):
+                        s[k] = d[dk]
+        for sid, s in sess_upd.items():
+            con.execute('INSERT OR IGNORE INTO sessions (session_id, profile) VALUES (?,?)', (sid, profile))
+            if 'first' in s:
+                con.execute('''UPDATE sessions SET first_ts = MIN(COALESCE(first_ts, ?), ?), last_ts = MAX(COALESCE(last_ts, ?), ?),
+                               cwd = COALESCE(?, cwd), project = COALESCE(?, project), git_branch = COALESCE(?, git_branch),
+                               version = COALESCE(?, version), entrypoint = COALESCE(?, entrypoint) WHERE session_id = ?''',
+                            (s['first'], s['first'], s['last'], s['last'], s.get('cwd'), project_of(s.get('cwd')),
+                             s.get('branch'), s.get('version'), s.get('entrypoint'), sid))
+            if s.get('title'):
+                con.execute('UPDATE sessions SET title = ? WHERE session_id = ?', (s['title'], sid))
+            if s.get('cc'):
+                c = s['cc']
+                con.execute('''UPDATE sessions SET cc_cost_usd=?, cc_api_ms=?, cc_tool_ms=?, cc_duration_ms=?, lines_added=?, lines_removed=?
+                               WHERE session_id=?''', (c.get('totalCostUSD'), c.get('totalAPIDuration'), c.get('totalToolDuration'),
+                                                       c.get('totalDuration'), c.get('totalLinesAdded'), c.get('totalLinesRemoved'), sid))
+        return end, len(lines)
+
+    def assistant(self, d, profile, agent_id):
+        m = d.get('message') or {}
+        mid = m.get('id')
+        model = m.get('model')
+        if not mid or model == '<synthetic>':
+            return
+        u = m.get('usage') or {}
+        cc = u.get('cache_creation') or {}
+        st = u.get('server_tool_use') or {}
+        ts = d.get('timestamp')
+        day, hour = local(ts) if ts else (None, None)
+        inp, out = u.get('input_tokens') or 0, u.get('output_tokens') or 0
+        cr, cw = u.get('cache_read_input_tokens') or 0, u.get('cache_creation_input_tokens') or 0
+        cw5, cw1 = cc.get('ephemeral_5m_input_tokens') or 0, cc.get('ephemeral_1h_input_tokens') or 0
+        speed = u.get('speed') or 'standard'
+        blocks = m.get('content') or []
+        text_chars = sum(len(b.get('text') or '') for b in blocks if isinstance(b, dict) and b.get('type') == 'text')
+        thinking_blocks = sum(1 for b in blocks if isinstance(b, dict) and b.get('type') in ('thinking', 'redacted_thinking'))
+        tool_blocks = sum(1 for b in blocks if isinstance(b, dict) and b.get('type') == 'tool_use')
+        cwd = d.get('cwd')
+        aid = agent_id or d.get('agentId')
+        self.con.execute('''INSERT INTO requests VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+          ON CONFLICT(msg_id) DO UPDATE SET
+            input = MAX(input, excluded.input), output = MAX(output, excluded.output),
+            cache_read = MAX(cache_read, excluded.cache_read), cache_write = MAX(cache_write, excluded.cache_write),
+            cw_5m = MAX(cw_5m, excluded.cw_5m), cw_1h = MAX(cw_1h, excluded.cw_1h), thinking = MAX(thinking, excluded.thinking),
+            stop_reason = COALESCE(excluded.stop_reason, stop_reason),
+            text_chars = text_chars + excluded.text_chars, thinking_blocks = thinking_blocks + excluded.thinking_blocks,
+            tool_blocks = tool_blocks + excluded.tool_blocks,
+            cost_usd = MAX(COALESCE(cost_usd, 0), COALESCE(excluded.cost_usd, 0))
+          WHERE excluded.session_id = requests.session_id''',
+            (mid, d.get('requestId'), profile, d.get('sessionId'), aid, 1 if d.get('isSidechain') else 0,
+             ts, day, hour, cwd, project_of(cwd), d.get('gitBranch'), d.get('version'), d.get('entrypoint'),
+             model, d.get('effort'), m.get('stop_reason'), u.get('service_tier'), speed, u.get('inference_geo'),
+             inp, out, cr, cw, cw5, cw1, (u.get('output_tokens_details') or {}).get('thinking_tokens') or 0,
+             st.get('web_search_requests') or 0, st.get('web_fetch_requests') or 0, len(u.get('iterations') or []) or 1,
+             text_chars, thinking_blocks, tool_blocks, self.cost(model, speed, inp, out, cr, cw5, cw1, cw)))
+        self.n['requests'] += 1
+        for b in blocks:
+            if isinstance(b, dict) and b.get('type') in ('tool_use', 'server_tool_use', 'mcp_tool_use'):
+                name = b.get('name') or '?'
+                f = tool_facets(name, b.get('input'))
+                self.con.execute('''INSERT INTO tool_uses (id, msg_id, profile, session_id, agent_id, ts, day, project, tool, input_chars,
+                    file, ext, cmd, pattern, subagent, skill, mcp_server, detail) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(id) DO UPDATE SET msg_id=excluded.msg_id, tool=excluded.tool, input_chars=excluded.input_chars,
+                    file=excluded.file, ext=excluded.ext, cmd=excluded.cmd, pattern=excluded.pattern, subagent=excluded.subagent,
+                    skill=excluded.skill, mcp_server=excluded.mcp_server, detail=excluded.detail, ts=excluded.ts, day=excluded.day''',
+                    (b.get('id'), mid, profile, d.get('sessionId'), aid, ts, day, project_of(cwd), name, size_of(b.get('input')),
+                     f['file'], f['ext'], f['cmd'], f['pattern'], f['subagent'], f['skill'], f['mcp_server'], f['detail']))
+                self.n['tools'] += 1
+
+    def user(self, d, profile, agent_id):
+        m = d.get('message') or {}
+        c = m.get('content')
+        ts = d.get('timestamp')
+        day, _ = local(ts) if ts else (None, None)
+        aid = agent_id or d.get('agentId')
+        if isinstance(c, list):
+            texts = []
+            for b in c:
+                if not isinstance(b, dict):
+                    continue
+                if b.get('type') == 'tool_result':
+                    chars, imgs = result_size(b.get('content'))
+                    self.con.execute('''INSERT INTO tool_uses (id, profile, session_id, agent_id, result_chars, result_images, is_error, result_ts)
+                        VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET result_chars=excluded.result_chars,
+                        result_images=excluded.result_images, is_error=excluded.is_error, result_ts=excluded.result_ts''',
+                        (b.get('tool_use_id'), profile, d.get('sessionId'), aid, chars, imgs, 1 if b.get('is_error') else 0, ts))
+                elif b.get('type') == 'text':
+                    texts.append(b.get('text') or '')
+            text = '\n'.join(texts)
+        elif isinstance(c, str):
+            text = c
+        else:
+            return
+        if not text or not d.get('uuid'):
+            return
+        kind = prompt_kind(text, d.get('isMeta'), bool(aid) and d.get('parentUuid') is None)
+        self.con.execute('INSERT OR IGNORE INTO prompts VALUES (?,?,?,?,?,?,?,?,?,?)',
+                         (d['uuid'], profile, d.get('sessionId'), aid, ts, day, project_of(d.get('cwd')), kind, len(text),
+                          text if kind in ('prompt', 'command', 'agent_prompt') else text[:500]))
+        self.n['prompts'] += 1
+
+    def agent_meta(self, path, profile):
+        aid = os.path.basename(path)[len('agent-'):-len('.meta.json')]
+        sid = os.path.basename(os.path.dirname(os.path.dirname(path)))
+        try:
+            with open(path) as f:
+                m = json.load(f)
+        except Exception:
+            return
+        self.con.execute('INSERT OR REPLACE INTO agents VALUES (?,?,?,?,?,?,?,?,?)',
+                         (aid, profile, sid, m.get('agentType'), m.get('description'), m.get('toolUseId'),
+                          m.get('parentAgentId'), m.get('spawnDepth'), m.get('requestShape')))
+
+    # ---- mod events --------------------------------------------------------
+    def events(self, path, start):
+        n = 0
+        with open(path, 'rb') as fh:
+            fh.seek(start)
+            data = fh.read()
+        end = data.rfind(b'\n') + 1
+        for i, raw in enumerate(data[:end].split(b'\n')):
+            if not raw:
+                continue
+            try:
+                d = json.loads(raw)
+            except Exception:
+                continue
+            ts = d.pop('ts', None)
+            day = datetime.fromtimestamp(ts / 1000).strftime('%Y-%m-%d') if isinstance(ts, (int, float)) else None
+            ev, sid, prof = d.pop('ev', None), d.pop('sid', None), d.pop('profile', None)
+            self.con.execute('INSERT OR IGNORE INTO events VALUES (?,?,?,?,?,?,?,?)',
+                             (path, start + i, ts, day, ev, sid, prof, json.dumps(d, ensure_ascii=False)))
+            if ev == 'session_start' and sid:
+                self.con.execute('INSERT OR IGNORE INTO sessions (session_id, profile) VALUES (?,?)', (sid, prof))
+            n += 1
+        self.n['events'] += n
+        return end, n
+
+    # ---- driver ------------------------------------------------------------
+    def sources(self):
+        cfg = {}
+        try:
+            with open(os.path.join(DATA, 'config.json')) as f:
+                cfg = json.load(f)
+        except Exception:
+            pass
+        roots = cfg.get('profileDirs') or sorted(p for p in glob.glob(os.path.join(HOME, '.claude*')) if os.path.isdir(os.path.join(p, 'projects')))
+        for root in roots:
+            profile = os.path.basename(root.rstrip('/')).lstrip('.')
+            proj = os.path.join(root, 'projects')
+            for dirpath, dirs, files in os.walk(proj):
+                in_sub = os.path.basename(dirpath) == 'subagents'
+                for fn in files:
+                    p = os.path.join(dirpath, fn)
+                    if fn.endswith('.meta.json') and in_sub:
+                        yield 'agent_meta', profile, p, None
+                    elif fn.endswith('.jsonl'):
+                        aid = fn[len('agent-'):-len('.jsonl')] if in_sub and fn.startswith('agent-') else None
+                        yield 'transcript', profile, p, aid
+        for p in glob.glob(os.path.join(DATA, 'events', '*', '*', '*.jsonl')):
+            yield 'events', p.split(os.sep)[-3], p, None
+
+    def run(self, full=False):
+        con = self.con
+        if full:
+            for t in ('files', 'requests', 'tool_uses', 'prompts', 'attachments', 'system_events', 'sessions', 'agents', 'events'):
+                con.execute(f'DELETE FROM {t}')
+        known = {r[0]: r[1:] for r in con.execute('SELECT path, size, mtime, offset FROM files')}
+        todo = []
+        for kind, profile, path, aid in self.sources():
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            k = known.get(path)
+            if k and k[0] == st.st_size and abs(k[1] - st.st_mtime) < 1e-6:
+                continue
+            start = k[2] if k and st.st_size >= k[0] else 0
+            todo.append((kind, profile, path, aid, st, start))
+        # main transcripts before subagents so sessions are attributed to the top-level file
+        todo.sort(key=lambda x: (x[0] != 'transcript', x[3] is not None, x[2]))
+        t0, last_commit = time.time(), time.time()
+        for i, (kind, profile, path, aid, st, start) in enumerate(todo):
+            try:
+                if kind == 'agent_meta':
+                    self.agent_meta(path, profile)
+                    end, n = st.st_size, 1
+                elif kind == 'events':
+                    rel, n = self.events(path, start)
+                    end = start + rel
+                else:
+                    rel, n = self.transcript(path, profile, aid, start)
+                    end = start + rel
+            except Exception as ex:  # one bad file must not stop the rest
+                log(self.args, f'skip {path}: {ex}')
+                continue
+            con.execute('INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?)',
+                        (path, kind, profile, st.st_size, st.st_mtime, end, n, datetime.now().isoformat(timespec='seconds')))
+            self.n['files'] += 1
+            if time.time() - last_commit > 5:
+                con.commit()
+                last_commit = time.time()
+                log(self.args, f'  {i + 1}/{len(todo)} files, {self.n["requests"]} request rows, {time.time() - t0:.0f}s')
+        con.commit()
+        log(self.args, f'ingested {self.n["files"]} files: {self.n["requests"]} request rows, {self.n["tools"]} tool calls, '
+                       f'{self.n["prompts"]} prompts, {self.n["events"]} mod events in {time.time() - t0:.1f}s')
+
+
+def cmd_ingest(args):
+    os.makedirs(DATA, exist_ok=True)
+    lock = open(os.path.join(DATA, 'ingest.lock'), 'w')
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | (fcntl.LOCK_NB if args.quiet else 0))
+    except BlockingIOError:
+        return 0  # another ingest is running; this one's data will be picked up by it or the next
+    con = connect()
+    Ingest(con, args).run(full=getattr(args, 'full', False))
+    con.close()
+    return 0
+
+
+def cmd_reprice(args):
+    con = connect()
+    cost = make_coster()
+    rows = con.execute('SELECT msg_id, model, speed, input, output, cache_read, cw_5m, cw_1h, cache_write FROM requests').fetchall()
+    con.executemany('UPDATE requests SET cost_usd = ? WHERE msg_id = ?',
+                    [(cost(m, sp, i, o, cr, c5, c1, cw), mid) for mid, m, sp, i, o, cr, c5, c1, cw in rows])
+    con.commit()
+    missing = con.execute("SELECT model, COUNT(*) FROM requests WHERE cost_usd IS NULL GROUP BY model").fetchall()
+    print(f'repriced {len(rows)} requests' + (f'; no price for: {missing}' if missing else ''))
+    return 0
+
+
+# ---- reporting -------------------------------------------------------------
+def fmt(v):
+    if v is None:
+        return '-'
+    if isinstance(v, float):
+        if abs(v) >= 100:
+            return f'{v:,.0f}'
+        return f'{v:,.2f}'
+    if isinstance(v, int):
+        a = abs(v)
+        if a >= 1e9:
+            return f'{v / 1e9:.2f}B'
+        if a >= 1e6:
+            return f'{v / 1e6:.1f}M'
+        if a >= 1e4:
+            return f'{v / 1e3:.0f}k'
+        return f'{v:,}'
+    s = str(v)
+    return s if len(s) <= 60 else s[:57] + '...'
+
+
+def table(con, title, sql, params=(), out=None):
+    cur = con.execute(sql, params)
+    cols = [c[0] for c in cur.description]
+    rows = [[fmt(v) for v in r] for r in cur.fetchall()]
+    w = [max([len(c)] + [len(r[i]) for r in rows]) for i, c in enumerate(cols)]
+    lines = [f'\n## {title}', '  '.join(c.ljust(w[i]) if i == 0 else c.rjust(w[i]) for i, c in enumerate(cols))]
+    lines.append('  '.join('-' * x for x in w))
+    for r in rows:
+        lines.append('  '.join(v.ljust(w[i]) if i == 0 else v.rjust(w[i]) for i, v in enumerate(r)))
+    if not rows:
+        lines.append('(no data)')
+    print('\n'.join(lines), file=out or sys.stdout)
+
+
+TOK = '''SUM(input) "in", SUM(output) "out", SUM(cache_read) "cache rd", SUM(cache_write) "cache wr",
+  ROUND(100.0 * SUM(cache_read) / NULLIF(SUM(input + cache_read + cache_write), 0), 1) "hit %",
+  ROUND(SUM(cost_usd), 2) "est $"'''
+
+
+def cmd_report(args):
+    if args.ingest:
+        a = argparse.Namespace(quiet=True, full=False)
+        cmd_ingest(a)
+    con = connect()
+    since = (datetime.now() - timedelta(days=args.days - 1)).strftime('%Y-%m-%d') if args.days else '0000'
+    w, p = ['day >= ?'], [since]
+    if args.profile:
+        profs = [x if x.startswith('claude') else f'claude-{x}' for x in args.profile.split(',')]
+        w.append(f'profile IN ({",".join("?" * len(profs))})')
+        p += profs
+    if args.project:
+        w.append('project LIKE ?')
+        p.append(f'%{args.project}%')
+    W = ' AND '.join(w)
+    L = args.limit
+    what = args.what
+    span = f'last {args.days} days' if args.days else 'all time'
+    scope = f"{span}{', profile ' + args.profile if args.profile else ''}{', project ~' + args.project if args.project else ''}"
+    print(f'# Claude Code usage: {scope}  (costs are list-price estimates from {PRICING})')
+
+    def want(*names):
+        return what in names or what == 'all'
+
+    if want('overview', 'profiles'):
+        table(con, 'By profile', f'''SELECT profile, COUNT(DISTINCT session_id) sessions, COUNT(*) requests, {TOK}
+            FROM requests WHERE {W} GROUP BY profile UNION ALL
+            SELECT 'TOTAL', COUNT(DISTINCT session_id), COUNT(*), {TOK} FROM requests WHERE {W}''', p + p)
+    if want('overview', 'daily'):
+        table(con, 'By day', f'''SELECT day, COUNT(DISTINCT session_id) sessions, COUNT(*) requests, {TOK},
+            GROUP_CONCAT(DISTINCT profile) profiles FROM requests WHERE {W} GROUP BY day ORDER BY day DESC LIMIT ?''', p + [L if what != 'overview' else 14])
+    if want('overview', 'models'):
+        table(con, 'By model', f'''SELECT model, speed, COUNT(*) requests, {TOK}, SUM(thinking) thinking
+            FROM requests WHERE {W} GROUP BY model, speed ORDER BY SUM(cost_usd) DESC''', p)
+    if want('overview', 'agents'):
+        table(con, 'Main loop vs subagents (by agent type)', f'''SELECT agent_type, COUNT(DISTINCT COALESCE(agent_id, session_id)) agents,
+            COUNT(*) requests, {TOK} FROM v_requests WHERE {W} GROUP BY agent_type ORDER BY SUM(cost_usd) DESC LIMIT ?''', p + [L])
+    if want('overview', 'projects'):
+        table(con, 'By project', f'''SELECT project, COUNT(DISTINCT session_id) sessions, COUNT(*) requests, {TOK}
+            FROM requests WHERE {W} GROUP BY project ORDER BY SUM(cost_usd) DESC LIMIT ?''', p + [L])
+    if want('overview', 'tools'):
+        table(con, 'Tools: what they put into the context (result chars ~ 4 per token)', f'''SELECT tool, COUNT(*) calls,
+            SUM(input_chars) "in chars", SUM(result_chars) "result chars", ROUND(AVG(result_chars)) "avg result",
+            MAX(result_chars) "max result", SUM(result_images) images, SUM(is_error) errors,
+            ROUND(100.0 * SUM(result_chars) / NULLIF((SELECT SUM(result_chars) FROM tool_uses WHERE {W}), 0), 1) "% results"
+            FROM tool_uses WHERE {W} AND tool IS NOT NULL GROUP BY tool ORDER BY SUM(result_chars) DESC LIMIT ?''', p + p + [L])
+    if want('bash'):
+        table(con, 'Bash by command', f'''SELECT cmd, COUNT(*) calls, SUM(result_chars) "result chars", ROUND(AVG(result_chars)) "avg",
+            MAX(result_chars) "max", SUM(is_error) errors FROM tool_uses WHERE {W} AND tool = 'Bash'
+            GROUP BY cmd ORDER BY SUM(result_chars) DESC LIMIT ?''', p + [L])
+    if want('files'):
+        table(con, 'Files read/edited most (by chars returned)', f'''SELECT file, SUM(tool = 'Read') reads, SUM(tool = 'Edit') edits,
+            SUM(tool = 'Write') writes, SUM(CASE WHEN tool = 'Read' THEN result_chars END) "read chars",
+            SUM(CASE WHEN tool = 'Write' THEN input_chars END) "write chars"
+            FROM tool_uses WHERE {W} AND file IS NOT NULL GROUP BY file ORDER BY SUM(result_chars) + SUM(input_chars) DESC LIMIT ?''', p + [L])
+        table(con, 'Re-reads: the same file read again in one session', f'''SELECT file, session_id, COUNT(*) reads, SUM(result_chars) chars
+            FROM tool_uses WHERE {W} AND tool = 'Read' GROUP BY session_id, file HAVING COUNT(*) > 2 ORDER BY SUM(result_chars) DESC LIMIT ?''', p + [L])
+    if want('sessions'):
+        table(con, 'Most expensive sessions', f'''SELECT r.session_id, r.profile, MIN(r.day) day, s.title, COUNT(*) requests,
+            MAX(r.input + r.cache_read + r.cache_write) "peak ctx", ROUND(SUM(r.cost_usd), 2) "est $", ROUND(s.cc_cost_usd, 2) "cc $"
+            FROM requests r LEFT JOIN sessions s USING (session_id) WHERE {" AND ".join("r." + x for x in w)}
+            GROUP BY r.session_id ORDER BY SUM(r.cost_usd) DESC LIMIT ?''', p + [L])
+    if want('overview', 'cache'):
+        table(con, 'Context size per request (main loop)', f'''SELECT CASE
+              WHEN input + cache_read + cache_write < 50000 THEN 'a <50k' WHEN input + cache_read + cache_write < 100000 THEN 'b 50-100k'
+              WHEN input + cache_read + cache_write < 200000 THEN 'c 100-200k' WHEN input + cache_read + cache_write < 400000 THEN 'd 200-400k'
+              ELSE 'e 400k+' END bucket, COUNT(*) requests, {TOK}
+            FROM requests WHERE {W} AND agent_id IS NULL GROUP BY bucket ORDER BY bucket''', p)
+        cost = make_coster()
+        split = {'input': 0.0, 'output': 0.0, 'cache read': 0.0, 'cache write': 0.0}
+        for m, sp, i, o, cr, c5, c1, cw in con.execute(f'''SELECT model, speed, SUM(input), SUM(output), SUM(cache_read), SUM(cw_5m),
+                SUM(cw_1h), SUM(cache_write) FROM requests WHERE {W} GROUP BY model, speed''', p):
+            split['input'] += cost(m, sp, i, 0, 0, 0, 0, 0) or 0
+            split['output'] += cost(m, sp, 0, o, 0, 0, 0, 0) or 0
+            split['cache read'] += cost(m, sp, 0, 0, cr, 0, 0, 0) or 0
+            split['cache write'] += cost(m, sp, 0, 0, 0, c5, c1, cw) or 0
+        total = sum(split.values()) or 1
+        print('\n## Spend by token kind\n' + '\n'.join(f'{k:12} ${v:>10,.2f}  {100 * v / total:5.1f}%' for k, v in split.items()))
+    if want('context'):
+        table(con, 'Injected context (attachments) by type', f'''SELECT type, COUNT(*) n, SUM(chars) chars, ROUND(AVG(chars)) avg
+            FROM attachments WHERE {W.replace("project LIKE ?", "1")} GROUP BY type ORDER BY SUM(chars) DESC LIMIT ?''', p + [L])
+        table(con, 'Latest /context breakdown per profile (from the mod)', f'''SELECT profile, category, MAX(tokens) tokens, deferred
+            FROM v_context WHERE ts = (SELECT MAX(ts) FROM events e WHERE e.ev = 'context' AND e.profile = v_context.profile)
+            GROUP BY profile, category ORDER BY profile, tokens DESC''')
+        table(con, 'Tool definitions (chars, from the mod)', '''SELECT tool, MAX(chars) chars, deferred FROM v_tool_schemas
+            GROUP BY tool, deferred ORDER BY chars DESC LIMIT ?''', [L])
+        table(con, 'Compactions', f'''SELECT day, subtype, COUNT(*) n FROM system_events WHERE {W.replace("project LIKE ?", "1")}
+            AND subtype IN ('compact_boundary', 'api_error') GROUP BY day, subtype ORDER BY day DESC LIMIT ?''', p + [L])
+    if want('hours'):
+        table(con, 'By hour of day (local)', f'''SELECT printf('%02d:00', hour) hour, COUNT(*) requests, {TOK}
+            FROM requests WHERE {W} GROUP BY hour ORDER BY hour''', p)
+    if want('prompts'):
+        table(con, 'Prompts by kind', f'''SELECT kind, COUNT(*) n, SUM(chars) chars, ROUND(AVG(chars)) avg FROM prompts WHERE {W}
+            GROUP BY kind ORDER BY chars DESC''', p)
+        table(con, 'Slash commands', f'''SELECT substr(text, instr(text, '<command-name>') + 14,
+              instr(text, '</command-name>') - instr(text, '<command-name>') - 14) command, COUNT(*) n
+            FROM prompts WHERE {W} AND kind = 'command' GROUP BY command ORDER BY n DESC LIMIT ?''', p + [L])
+    con.close()
+    return 0
+
+
+def cmd_sql(args):
+    con = connect()
+    table(con, args.query[:80], args.query)
+    return 0
+
+
+def cmd_schema(args):
+    con = connect()
+    for name, typ in con.execute("SELECT name, type FROM sqlite_master WHERE type IN ('table','view') ORDER BY type, name"):
+        cols = [r[1] for r in con.execute(f'PRAGMA table_info({name})')]
+        print(f'{typ:5} {name}: {", ".join(cols)}')
+    return 0
+
+
+def cmd_export(args):
+    con = connect()
+    cur = con.execute(f'SELECT * FROM "{args.table}"')
+    cols = [c[0] for c in cur.description]
+    out = open(args.out, 'w', newline='') if args.out else sys.stdout
+    if args.format == 'csv':
+        wr = csv.writer(out)
+        wr.writerow(cols)
+        wr.writerows(cur)
+    else:
+        for r in cur:
+            out.write(json.dumps(dict(zip(cols, r)), ensure_ascii=False) + '\n')
+    return 0
+
+
+def cmd_serve(args):
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import dashboard_api
+    connect().close()  # make sure the database and views exist
+    html = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'dashboard', 'index.html')
+
+    def ingest():
+        cmd_ingest(argparse.Namespace(quiet=True, full=False))
+    return dashboard_api.serve(DB, html, make_coster(), ingest, port=args.port, open_browser=args.open,
+                               daemon=args.daemon, tab=args.tab, log_path=os.path.join(DATA, 'dashboard.log'))
+
+
+def cmd_stop(args):
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import dashboard_api
+    print('dashboard stopped' if dashboard_api.stop(args.port) else 'dashboard was not running')
+    return 0
+
+
+def cmd_status(args):
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import dashboard_api
+    con = connect()
+    one = lambda q: con.execute(q).fetchone()
+    reqs, first, last = one('SELECT COUNT(*), MIN(day), MAX(day) FROM requests')
+    print(f'data:      {DATA}')
+    print(f'database:  {os.path.getsize(DB) / 1e6:.0f} MB · {reqs:,} requests · {first} → {last}')
+    for prof, n, c in con.execute("SELECT profile, COUNT(*), ROUND(SUM(cost_usd), 2) FROM requests GROUP BY 1 ORDER BY 3 DESC"):
+        print(f'           {prof:<14} {n:>8,} requests  ${c or 0:,.2f}')
+    ing = one("SELECT MAX(ingested_at) FROM files")[0] if one("SELECT 1 FROM sqlite_master WHERE name = 'files'") else None
+    print(f'ingested:  {ing or "?"}')
+    for mod, n, last_ in con.execute("SELECT json_extract(data,'$.mod'), COUNT(*), MAX(day) FROM events WHERE ev = 'mod' GROUP BY 1"):
+        print(f'mod events: {mod:<14} {n:>7,}  last {last_}')
+    print('dashboard: ' + ('running on http://127.0.0.1:8787/' if dashboard_api.port_answers(8787) else 'stopped (claude-usage serve --daemon --open)'))
+    return 0
+
+
+def cmd_impact(args):
+    if args.ingest:
+        cmd_ingest(argparse.Namespace(quiet=True, full=False))
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import impact
+    con = connect()
+    r = impact.impact(con, make_coster(), days=args.days, profiles=[args.profile] if args.profile else None)
+    print(json.dumps(r, default=str, indent=1) if args.json else impact.fmt_text(r))
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog='claude-usage', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest='cmd')
+    a = sub.add_parser('ingest'); a.add_argument('--quiet', action='store_true'); a.add_argument('--full', action='store_true')
+    a.set_defaults(fn=cmd_ingest)
+    r = sub.add_parser('report')
+    r.add_argument('what', nargs='?', default='overview',
+                   choices=['overview', 'profiles', 'daily', 'models', 'projects', 'tools', 'bash', 'files', 'agents',
+                            'sessions', 'context', 'hours', 'cache', 'prompts', 'all'])
+    r.add_argument('--days', type=int, default=30, help='0 = all time')
+    r.add_argument('--profile'); r.add_argument('--project'); r.add_argument('--limit', type=int, default=15)
+    r.add_argument('--ingest', action='store_true', help='ingest new data first')
+    r.set_defaults(fn=cmd_report)
+    s = sub.add_parser('sql'); s.add_argument('query'); s.set_defaults(fn=cmd_sql)
+    sub.add_parser('schema').set_defaults(fn=cmd_schema)
+    e = sub.add_parser('export'); e.add_argument('table'); e.add_argument('--format', choices=['csv', 'jsonl'], default='csv')
+    e.add_argument('--out'); e.set_defaults(fn=cmd_export)
+    sub.add_parser('reprice').set_defaults(fn=cmd_reprice)
+    v = sub.add_parser('serve', help='the dashboard on http://127.0.0.1:PORT/')
+    v.add_argument('--port', type=int, default=8787); v.add_argument('--open', action='store_true')
+    v.add_argument('--daemon', action='store_true', help='run in the background'); v.set_defaults(fn=cmd_serve)
+    v.add_argument('--tab', help='open the dashboard on this tab, e.g. impact')
+    m = sub.add_parser('impact', help='is each mod saving money or costing more (holdout comparison + ledger)')
+    m.add_argument('--days', type=int, default=30, help='0 = all time'); m.add_argument('--profile')
+    m.add_argument('--json', action='store_true'); m.add_argument('--ingest', action='store_true'); m.set_defaults(fn=cmd_impact)
+    st = sub.add_parser('stop', help='stop the background dashboard'); st.add_argument('--port', type=int, default=8787)
+    st.set_defaults(fn=cmd_stop)
+    sub.add_parser('status', help='data, ingest and dashboard status').set_defaults(fn=cmd_status)
+    sub.add_parser('path').set_defaults(fn=lambda a: print(DATA) or 0)
+    args = ap.parse_args(argv)
+    if not getattr(args, 'fn', None):
+        ap.print_help()
+        return 0
+    return args.fn(args)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
