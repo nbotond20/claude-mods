@@ -16,7 +16,7 @@ Local Claude Code mods (function-hook plugins), shipped as the marketplace **`my
 
 | Command | Does |
 | --- | --- |
-| `/dashboard [tab]` | opens the analytics dashboard (starts it if needed); e.g. `/dashboard impact`, `/dashboard tools` |
+| `/dashboard [tab]` | opens the analytics dashboard, e.g. `/dashboard live`, `/dashboard impact`. One server per machine runs on its own (started at session start) and updates live as you work. |
 | `/analytics impact` | are the mods saving money or costing more |
 | `/analytics status` · `ingest` · `stop` | data status · fold in new data now · stop the dashboard |
 | `/analytics [report] [--days N] [--profile P]` | terminal reports |

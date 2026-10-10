@@ -28,6 +28,8 @@ type Config = {
   ingestEveryMin: number
   /** record OpenTelemetry collector records the engine emits */
   captureOtel: boolean
+  /** keep the dashboard server (one per machine, 127.0.0.1:8787) running: started at session start and by /analytics */
+  dashboard: boolean
 }
 
 const DEFAULTS: Config = {
@@ -39,6 +41,7 @@ const DEFAULTS: Config = {
   autoIngest: true,
   ingestEveryMin: 30,
   captureOtel: true,
+  dashboard: true,
 }
 
 const FLUSH_MS = 15_000
@@ -81,8 +84,23 @@ async function sessionId($: EngineInterface) {
 
 async function emit($: EngineInterface, ev: string, data: Ev) {
   if (!root) return
-  buf.push({ ts: await $.clock.now(), ev, sid: await sessionId($), profile, ...data })
-  if (buf.length >= FLUSH_AT) void flush($).catch(() => {})
+  const ts = await $.clock.now()
+  buf.push({ ts, ev, sid: await sessionId($), profile, ...data })
+  if (LIVE.has(ev)) void pulse($, ev, ts).catch(() => {})
+  else if (buf.length >= FLUSH_AT) void flush($).catch(() => {})
+}
+
+// Live dashboard: after every prompt, model request, tool call and turn, flush and touch live/<profile>.json.
+// The dashboard server watches that file, ingests the new transcript lines and pushes the update to the page.
+const LIVE = new Set(['prompt', 'step', 'tool', 'turn_complete', 'session_start', 'session_end', 'compact'])
+const PULSE_MS = 750
+let lastPulse = 0
+
+async function pulse($: EngineInterface, ev: string, ts: number) {
+  if (ev !== 'turn_complete' && ts - lastPulse < PULSE_MS) return
+  lastPulse = ts
+  await flush($)
+  await $.fs.write(`${root}/live/${profile}.json`, JSON.stringify({ ts, ev, sid: await sessionId($), profile }) + '\n')
 }
 
 // Secrets that show up in commands, tool output and telemetry are blanked before anything is written.
@@ -141,8 +159,14 @@ async function git($: EngineInterface, cwd: string, args: string[]) {
   }
 }
 
-const TABS = ['overview', 'cost', 'context', 'tools', 'agents', 'projects', 'prompts', 'health', 'engine', 'impact', 'savings', 'sql']
+const TABS = ['live', 'overview', 'cost', 'context', 'tools', 'agents', 'projects', 'prompts', 'health', 'engine', 'impact', 'savings', 'sql']
 const cli = (pluginRoot: string, args: string[]) => ['python3', `${pluginRoot}/bin/claude-usage`, ...args]
+
+/** Starts the dashboard server unless one already answers (the CLI holds a machine-wide lock while deciding). */
+async function ensureDashboard($: EngineInterface) {
+  if (!cfg.dashboard) return
+  await $.process.run(cli($.plugin.root, ['serve', '--daemon', '--quiet']), { timeoutMs: 15_000 }).catch(() => {})
+}
 
 async function ingest($: EngineInterface) {
   await flush($).catch(() => {})
@@ -278,6 +302,7 @@ export const register: Register = on => {
     })
 
     $.clock.every(FLUSH_MS, () => void flush($).catch(() => {}))
+    $.clock.after(1500, () => void ensureDashboard($))
     if (cfg.autoIngest) {
       $.clock.after(45_000, () => void ingest($))
       $.clock.every(Math.max(5, cfg.ingestEveryMin) * 60_000, () => void ingest($))
@@ -487,6 +512,7 @@ async function analytics($: EngineInterface, sub: string | undefined, rest: stri
     const r = await $.process.run(cli($.plugin.root, args), { timeoutMs })
     return (r.stdout || r.stderr || `claude-usage exited ${r.exitCode}`).trimEnd()
   }
+  if (sub !== 'dashboard' && sub !== 'stop') void ensureDashboard($)
   switch (sub) {
     // The dashboard runs detached on 127.0.0.1:8787 and outlives the session; a second call just opens it.
     case 'dashboard': {

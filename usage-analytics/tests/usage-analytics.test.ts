@@ -49,6 +49,8 @@ describe('usage-analytics', () => {
     expect(evs[1]).toMatchObject({ tool: 'Read', file: '/work/src/a.ts', ext: 'ts', resultChars: 5, resultLines: 3, profile: 'claude-infi' })
     expect(text.includes('sk-secret-value')).toBe(false)
     expect(files.has('/h/.claude-shared/usage-analytics/config.json')).toBe(true)
+    // The live pulse the dashboard server watches.
+    expect(JSON.parse(files.get('/h/.claude-shared/usage-analytics/live/claude-infi.json')!)).toMatchObject({ profile: 'claude-infi', sid: 'sess-1' })
   })
 
   test('/dashboard and /analytics run the right claude-usage commands', async ($, on) => {
@@ -63,6 +65,8 @@ describe('usage-analytics', () => {
     expect(String((bad as any).text)).toMatch(/Unknown tab/)
     await cmd('analytics', 'impact --days 7')
     expect(tail()).toEqual(['impact', '--ingest', '--days', '7'])
+    // Any other /analytics command also makes sure the one dashboard server is running.
+    expect(runs.some(r => r.slice(2).join(' ') === 'serve --daemon --quiet')).toBe(true)
     await cmd('analytics', 'stop')
     expect(tail()).toEqual(['stop'])
     await cmd('analytics', 'tools --days 3')

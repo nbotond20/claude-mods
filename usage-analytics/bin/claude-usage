@@ -776,8 +776,13 @@ def cmd_serve(args):
 
     def ingest():
         cmd_ingest(argparse.Namespace(quiet=True, full=False))
+    try:
+        version = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), '.claude-plugin', 'plugin.json')))['version']
+    except (OSError, ValueError, KeyError):
+        version = None
     return dashboard_api.serve(DB, html, make_coster(), ingest, port=args.port, open_browser=args.open,
-                               daemon=args.daemon, tab=args.tab, log_path=os.path.join(DATA, 'dashboard.log'))
+                               daemon=args.daemon, tab=args.tab, log_path=os.path.join(DATA, 'dashboard.log'),
+                               live_dir=os.path.join(DATA, 'live'), version=version, quiet=args.quiet)
 
 
 def cmd_scrub(args):
@@ -847,7 +852,8 @@ def cmd_status(args):
     print(f'ingested:  {ing or "?"}')
     for mod, n, last_ in con.execute("SELECT json_extract(data,'$.mod'), COUNT(*), MAX(day) FROM events WHERE ev = 'mod' GROUP BY 1"):
         print(f'mod events: {mod:<14} {n:>7,}  last {last_}')
-    print('dashboard: ' + ('running on http://127.0.0.1:8787/' if dashboard_api.port_answers(8787) else 'stopped (claude-usage serve --daemon --open)'))
+    p = dashboard_api.ping(8787)
+    print('dashboard: ' + (f'running on http://127.0.0.1:8787/ (version {p.get("version") or "?"}, pid {p.get("pid")}, live updates on)' if p else 'stopped (claude-usage serve --daemon --open)'))
     return 0
 
 
@@ -884,6 +890,7 @@ def main(argv=None):
     v.add_argument('--port', type=int, default=8787); v.add_argument('--open', action='store_true')
     v.add_argument('--daemon', action='store_true', help='run in the background'); v.set_defaults(fn=cmd_serve)
     v.add_argument('--tab', help='open the dashboard on this tab, e.g. impact')
+    v.add_argument('--quiet', action='store_true', help='print nothing (used by the mod to start it at session start)')
     m = sub.add_parser('impact', help='is each mod saving money or costing more (holdout comparison + ledger)')
     m.add_argument('--days', type=int, default=30, help='0 = all time'); m.add_argument('--profile')
     m.add_argument('--json', action='store_true'); m.add_argument('--ingest', action='store_true'); m.set_defaults(fn=cmd_impact)

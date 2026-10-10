@@ -3,7 +3,7 @@
 Every query takes the same filters (?days=&from=&to=&profile=&project=&model=) and answers
 {"cols": [...], "rows": [[...]]}. Binds to 127.0.0.1 only; /api/sql opens the database read-only.
 """
-import json, os, re, socket, sqlite3, sys, threading, time, webbrowser
+import fcntl, glob, json, os, re, socket, sqlite3, sys, threading, time, webbrowser
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -43,6 +43,21 @@ Q = {
         SUM(tool_blocks) tool_calls, SUM(web_search) web_searches, SUM(web_fetch) web_fetches,
         MIN(day) first_day, MAX(day) last_day
         FROM requests WHERE {{W}}'''),
+    'kpi_daily': ('requests', '''SELECT day, ROUND(SUM(cost_usd), 2) cost, COUNT(*) requests, COUNT(DISTINCT session_id) sessions,
+        ROUND(100.0 * SUM(cache_read) / NULLIF(SUM(input + cache_read + cache_write), 0), 1) hit_pct,
+        ROUND(AVG(input + cache_read + cache_write)) avg_context, SUM(output) output, SUM(tool_blocks) tool_calls,
+        ROUND(SUM(CASE WHEN agent_id IS NOT NULL THEN cost_usd END), 2) subagent_cost
+        FROM requests WHERE {W} GROUP BY day ORDER BY day'''),
+    'daily_cost_kind': ('requests', '''SELECT day, SUM(input) input, SUM(output) output, SUM(cache_read) cache_read, SUM(cache_write) cache_write
+        FROM requests WHERE {W} GROUP BY day ORDER BY day'''),
+    'model_mix_daily': ('requests', '''SELECT day, CASE WHEN model LIKE '%opus%' THEN 'Opus' WHEN model LIKE '%sonnet%' THEN 'Sonnet'
+        WHEN model LIKE '%haiku%' THEN 'Haiku' ELSE 'other' END family, COUNT(*) requests, ROUND(SUM(cost_usd), 2) cost
+        FROM requests WHERE {W} GROUP BY 1, 2 ORDER BY day'''),
+    'project_daily': ('requests', '''SELECT day, project, ROUND(SUM(cost_usd), 2) cost FROM requests WHERE {W}
+        AND project IN (SELECT project FROM requests WHERE {W} GROUP BY project ORDER BY SUM(cost_usd) DESC LIMIT 8) GROUP BY 1, 2 ORDER BY day'''),
+    'session_scatter': ('requests', '''SELECT session_id, profile, project, COUNT(*) requests, ROUND(SUM(cost_usd), 2) cost,
+        MAX(input + cache_read + cache_write) max_context, ROUND(AVG(input + cache_read + cache_write)) avg_context
+        FROM requests WHERE {W} GROUP BY session_id HAVING cost > 0 ORDER BY cost DESC LIMIT 400'''),
     'daily_profile': ('requests', 'SELECT day, profile, ROUND(SUM(cost_usd), 2) cost, COUNT(*) requests FROM requests WHERE {W} GROUP BY day, profile ORDER BY day'),
     'daily_model': ('requests', 'SELECT day, model, ROUND(SUM(cost_usd), 2) cost FROM requests WHERE {W} GROUP BY day, model ORDER BY day'),
     'daily_tokens': ('requests', '''SELECT day, SUM(input) input, SUM(output) output, SUM(cache_read) cache_read, SUM(cache_write) cache_write,
@@ -230,6 +245,51 @@ def meta(con):
     }
 
 
+def live_view(con, qs):
+    """Right now: today vs yesterday, burn rate, month projection, active sessions, the newest requests and tool calls."""
+    profiles = [v for v in (qs.get('profile') or [''])[0].split(',') if v]
+    pw = f" AND profile IN ({','.join('?' * len(profiles))})" if profiles else ''
+    rpw = pw.replace('profile', 'r.profile')
+    now = datetime.now()
+    utc = lambda d: d.astimezone().astimezone(__import__('datetime').timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+    today, yday = now.strftime('%Y-%m-%d'), (now - timedelta(days=1)).strftime('%Y-%m-%d')
+    one = lambda sql, p=(): con.execute(sql, (*p, *profiles)).fetchone()
+    t = one(f'SELECT ROUND(SUM(cost_usd), 2), COUNT(*), COUNT(DISTINCT session_id) FROM requests WHERE day = ?{pw}', (today,))
+    y_same = one(f'SELECT ROUND(SUM(cost_usd), 2) FROM requests WHERE day = ? AND ts <= ?{pw}', (yday, utc(now - timedelta(days=1))))
+    y_all = one(f'SELECT ROUND(SUM(cost_usd), 2) FROM requests WHERE day = ?{pw}', (yday,))
+    hour = one(f'SELECT ROUND(SUM(cost_usd), 2), COUNT(*) FROM requests WHERE ts >= ?{pw}', (utc(now - timedelta(hours=1)),))
+    month0 = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    nxt = (month0 + timedelta(days=32)).replace(day=1)
+    mtd = one(f'SELECT ROUND(SUM(cost_usd), 2) FROM requests WHERE day >= ?{pw}', (month0.strftime('%Y-%m-%d'),))[0] or 0
+    prev0 = (month0 - timedelta(days=1)).replace(day=1)
+    prev = one(f'SELECT ROUND(SUM(cost_usd), 2) FROM requests WHERE day >= ? AND day < ?{pw}', (prev0.strftime('%Y-%m-%d'), month0.strftime('%Y-%m-%d')))[0] or 0
+    frac = (now - month0) / (nxt - month0)
+    since = utc(now - timedelta(hours=3))
+    return {
+        'now': now.isoformat(timespec='seconds'),
+        'today': {'cost': t[0] or 0, 'requests': t[1], 'sessions': t[2], 'yesterdaySameTime': y_same[0] or 0, 'yesterday': y_all[0] or 0},
+        'lastHour': {'cost': hour[0] or 0, 'requests': hour[1]},
+        'month': {'mtd': mtd, 'projected': round(mtd / frac, 2) if frac > 0.02 else None, 'previous': prev, 'elapsedPct': round(100 * frac, 1)},
+        'perMinute': run(con, f'''SELECT substr(ts, 1, 16) minute, profile, ROUND(SUM(cost_usd), 4) cost, COUNT(*) requests
+            FROM requests WHERE ts >= ?{pw} GROUP BY 1, 2 ORDER BY 1''', (since, *profiles)),
+        'todayHourly': run(con, f'SELECT hour, profile, ROUND(SUM(cost_usd), 2) cost FROM requests WHERE day = ?{pw} GROUP BY 1, 2 ORDER BY 1', (today, *profiles)),
+        'active': run(con, f'''WITH a AS (SELECT session_id, MAX(ts) last_ts FROM requests WHERE ts >= ?{pw} GROUP BY session_id)
+            SELECT a.session_id, r0.profile, r0.project, s.title, a.last_ts,
+              (SELECT COUNT(*) FROM requests x WHERE x.session_id = a.session_id) requests,
+              (SELECT ROUND(SUM(cost_usd), 2) FROM requests x WHERE x.session_id = a.session_id) cost,
+              (SELECT input + cache_read + cache_write FROM requests x WHERE x.session_id = a.session_id AND x.agent_id IS NULL ORDER BY ts DESC LIMIT 1) context,
+              (SELECT model FROM requests x WHERE x.session_id = a.session_id AND x.agent_id IS NULL ORDER BY ts DESC LIMIT 1) model,
+              (SELECT ROUND(SUM(cost_usd), 2) FROM requests x WHERE x.session_id = a.session_id AND x.ts >= ?) cost_last_hour
+            FROM a JOIN requests r0 ON r0.session_id = a.session_id AND r0.ts = a.last_ts LEFT JOIN sessions s ON s.session_id = a.session_id
+            GROUP BY a.session_id ORDER BY a.last_ts DESC LIMIT 20''', (utc(now - timedelta(minutes=30)), *profiles, utc(now - timedelta(hours=1)))),
+        'feed': run(con, f'''SELECT r.ts, r.profile, r.project, r.model, COALESCE(a.agent_type, CASE WHEN r.agent_id IS NULL THEN 'main' ELSE 'subagent' END) agent,
+            r.input + r.cache_read + r.cache_write context, r.output, r.tool_blocks tools, ROUND(r.cost_usd, 4) cost, r.session_id, r.msg_id
+            FROM requests r LEFT JOIN agents a USING (agent_id) WHERE r.ts >= ?{rpw} ORDER BY r.ts DESC LIMIT 60''', (utc(now - timedelta(days=2)), *profiles)),
+        'tools': run(con, f'''SELECT ts, profile, tool, COALESCE(cmd, file, pattern, skill, subagent, detail) target, result_chars, is_error, session_id, id
+            FROM tool_uses WHERE ts >= ?{pw} ORDER BY ts DESC LIMIT 60''', (utc(now - timedelta(days=2)), *profiles)),
+    }
+
+
 def session_detail(con, sid):
     return {
         'info': run(con, 'SELECT * FROM sessions WHERE session_id = ?', (sid,)),
@@ -270,7 +330,71 @@ def savings():
     }
 
 
-def make_handler(db, html_path, coster, ingest):
+class Live:
+    """A version counter the stream handlers wait on; bumped whenever an ingest brought in new data."""
+    def __init__(self):
+        self.cond = threading.Condition()
+        self.version = 0
+        self.info = {}
+
+    def bump(self, **info):
+        with self.cond:
+            self.version += 1
+            self.info = {**info, 'version': self.version, 'at': datetime.now().isoformat(timespec='seconds')}
+            self.cond.notify_all()
+
+    def wait(self, seen, timeout):
+        with self.cond:
+            self.cond.wait_for(lambda: self.version != seen, timeout)
+            return self.version, self.info
+
+
+def data_signature(db):
+    """Changes whenever an ingest read anything new (every source file's read offset)."""
+    try:
+        con = sqlite3.connect(f'file:{db}?mode=ro', uri=True, timeout=10)
+        try:
+            return con.execute('SELECT COUNT(*), TOTAL(offset), MAX(ingested_at) FROM files').fetchone()
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return None
+
+
+def watch(db, ingest, live, live_dir, fallback_s=20, trailer_s=3):
+    """Ingest as soon as a session pulses (live/<profile>.json, touched by the mod on every prompt, request,
+    tool call and turn end), once more a few seconds later for transcript lines written after the pulse,
+    and every `fallback_s` anyway for sessions without the mod. Every ingest that read something bumps `live`."""
+    last_pulse, last_ingest, trailer_at = 0.0, 0.0, None
+    sig = data_signature(db)
+    while True:
+        time.sleep(1)
+        now = time.time()
+        try:
+            pulse = max((os.stat(f).st_mtime for f in glob.glob(os.path.join(live_dir, '*.json'))), default=0.0)
+        except OSError:
+            pulse = last_pulse
+        fresh = pulse > last_pulse
+        if fresh:
+            last_pulse, trailer_at = pulse, now + trailer_s
+        due = fresh or now - last_ingest >= fallback_s or (trailer_at is not None and now >= trailer_at)
+        if not due:
+            continue
+        if trailer_at is not None and now >= trailer_at:
+            trailer_at = None
+        last_ingest = now
+        try:
+            ingest()
+        except Exception as ex:
+            print('ingest failed:', ex, file=sys.stderr)
+            continue
+        new = data_signature(db)
+        if new != sig:
+            sig = new
+            live.bump(reason='pulse' if fresh else 'poll')
+
+
+def make_handler(db, html_path, coster, ingest, live=None, version=None):
     def ro():
         con = sqlite3.connect(f'file:{db}?mode=ro', uri=True, timeout=30)
         con.execute('PRAGMA query_only = 1')
@@ -309,7 +433,10 @@ def make_handler(db, html_path, coster, ingest):
                 if u.path in ('/', '/index.html'):
                     return self.send(200, open(html_path, 'rb').read(), 'text/html; charset=utf-8')
                 if u.path == '/api/ping':
-                    return self.send(200, {'ok': True, 'app': 'claude-usage', 'pid': os.getpid()})
+                    return self.send(200, {'ok': True, 'app': 'claude-usage', 'pid': os.getpid(), 'version': version,
+                                           'live': live.version if live else None})
+                if u.path == '/api/stream':
+                    return self.stream()
                 con = ro()
                 try:
                     if u.path == '/api/meta':
@@ -318,6 +445,8 @@ def make_handler(db, html_path, coster, ingest):
                         return self.send(200, cost_kinds(con, qs, coster))
                     if u.path == '/api/session':
                         return self.send(200, session_detail(con, (qs.get('id') or [''])[0]))
+                    if u.path == '/api/live':
+                        return self.send(200, {**live_view(con, qs), 'version': live.version if live else 0})
                     if u.path == '/api/savings':
                         return self.send(200, savings())
                     if u.path == '/api/impact':
@@ -336,6 +465,31 @@ def make_handler(db, html_path, coster, ingest):
                 self.send(404, {'error': 'not found'})
             except Exception as ex:
                 self.send(500, {'error': str(ex)})
+
+        def stream(self):
+            # Server-sent events: `update` whenever new data is in, a comment every 15s to keep the line open.
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-store')
+            self.send_header('X-Content-Type-Options', 'nosniff')
+            self.end_headers()
+            seen = live.version if live else 0
+            try:
+                self.wfile.write(f'event: hello\ndata: {json.dumps({"version": seen, "server": version})}\n\n'.encode())
+                self.wfile.flush()
+                while True:
+                    if live is None:
+                        time.sleep(15); v, info = seen, None
+                    else:
+                        v, info = live.wait(seen, 15)
+                    if v != seen:
+                        seen = v
+                        self.wfile.write(f'event: update\ndata: {json.dumps(info, default=str)}\n\n'.encode())
+                    else:
+                        self.wfile.write(b': hb\n\n')
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError, OSError):
+                return
 
         def do_POST(self):
             if not self.host_ok():
@@ -358,6 +512,8 @@ def make_handler(db, html_path, coster, ingest):
                 if u.path == '/api/ingest':
                     t0 = time.time()
                     ingest()
+                    if live:
+                        live.bump(reason='manual')
                     return self.send(200, {'ok': True, 'seconds': round(time.time() - t0, 1)})
                 self.send(404, {'error': 'not found'})
             except Exception as ex:
@@ -366,13 +522,27 @@ def make_handler(db, html_path, coster, ingest):
     return H
 
 
-def port_answers(port):
+def ping(port):
+    """The running dashboard's /api/ping answer, or None when nothing (or something else) answers on the port."""
     try:
         with socket.create_connection(('127.0.0.1', port), timeout=0.5) as s:
             s.sendall(f'GET /api/ping HTTP/1.0\r\nHost: 127.0.0.1:{port}\r\n\r\n'.encode())
-            return b'claude-usage' in s.recv(4096)
-    except OSError:
-        return False
+            data = b''
+            while chunk := s.recv(4096):
+                data += chunk
+        body = data.split(b'\r\n\r\n', 1)[1]
+        j = json.loads(body)
+        return j if j.get('app') == 'claude-usage' else None
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def port_answers(port):
+    return ping(port) is not None
+
+
+def vtuple(v):
+    return tuple(int(x) for x in re.findall(r'\d+', v or '0'))
 
 
 def stop(port=8787):
@@ -393,43 +563,60 @@ def stop(port=8787):
     return False
 
 
-def serve(db, html_path, coster, ingest, port=8787, open_browser=False, daemon=False, log_path=None, tab=None):
+def serve(db, html_path, coster, ingest, port=8787, open_browser=False, daemon=False, log_path=None, tab=None,
+          live_dir=None, version=None, quiet=False):
+    """One dashboard per machine: a second call opens the running one, or replaces it when this copy is newer
+    (a profile updated the plugin). A lock file closes the race between sessions starting together."""
     url = f'http://127.0.0.1:{port}/' + (f'#{tab}' if tab else '')
-    if port_answers(port):
-        print(f'dashboard already running: {url}')
-        if open_browser:
-            webbrowser.open(url)
-        return 0
-    if daemon:
-        if os.fork() > 0:
-            for _ in range(50):  # wait until it answers so the caller can open it
-                if port_answers(port):
-                    break
-                time.sleep(0.1)
-            print(f'dashboard running: {url}')
+    say = (lambda *a: None) if quiet else print
+    lock_path = os.path.join(os.path.dirname(db), 'dashboard.lock')
+    guard = open(lock_path, 'w')
+    fcntl.flock(guard, fcntl.LOCK_EX)  # held only while deciding and starting
+    try:
+        running = ping(port)
+        if running and version and vtuple(running.get('version')) < vtuple(version):
+            say(f'replacing dashboard {running.get("version") or "?"} with {version}')
+            stop(port)
+            running = None
+        if running:
+            say(f'dashboard already running: {url}')
             if open_browser:
                 webbrowser.open(url)
             return 0
-        os.setsid()
-        if os.fork() > 0:
-            os._exit(0)
-        out = open(log_path or os.devnull, 'a')
-        os.dup2(out.fileno(), 1); os.dup2(out.fileno(), 2)
-        os.dup2(os.open(os.devnull, os.O_RDONLY), 0)
-    srv = ThreadingHTTPServer(('127.0.0.1', port), make_handler(db, html_path, coster, ingest))
+        if daemon:
+            if os.fork() > 0:
+                for _ in range(50):  # wait until it answers so the caller can open it
+                    if port_answers(port):
+                        break
+                    time.sleep(0.1)
+                say(f'dashboard running: {url}')
+                if open_browser:
+                    webbrowser.open(url)
+                return 0
+            os.setsid()
+            if os.fork() > 0:
+                os._exit(0)
+            out = open(log_path or os.devnull, 'a')
+            os.dup2(out.fileno(), 1); os.dup2(out.fileno(), 2)
+            os.dup2(os.open(os.devnull, os.O_RDONLY), 0)
+        live = Live()
+        try:
+            ThreadingHTTPServer.daemon_threads = True
+            srv = ThreadingHTTPServer(('127.0.0.1', port), make_handler(db, html_path, coster, ingest, live, version))
+        except OSError as ex:
+            print(f'dashboard: port {port} is taken ({ex})', file=sys.stderr)
+            if daemon:
+                os._exit(1)
+            return 1
+    finally:
+        guard.close()
     if not daemon:
-        print(f'dashboard: {url}  (Ctrl-C to stop)')
+        say(f'dashboard: {url}  (Ctrl-C to stop)')
         if open_browser:
             threading.Timer(0.3, lambda: webbrowser.open(url)).start()
-    # Fold new data in every 10 minutes while the server runs.
-    def tick():
-        while True:
-            time.sleep(600)
-            try:
-                ingest()
-            except Exception as ex:
-                print('ingest failed:', ex, file=sys.stderr)
-    threading.Thread(target=tick, daemon=True).start()
+    if live_dir:
+        os.makedirs(live_dir, exist_ok=True)
+    threading.Thread(target=watch, args=(db, ingest, live, live_dir or os.path.join(os.path.dirname(db), 'live')), daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
