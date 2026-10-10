@@ -8,7 +8,7 @@ Local Claude Code mods (function-hook plugins), shipped as the marketplace **`my
 | **usage-analytics** | Logs every session to a central store, folds all profiles' transcripts into one SQLite DB, `/analytics` reports and a web dashboard | [docs/usage-analytics.md](docs/usage-analytics.md) |
 | **lean-tools** | Caps huge shell output, bounds `git log`, nudges toward batched calls / ranged reads / Edit over Write | [docs/lean-tools.md](docs/lean-tools.md) |
 | **lsp-first** | Keeps the LSP tool loaded and tells the model to use it for TS/JS symbols instead of grep + Read | [docs/lsp-first.md](docs/lsp-first.md) |
-| **no-attribution** | Claude never credits itself: engine attribution off, prompt rule, tool calls cleaned/denied, global git `commit-msg`/`pre-commit` hooks, `/no-attribution` | [docs/no-attribution.md](docs/no-attribution.md) |
+| **no-attribution** | Claude never credits itself: engine attribution off, prompt rule, tool calls with attribution refused, global git `commit-msg`/`pre-commit` hooks, `/no-attribution` | [docs/no-attribution.md](docs/no-attribution.md) |
 | *Mod impact* | Each mod leaves a random holdout of sessions untouched; `/analytics impact` says whether it saves money or costs more | [docs/mod-impact.md](docs/mod-impact.md) |
 | *typescript-lsp* (official plugin) | The LSP server lsp-first relies on | [docs/lsp-first.md](docs/lsp-first.md#the-typescript-language-server) |
 
@@ -22,7 +22,7 @@ Local Claude Code mods (function-hook plugins), shipped as the marketplace **`my
 | `/analytics [report] [--days N] [--profile P]` | terminal reports |
 | `/budget …` · `/budget holdout <0-1>` | budget-guard (see its doc) |
 | `/lean [status\|on\|off\|holdout <0-1>\|cap\|nudges\|guide on\|off]` | lean-tools |
-| `/no-attribution` | no-attribution status: git hooks, what was cleaned/denied |
+| `/no-attribution` | no-attribution status: git hooks, what was refused |
 | `/lsp-first [status\|on\|off\|holdout <0-1>\|nudges\|guide on\|off]` | lsp-first |
 
 ## Where everything lives

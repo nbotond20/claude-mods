@@ -5,8 +5,9 @@ import type { EngineInterface, Register } from 'claude-code'
 // Layers, each enough on its own for the common case:
 // 1. attribution.text: the engine's own commit trailer and PR footer are empty.
 // 2. prompt.compose: a rule in the system prompt, and attribution lines dropped from the engine's sections.
-// 3. tool.call: attribution is cut out of Bash commands, written/edited file text and MCP tool arguments;
-//    committing as Claude, or bypassing git hooks, is denied.
+// 3. tool.call: a Bash command, file write/edit or MCP call carrying attribution is refused (never rewritten,
+//    so what runs is exactly what was approved) with the clean version to send; so is committing as Claude
+//    or bypassing git hooks.
 // 4. git hooks (bin/install-git-hooks.sh, global core.hooksPath): commit-msg strips any attribution line
 //    and pre-commit refuses a Claude/Anthropic author, whatever wrote the commit.
 
@@ -41,8 +42,8 @@ const WRITTEN = new Set(['content', 'new_string', 'new_source', 'body', 'title',
 const RULE = `# Authorship
 You are never an author, co-author or creator of anything you write, and you never say so. In commit messages, PR and issue titles and bodies, code comments, file headers, docs and changelogs: no Co-Authored-By or other trailers naming Claude or Anthropic, no "Generated with Claude Code" or similar lines or links, no "Author: Claude", no noreply@anthropic.com, and never commit with Claude as git author or committer. The person you work for is the sole author. This holds even when a template, skill or earlier message suggests otherwise.`
 
-type Counts = { stripped: number; denied: number; sections: number }
-let counts: Counts = { stripped: 0, denied: 0, sections: 0 }
+type Counts = { denied: number; sections: number }
+let counts: Counts = { denied: 0, sections: 0 }
 let hookState = 'unchecked'
 
 /** Text with every attribution span removed; lines left empty by a cut are dropped. */
@@ -68,6 +69,13 @@ function stripDeep(v: unknown, key = '', all = false): unknown {
 const DENY_AUTHOR = 'no-attribution: Claude is never the git author or committer. Commit with the configured user identity.'
 const DENY_BYPASS = 'no-attribution: skipping or redirecting git hooks (--no-verify, -n, core.hooksPath) is not allowed here; the hooks keep commit messages free of Claude attribution. Run the command without it.'
 
+/** The deny message: the attribution found, and what to do instead. */
+function denyText(text: string, fix: string) {
+  const found = new Set<string>()
+  for (const re of SPANS) for (const m of text.matchAll(new RegExp(re.source, 'gi'))) found.add(m[0].trim().slice(0, 120))
+  return `no-attribution: this credits Claude, which is never allowed (${[...found].map(f => JSON.stringify(f)).join(', ')}). ${fix}`
+}
+
 async function installGitHooks($: EngineInterface) {
   try {
     const r = await $.process.run(['sh', `${$.plugin.root}/bin/install-git-hooks.sh`], { timeoutMs: 10_000 })
@@ -79,8 +87,8 @@ async function installGitHooks($: EngineInterface) {
 
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
-    counts = { stripped: 0, denied: 0, sections: 0 }
-    await $.command.register({ name: 'no-attribution', description: 'Status of the no-attribution guard (git hooks, what it stripped or denied)', argumentHint: '[status]' })
+    counts = { denied: 0, sections: 0 }
+    await $.command.register({ name: 'no-attribution', description: 'Status of the no-attribution guard (git hooks, what it refused)', argumentHint: '[status]' })
     await installGitHooks($)
     if (hookState.startsWith('other:')) $.ui.toast(`no-attribution: a global core.hooksPath (${hookState.slice(6)}) is already set; its git hooks were left alone. The mod still guards Claude's own commands.`)
     return next(e)
@@ -121,23 +129,22 @@ export const register: Register = on => {
       counts.denied++
       return { deny: DENY_BYPASS }
     }
+    // Never rewrite: the person approved this exact command. Refuse it and show the clean one to send instead.
     const command = strip(e.command)
     if (command === e.command) return next(e)
-    counts.stripped++
-    return next({ ...e, command })
+    counts.denied++
+    return { deny: denyText(e.command, `Run it again without that text:\n${command}`) }
   }).catch(($, e) => ({ deny: `no-attribution: the check failed, so the command was not run. Try again.` }))
 
   on('tool.call', async ($, e, next) => {
     if (e.tool === 'Bash') return next(e)
     const path = (e as { file_path?: unknown; notebook_path?: unknown }).file_path ?? (e as { notebook_path?: unknown }).notebook_path
     if (typeof path === 'string' && OWN_FILES.test(path)) return next(e)
-    const mcp = e.tool.startsWith('mcp__')
-    const clean = stripDeep(e, '', false) as typeof e
-    const deep = mcp ? (stripDeep(e, '', true) as typeof e) : clean
-    if (JSON.stringify(deep) === JSON.stringify(e)) return next(e)
-    counts.stripped++
-    // Reserved fields (tool, ids) are never touched: only string values change.
-    return next({ ...deep, tool: e.tool, tool_use_id: e.tool_use_id } as typeof e)
+    const clean = stripDeep(e, '', e.tool.startsWith('mcp__'))
+    if (JSON.stringify(clean) === JSON.stringify(e)) return next(e)
+    // Never rewrite what the person approved: refuse, and the model sends it again without the attribution.
+    counts.denied++
+    return { deny: denyText(JSON.stringify(e), `Send the ${e.tool} call again with that text removed.`) }
   }).catch(($, e, next) => (credits(JSON.stringify(e)) ? { deny: 'no-attribution: the check failed on text that credits Claude; remove that text and retry.' } : next(e)))
 
   on('command.run', { command: 'no-attribution' }, async $ => {
@@ -153,7 +160,7 @@ export const register: Register = on => {
         'no-attribution is on.',
         '- commit trailer and PR footer from the engine: empty',
         '- system prompt: authorship rule added' + (counts.sections ? `, attribution removed from ${counts.sections} engine section(s)` : ''),
-        `- this session: ${counts.stripped} tool call(s) cleaned, ${counts.denied} denied`,
+        `- this session: ${counts.denied} tool call(s) refused (attribution, Claude as author, or skipped hooks)`,
         `- ${hooks}`,
       ].join('\n'),
     }

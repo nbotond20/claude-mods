@@ -26,23 +26,26 @@ EOF
 )"`
 
 describe('no-attribution', () => {
-  test('cuts attribution out of a commit, keeps the rest', async ($, on) => {
+  test('a commit carrying attribution is refused, never rewritten, with the clean command to send', async ($, on) => {
     const seen = engine(on)
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
-    await $.tool.call({ tool: 'Bash', tool_use_id: '1', command: COMMIT } as any)
-    const cmd: string = seen[0].command
-    expect(cmd).not.toMatch(/claude|anthropic|🤖/i)
-    expect(cmd).toContain('Fix the parser\n\nHandles empty input.')
-    expect(cmd).toContain(`git commit -m "$(cat <<'EOF'`)
+    const r: any = await $.tool.call({ tool: 'Bash', tool_use_id: '1', command: COMMIT } as any)
+    expect(seen.length).toBe(0)
+    expect(r.deny).toMatch(/no-attribution: this credits Claude/)
+    expect(r.deny).toContain('Co-Authored-By: Claude Opus 5.5')
+    const clean = r.deny.slice(r.deny.indexOf('without that text:\n') + 'without that text:\n'.length)
+    expect(clean).not.toMatch(/claude|anthropic|🤖/i)
+    expect(clean).toContain('Fix the parser\n\nHandles empty input.')
   })
 
-  test('inline -m trailers and gh pr bodies are cleaned', async ($, on) => {
+  test('inline -m trailers and gh pr bodies are refused', async ($, on) => {
     const seen = engine(on)
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
-    await $.tool.call({ tool: 'Bash', tool_use_id: '1', command: 'git commit -m "Fix" -m "Co-authored-by: Claude <noreply@anthropic.com>"' } as any)
-    expect(seen[0].command).toBe('git commit -m "Fix" -m ""')
-    await $.tool.call({ tool: 'Bash', tool_use_id: '2', command: 'gh pr create --title "Fix" --body "Summary\n\nGenerated with Claude Code"' } as any)
-    expect(seen[1].command).toBe('gh pr create --title "Fix" --body "Summary\n\n"')
+    const a: any = await $.tool.call({ tool: 'Bash', tool_use_id: '1', command: 'git commit -m "Fix" -m "Co-authored-by: Claude <noreply@anthropic.com>"' } as any)
+    expect(a.deny).toContain('git commit -m "Fix" -m ""')
+    const b: any = await $.tool.call({ tool: 'Bash', tool_use_id: '2', command: 'gh pr create --title "Fix" --body "Summary\n\nGenerated with Claude Code"' } as any)
+    expect(b.deny).toMatch(/Generated with Claude Code/)
+    expect(seen.length).toBe(0)
   })
 
   test('denies Claude as author and skipping hooks; leaves normal git alone', async ($, on) => {
@@ -66,18 +69,22 @@ describe('no-attribution', () => {
     expect(seen.map(e => e.command)).toEqual(['git log -n 30 --oneline', 'git push -n origin main', 'git config --get core.hooksPath', 'git commit -m "Use the Claude API for summaries"'])
   })
 
-  test('file writes, edits and MCP arguments are cleaned; Edit old_string untouched', async ($, on) => {
+  test('file writes, edits and MCP arguments with attribution are refused; clean ones pass unchanged', async ($, on) => {
     const seen = engine(on)
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
-    await $.tool.call({ tool: 'Write', tool_use_id: 'w', file_path: '/w/a.ts', content: '// Author: Claude\n// Written by Claude Code\nexport const a = 1\n' } as any)
-    expect(seen[0].content).toBe('export const a = 1\n')
-    await $.tool.call({ tool: 'Edit', tool_use_id: 'e', file_path: '/w/a.ts', old_string: 'Co-Authored-By: Claude', new_string: 'x\nCo-Authored-By: Claude <noreply@anthropic.com>\ny' } as any)
-    expect(seen[1]).toMatchObject({ old_string: 'Co-Authored-By: Claude', new_string: 'x\ny' })
-    await $.tool.call({ tool: 'mcp__github__create_pull_request', tool_use_id: 'm', owner: 'o', anything: 'Body\n\n🤖 Generated with Claude Code' } as any)
-    expect(seen[2].anything).toBe('Body\n\n')
-    expect(seen[2].owner).toBe('o')
+    const w: any = await $.tool.call({ tool: 'Write', tool_use_id: 'w', file_path: '/w/a.ts', content: '// Author: Claude\nexport const a = 1\n' } as any)
+    expect(w.deny).toMatch(/Author: Claude/)
+    const ed: any = await $.tool.call({ tool: 'Edit', tool_use_id: 'e', file_path: '/w/a.ts', old_string: 'x', new_string: 'x\nCo-Authored-By: Claude <noreply@anthropic.com>' } as any)
+    expect(ed.deny).toMatch(/no-attribution/)
+    const m: any = await $.tool.call({ tool: 'mcp__github__create_pull_request', tool_use_id: 'm', owner: 'o', anything: 'Body\n\n🤖 Generated with Claude Code' } as any)
+    expect(m.deny).toMatch(/no-attribution/)
+    expect(seen.length).toBe(0)
+    // Removing attribution (it is only in old_string) and the mod's own files are fine.
+    await $.tool.call({ tool: 'Edit', tool_use_id: 'e2', file_path: '/w/a.ts', old_string: 'Co-Authored-By: Claude', new_string: '' } as any)
     await $.tool.call({ tool: 'Write', tool_use_id: 'own', file_path: '/w/docs/no-attribution.md', content: 'Strips `Co-Authored-By: Claude`.\n' } as any)
-    expect(seen[3].content).toBe('Strips `Co-Authored-By: Claude`.\n')
+    await $.tool.call({ tool: 'Write', tool_use_id: 'ok', file_path: '/w/b.ts', content: 'export const b = 2\n' } as any)
+    expect(seen.map(e => e.tool_use_id)).toEqual(['e2', 'own', 'ok'])
+    expect(seen[2].content).toBe('export const b = 2\n')
   })
 
   test('the engine attribution texts are empty and the system prompt carries the rule', async ($, on) => {

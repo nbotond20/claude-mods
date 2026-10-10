@@ -11,7 +11,7 @@ Each layer works on its own; together they cover each other's gaps.
 | 1 | Settings (`~/.claude-shared/settings.json`) | `attribution: { commit: "", pr: "", sessionUrl: false }`, `includeCoAuthoredBy: false` |
 | 2 | `attribution.text` | The engine's commit trailer and PR footer are returned empty, whatever the settings say. |
 | 3 | `prompt.compose` / `skill.prompt` | Attribution lines are removed from the engine's system prompt sections and skill prompts. The section `no-attribution:rule` tells the model it is never an author, anywhere. |
-| 4 | `tool.call` | **Bash:** attribution is cut out of the command (heredoc commit messages, `-m`, `--body`, `--trailer`, …). **Denied:** committing as Claude (`--author`, `GIT_AUTHOR_*`/`GIT_COMMITTER_*`, `git config user.name/email`) and skipping hooks (`--no-verify`, `git commit -n`, `-c core.hooksPath`, `git config core.hooksPath`). **Write/Edit/NotebookEdit:** attribution lines are removed from the new text, comment markers included; Edit's `old_string` is left alone. **MCP tools** (e.g. a GitHub PR tool): every string argument is cleaned. If the check itself fails, the call is denied, not let through. |
+| 4 | `tool.call` | Anything carrying attribution is **refused, never rewritten**, so what runs is exactly what you approved. The refusal names the offending text and, for Bash, gives the clean command, so the model sends it again. This covers Bash commands (heredoc commit messages, `-m`, `--body`, `--trailer`, …), the new text in Write/Edit/NotebookEdit (Edit's `old_string` may still contain it, which allows removing attribution), and every string argument of MCP tools such as a GitHub PR tool. **Also refused:** committing as Claude (`--author`, `GIT_AUTHOR_*`/`GIT_COMMITTER_*`, `git config user.name/email`) and skipping hooks (`--no-verify`, `git commit -n`, `-c core.hooksPath`, `git config core.hooksPath`). If the check itself fails, the call is refused, not let through. |
 | 5 | Global git hooks (`git config --global core.hooksPath ~/.claude-shared/no-attribution/git-hooks`) | **`commit-msg`** strips attribution lines from every commit message, whoever wrote it. **`pre-commit`** refuses a Claude/Anthropic author or committer. Every hook then runs the repository's own `.git/hooks/<name>`, so existing repo hooks keep working. |
 
 What counts as attribution:
@@ -25,7 +25,7 @@ Ordinary mentions are kept, such as "Use the Claude API for summaries".
 
 `/no-attribution` shows:
 - the layers;
-- what was cleaned or denied this session;
+- what was refused this session;
 - whether the git hooks are active.
 
 It also reinstalls the hooks if they are missing. They are installed again at every session start.
