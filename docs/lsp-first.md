@@ -1,6 +1,6 @@
 # lsp-first
 
-Gets the model to use the TypeScript language server for TS/JS symbol questions instead of grepping and reading whole files. Before this, the LSP tool had **never** been called (0 calls against about 15k grep/rg/find searches), because the language server binary was missing.
+Gets the model to use the language server for symbol questions instead of grepping and reading whole files. Without it the LSP tool is deferred and, in practice, rarely called (one setup measured 0 LSP calls against about 15k grep/rg/find searches).
 
 Source: `lsp-first/hooks/register.ts`. Tests: `lsp-first/tests/`.
 
@@ -18,11 +18,18 @@ Source: `lsp-first/hooks/register.ts`. Tests: `lsp-first/tests/`.
 
 ## The TypeScript language server
 
-- The official plugin **`typescript-lsp@claude-plugins-official`** is enabled in the shared settings and installed in every profile.
-- It runs `typescript-language-server`. Version 5.3.0 is installed globally and symlinked, together with `tsc`, into `~/.local/bin`, which is on PATH.
-- Check it with `typescript-language-server --version`. In a session, the LSP tool should appear in `/context` under tools that are not deferred.
+lsp-first needs a language server plugin; without one it does nothing. For TypeScript/JavaScript:
 
-## Config: `~/.claude-shared/lsp-first/config.json`
+```sh
+npm i -g typescript-language-server typescript
+```
+```
+/plugin install typescript-lsp@claude-plugins-official
+```
+
+Check it with `typescript-language-server --version`. In a session, the LSP tool should appear in `/context` under tools that are not deferred. `/lsp-first setup` checks for the LSP tool and walks through the options.
+
+## Config: `<mods home>/lsp-first/config.json`
 
 `{ "enabled": true, "holdout": 0.2, "upfront": true, "guide": true, "nudges": true }`, or `/lsp-first [status|on|off|holdout <0-1>|nudges|guide on|off]`. In holdout sessions LSP stays deferred, and no guide or nudges are added.
 

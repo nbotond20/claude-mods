@@ -3,12 +3,25 @@ import type { EngineInterface, ModelUsage, Register, Timer } from 'claude-code'
 
 import type { Billing, Budgets, Context, History, Limit, Limits, LiveAgent, LiveTask, Periods, Route, Sample, SavingCategory, Savings, Spend } from '../types'
 
+/**
+ * The folder the mods share (data, configs, event log): $CLAUDE_MODS_HOME, else ~/.claude-shared when it
+ * already exists (installs from before the variable), else ~/.claude-mods. Profiles are told apart inside it.
+ */
+let modsHomeDir = ''
+async function modsHome($: EngineInterface) {
+  if (modsHomeDir) return modsHomeDir
+  const set = await $.env.get('CLAUDE_MODS_HOME')
+  const home = (await $.env.get('HOME')) ?? ''
+  modsHomeDir = set ? set.replace(/\/+$/, '') : (await $.fs.exists(`${home}/.claude-shared`).catch(() => false)) ? `${home}/.claude-shared` : `${home}/.claude-mods`
+  return modsHomeDir
+}
+
 // ---- impact tracking ------------------------------------------------------
 /**
  * Mod-impact tracking (the same block in budget-guard, lean-tools and lsp-first; $ cannot cross files).
  *
  * Every action a mod takes is logged as `{ ev: 'mod', mod, kind, arm, ... }` into the usage-analytics
- * event store (~/.claude-shared/usage-analytics/events/<profile>/<day>/), which `claude-usage ingest`
+ * event store (<mods home>/usage-analytics/events/<profile>/<day>/), which `claude-usage ingest`
  * folds into the `events` table (view `v_mod_actions`).
  *
  * The holdout: each session is put in arm `holdout` with probability `holdout`, from a hash of the mod
@@ -49,8 +62,8 @@ async function trackStart($: EngineInterface, name: string, holdout: number, set
   mod = name
   const home = (await $.env.get('HOME')) ?? ''
   const configDir = await $.env.get('CLAUDE_CONFIG_DIR')
-  profile = (configDir ?? `${home}/.claude`).replace(/\/+$/, '').split('/').pop()!.replace(/^\./, '')
-  root = `${home}/.claude-shared/usage-analytics`
+  profile = (configDir || `${home}/.claude`).replace(/\/+$/, '').split('/').pop()!.replace(/^\./, '')
+  root = `${await modsHome($)}/usage-analytics`
   sid = await $.session.id().catch(() => 'unknown')
   arm = bucket(`${mod}:${sid}`) < holdout ? 'holdout' : 'on'
   await trackLog($, 'arm', { holdout, version: $.plugin.root.split('/').pop(), settings })
@@ -78,7 +91,7 @@ async function trackFlush($: EngineInterface) {
 // ---- end impact tracking --------------------------------------------------
 
 /**
- * The holdout: in this share of sessions (config `holdout`, ~/.claude-shared/budget-guard/config.json)
+ * The holdout: in this share of sessions (config `holdout`, <mods home>/budget-guard/config.json)
  * the cost levers are off (routing, effort cap, trimming, keep-alive, new-task check, subagent cap,
  * read guards) so their sessions can be compared with the rest. The band, budgets and the hold at
  * `block` stay on.
@@ -90,18 +103,61 @@ async function logClassify($: EngineInterface, purpose: string, chars: number) {
   await trackLog($, 'classify', { purpose, model: 'claude-haiku-5-5', inputChars: chars })
 }
 async function configPath($: EngineInterface) {
-  return `${(await $.env.get('HOME')) ?? ''}/.claude-shared/budget-guard/config.json`
+  return `${await modsHome($)}/budget-guard/config.json`
 }
-async function loadConfig($: EngineInterface): Promise<{ holdout: number }> {
+/** What this mod keeps across sessions; /budget changes the running session only, /budget setup these. */
+type Config = {
+  holdout: number
+  /** the session limits every session starts from (the rest come from the defaults) */
+  limits: Partial<Limits>
+  /** the highest effort Opus may run at: medium saves the most; max means no cap */
+  opusMaxEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  /** LiteLLM key spend polling on a gateway: auto (stops if the gateway has no /key/info), on, off */
+  litellm: 'auto' | 'on' | 'off'
+}
+const CONFIG_DEFAULTS: Config = { holdout: HOLDOUT_DEFAULT, limits: {}, opusMaxEffort: 'medium', litellm: 'auto' }
+let conf: Config = CONFIG_DEFAULTS
+let firstRun = false
+
+async function loadConfig($: EngineInterface): Promise<Config> {
   const path = await configPath($)
-  let c = { holdout: HOLDOUT_DEFAULT }
+  let saved: Partial<Config> | null = null
   try {
-    c = { ...c, ...JSON.parse(String(await $.fs.read(path))) }
+    saved = JSON.parse(String(await $.fs.read(path)))
   } catch {
-    await $.fs.write(path, JSON.stringify(c, null, 2) + '\n').catch(() => {})
+    // first run: the defaults
   }
-  return c
+  firstRun = saved === null
+  conf = { ...CONFIG_DEFAULTS, ...saved, limits: { ...(saved?.limits ?? {}) } }
+  if (!(conf.opusMaxEffort in EFFORT_RANK)) conf.opusMaxEffort = 'medium'
+  if (!saved || Object.keys(CONFIG_DEFAULTS).some(k => !(k in saved!))) await saveConfig($)
+  return conf
 }
+
+async function saveConfig($: EngineInterface) {
+  await $.fs.write(await configPath($), JSON.stringify(conf, null, 2) + '\n').catch(() => {})
+}
+
+/** The setup wizard, run by the model: what to ask, and the two files the answers go to. */
+export function setupPrompt(configFile: string, budgetsFile: string, profile: string, current: Config, budget: Budgets | null) {
+  return `Set up the budget-guard mod with me. Keep it short.
+
+1. Ask me with the AskUserQuestion tool, in a single call (recommended option first, my current choice marked "(current)"):
+   - "Spending limits for the ${profile} profile?" (soft: shown as gauges, never blocking): "None", "$10 a day / $200 a month", "$25 a day / $500 a month"; Other lets me type my own.
+   - "Pick the model per task?": "Auto (recommended)": the first prompt decides, quick questions go to Sonnet at low effort, the rest to Opus (limits.route true); "Off": always the session's own model (limits.route false).
+   - "Cap Opus effort?": "Medium (recommended, cheapest)", "High", "No cap" (opusMaxEffort "medium", "high", "max").
+   - "Hold prompts when the context gets this large?": "300k tokens (recommended)", "200k", "500k" (limits.block; set limits.warn to half of it).
+2. Write ${configFile}: the current config below with only limits.route, limits.block, limits.warn and opusMaxEffort changed. Keep every other key.
+3. Write the limits to ${budgetsFile}: it is {"profiles": {"<profile>": {"daily": <dollars or null>, "monthly": <dollars or null>}}}; set "${profile}" and keep the other profiles. Create the file if it is missing.
+4. Tell me in one or two lines what is set. It applies from the next session; /budget setup runs this again.
+
+Current config (${configFile}):
+${JSON.stringify(current, null, 2)}
+Current limits for ${profile}: ${budget ? JSON.stringify(budget) : 'none'}`
+}
+
+/** The session limits a session starts from: the defaults with the config's own on top. */
+const startLimits = (): Limits => ({ ...DEFAULTS, ...conf.limits })
 
 const DEFAULTS: Limits = {
   warn: 150_000,
@@ -176,20 +232,21 @@ const FLUSH_MS = 60_000
 const PANE = 'budget-savings'
 
 /** Opus never thinks harder than this, whatever the session, a route or a subagent asks. */
-const OPUS_MAX_EFFORT = 'medium'
+const opusMax = () => conf.opusMaxEffort
 const EFFORT_RANK = { low: 0, medium: 1, high: 2, xhigh: 3, max: 4 } as const
 type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max' | number
 /** The effort a request may go out with: on Opus, anything above medium (or unset, or numeric) becomes medium. */
 const capEffort = (model: string, effort: Effort | undefined): Effort | undefined => {
   if (family(model) !== 'opus' || !trackOn()) return effort
-  if (typeof effort === 'string' && EFFORT_RANK[effort] <= EFFORT_RANK[OPUS_MAX_EFFORT]) return effort
-  return OPUS_MAX_EFFORT
+  if (opusMax() === 'max' && effort !== undefined) return effort
+  if (typeof effort === 'string' && EFFORT_RANK[effort] <= EFFORT_RANK[opusMax()]) return effort
+  return opusMax()
 }
 
 const TIERS = {
   quick: { label: 'quick question, explanation, lookup, or a tiny one-file edit', model: SONNET, effort: 'low' },
   normal: { label: 'normal coding task: a feature, a bug fix, a refactor across a few files', model: OPUS, effort: 'medium' },
-  hard: { label: 'hard: architecture or design, deep debugging, large multi-step or ambiguous work', model: OPUS, effort: OPUS_MAX_EFFORT },
+  hard: { label: 'hard: architecture or design, deep debugging, large multi-step or ambiguous work', model: OPUS, effort: 'medium' },
 } as const
 
 const k = (n: number) => (Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(Math.abs(n) >= 100_000 ? 0 : 1)}k` : `${n}`)
@@ -264,14 +321,15 @@ async function refreshAgents($: EngineInterface) {
 }
 
 async function ledgerDir($: EngineInterface) {
-  return `${(await $.env.get('HOME')) ?? ''}/.claude-shared/budget-guard/sessions`
+  return `${await modsHome($)}/budget-guard/sessions`
 }
 
 /** The local calendar day, `YYYY-MM-DD`. */
 const localDay = (t: number) => new Date(t - new Date(t).getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
 
 async function profileName($: EngineInterface) {
-  return ((await $.env.get('CLAUDE_CONFIG_DIR')) ?? 'default').split('/').pop()!.replace(/^\./, '')
+  const dir = (await $.env.get('CLAUDE_CONFIG_DIR')) || `${(await $.env.get('HOME')) ?? ''}/.claude`
+  return dir.replace(/\/+$/, '').split('/').pop()!.replace(/^\./, '')
 }
 
 /**
@@ -309,7 +367,7 @@ async function refreshPeriods($: EngineInterface) {
 
   if ((await read($, billing)) === 'gateway' && s && !s.error) {
     // The key only reports a lifetime total: remember where it stood when each day and month began.
-    const path = `${(await $.env.get('HOME')) ?? ''}/.claude-shared/budget-guard/key-baselines.json`
+    const path = `${await modsHome($)}/budget-guard/key-baselines.json`
     let b: { day?: { date: string; spend: number }; month?: { ym: string; spend: number }; since?: string } = {}
     try {
       b = JSON.parse(String(await $.fs.read(path)))
@@ -403,10 +461,11 @@ async function isGateway($: EngineInterface) {
 }
 
 /** Lifetime spend of the LiteLLM key this session runs through; null when it talks to Anthropic directly. */
+let noLiteLLM = false
 async function fetchLiteLLM($: EngineInterface): Promise<Spend | null> {
   const base = await $.env.get('ANTHROPIC_BASE_URL')
   const token = await $.env.get('ANTHROPIC_AUTH_TOKEN')
-  if (!base || !token || /anthropic\.com/.test(base)) return null
+  if (!base || !token || /anthropic\.com/.test(base) || conf.litellm === 'off' || noLiteLLM) return null
 
   const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
   const custom = (await $.env.get('ANTHROPIC_CUSTOM_HEADERS')) ?? ''
@@ -418,6 +477,11 @@ async function fetchLiteLLM($: EngineInterface): Promise<Spend | null> {
   const at = await $.clock.now()
   try {
     const r = await $.http.fetch(`${base.replace(/\/+$/, '')}/key/info`, { headers })
+    // A gateway that is not LiteLLM has no /key/info: stop asking (config litellm "on" keeps trying).
+    if ((r.status === 404 || r.status === 405) && conf.litellm === 'auto') {
+      noLiteLLM = true
+      return null
+    }
     if (!r.ok) return { spend: 0, baseline: 0, maxBudget: null, resetAt: null, at, error: `HTTP ${r.status}` }
     const info = JSON.parse(r.text)?.info ?? {}
     return {
@@ -472,7 +536,7 @@ async function classifyFirstPrompt($: EngineInterface, text: string, engineModel
   await logClassify($, 'route', Math.min(text.length, 4000) + labels.join('').length)
   const picked = await $.model.classify(text.slice(0, 4000), labels, { model: HAIKU }).catch(() => undefined)
   const tier = (Object.keys(TIERS) as (keyof typeof TIERS)[]).find(t => TIERS[t].label === picked) ?? 'normal'
-  const r: Route = { tier, model: TIERS[tier].model, effort: TIERS[tier].effort, engineModel }
+  const r: Route = { tier, model: TIERS[tier].model, effort: tier === 'hard' ? opusMax() : TIERS[tier].effort, engineModel }
   return r
 }
 
@@ -520,7 +584,7 @@ function gauge(label: string, used: number, cap: number) {
 
 /** Limits by profile in one shared file: `{ "profiles": { "claude-infi": { "daily": 25, "monthly": 500 } } }`. */
 async function budgetsPath($: EngineInterface) {
-  return `${(await $.env.get('HOME')) ?? ''}/.claude-shared/budget-guard/budgets.json`
+  return `${await modsHome($)}/budget-guard/budgets.json`
 }
 
 async function readBudgetsFile($: EngineInterface): Promise<{ profiles: Record<string, Budgets> }> {
@@ -557,9 +621,11 @@ export const register: Register = on => {
     const r = await next(e)
     await $.command.register({
       name: 'budget',
-      description: 'Budget guard: status, savings, route opus|sonnet|auto|off, warn|block|agents|bigturn|newtask <n>, images|keepalive|trim|agentroute on|off, holdout <0-1>, reset',
+      description: 'Budget guard: status, setup, savings, route opus|sonnet|auto|off, warn|block|agents|bigturn|newtask <n>, images|keepalive|trim|agentroute on|off, holdout <0-1>, reset',
     })
-    const conf = await loadConfig($)
+    await loadConfig($)
+    await update($, limits, () => startLimits())
+    if (firstRun) $.ui.toast('budget-guard is on with default limits. /budget shows them; /budget setup tailors them.')
     await trackStart($, 'budget-guard', conf.holdout, { ...(await read($, limits)), holdout: conf.holdout })
     if (!trackOn()) await update($, limits, l => ({ ...l, ...HOLDOUT_PATCH }))
     $.clock.every(30_000, () => void trackFlush($).catch(() => {}))
@@ -796,6 +862,12 @@ export const register: Register = on => {
     const set = async (patch: Partial<Limits>) => update($, limits, l => ({ ...l, ...patch }))
     const onOff = val === 'on'
 
+    if (what === 'setup') {
+      const text = setupPrompt(await configPath($), await budgetsPath($), await profileName($), conf, (await readBudgetsFile($)).profiles[await profileName($)] ?? null)
+      // Submitted once this command has returned (a command hook cannot wait on the turn it would start).
+      $.clock.after(50, () => void $.prompt.submit({ text }).catch(() => {}))
+      return { text: 'Starting the budget-guard setup…' }
+    }
     if (what === 'savings') {
       const opened = await openSavings($)
       if (opened.isPlaced) return { text: 'Savings pane opened.' }
@@ -809,7 +881,7 @@ export const register: Register = on => {
       else if (val === 'opus' || val === 'sonnet') {
         const r = await read($, route)
         const pick: Route = val === 'opus'
-          ? { tier: 'hard', model: OPUS, effort: OPUS_MAX_EFFORT, engineModel: r?.engineModel ?? '' }
+          ? { tier: 'hard', model: OPUS, effort: opusMax(), engineModel: r?.engineModel ?? '' }
           : { tier: 'quick', model: SONNET, effort: 'low', engineModel: r?.engineModel ?? '' }
         await update($, route, () => pick)
         await set({ route: true })
@@ -834,16 +906,17 @@ export const register: Register = on => {
     else if (what === 'trim') await set({ trimOutput: onOff })
     else if (what === 'agentroute') await set({ routeAgents: onOff })
     else if (what === 'holdout' && Number(val) >= 0 && Number(val) <= 1) {
-      await $.fs.write(await configPath($), JSON.stringify({ holdout: Number(val) }, null, 2) + '\n')
+      conf = { ...conf, holdout: Number(val) }
+      await saveConfig($)
       return { text: `budget-guard holdout share set to ${Math.round(Number(val) * 100)}% (applies to new sessions)` }
     }
     else if (what === 'reset') {
-      await update($, limits, () => (trackOn() ? DEFAULTS : { ...DEFAULTS, ...HOLDOUT_PATCH }))
+      await update($, limits, () => (trackOn() ? startLimits() : { ...startLimits(), ...HOLDOUT_PATCH }))
       await update($, agents, () => 0)
     } else if (what === 'refresh') {
       await refreshSpend($)
     } else if (what) {
-      return { text: 'Usage: /budget [savings] [route opus|sonnet|auto|off] [daily|monthly <$|off>] [warn|block|agents|bigturn|newtask <n>] [images|keepalive|trim|agentroute on|off] [holdout <0-1>] [reset] [refresh]' }
+      return { text: 'Usage: /budget [setup] [savings] [route opus|sonnet|auto|off] [daily|monthly <$|off>] [warn|block|agents|bigturn|newtask <n>] [images|keepalive|trim|agentroute on|off] [holdout <0-1>] [reset] [refresh]' }
     }
 
     const l = await read($, limits)

@@ -1,6 +1,6 @@
 {
   "name": "no-attribution",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Claude never credits itself: no Co-Authored-By, no 'Generated with Claude Code', no Claude author, in commits, PRs, files or tool calls",
   "author": { "name": "nbotond" }
 }

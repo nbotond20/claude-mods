@@ -29,7 +29,7 @@ export type Spend = { spend: number; baseline: number; maxBudget: number | null;
 export type Route = {
   tier: 'quick' | 'normal' | 'hard'
   model: string
-  effort: 'low' | 'medium' | 'high'
+  effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   /** the model the engine named when the route was taken; a different one means the user switched */
   engineModel: string
 }

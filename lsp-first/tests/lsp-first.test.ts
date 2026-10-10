@@ -12,6 +12,7 @@ function engine(on: any, holdout = 0) {
   on('command.register', () => ({ value: undefined }))
   on('env.get', ($: any, e: any) => ({ value: e.name === 'HOME' ? '/h' : e.name === 'CLAUDE_CONFIG_DIR' ? '/h/.claude-my' : undefined }))
   on('fs.read', ($: any, e: any) => (files.has(e.path) ? { value: files.get(e.path) } : { deny: 'ENOENT' }))
+  on('fs.exists', ($: any, e: any) => ({ value: [...files.keys()].some(f => f === e.path || f.startsWith(`${e.path}/`)) }))
   on('fs.write', ($: any, e: any) => (files.set(e.path, e.text), { value: undefined }))
   on('tool.describe', ($: any, e: any) => ({ description: e.description, isDeferred: e.isDeferred }))
   on('prompt.compose', () => ({ sections: [{ id: 'core', text: 'core', scope: 'shared' }] }))

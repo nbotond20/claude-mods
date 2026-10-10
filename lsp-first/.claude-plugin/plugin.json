@@ -1,6 +1,6 @@
 {
   "name": "lsp-first",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Makes Claude actually use the TypeScript LSP: the LSP tool is loaded up front, the system prompt says when to prefer it, and symbol-shaped Greps over TS/JS get a nudge.",
   "author": {
     "name": "nbotond"

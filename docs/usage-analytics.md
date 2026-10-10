@@ -4,8 +4,8 @@ One central store for everything about how every profile spends tokens, with a t
 
 ## Two data sources, one database
 
-1. **Transcripts** (all history, every profile): `~/.claude*/projects/**/*.jsonl`, subagent transcripts included (`<session>/subagents/agent-*.jsonl` + `.meta.json`). These carry exact per-request usage: input, output, cache read, 5m/1h cache writes, thinking, server tools, model, effort, speed, plus every tool call and result, prompts, attachments, system events (turn durations, compactions, API errors) and titles.
-2. **The mod's live event log** (sessions run with the mod installed): `~/.claude-shared/usage-analytics/events/<profile>/<day>/<session>.<ts>.<n>.jsonl`. It records what transcripts cannot:
+1. **Transcripts** (all history, every profile): `<config dir>/projects/**/*.jsonl` for `~/.claude*` and every registered or configured profile dir, subagent transcripts included (`<session>/subagents/agent-*.jsonl` + `.meta.json`). These carry exact per-request usage: input, output, cache read, 5m/1h cache writes, thinking, server tools, model, effort, speed, plus every tool call and result, prompts, attachments, system events (turn durations, compactions, API errors) and titles.
+2. **The mod's live event log** (sessions run with the mod installed): `<mods home>/usage-analytics/events/<profile>/<day>/<session>.<ts>.<n>.jsonl`. It records what transcripts cannot:
    - time to first token and step latency;
    - tool latency and denials;
    - the `/context` category breakdown;
@@ -15,17 +15,27 @@ One central store for everything about how every profile spends tokens, with a t
    - compaction before and after;
    - environment: git, gateway host, a settings subset and enabled plugins.
 
-`bin/claude-usage ingest` folds both into **`~/.claude-shared/usage-analytics/usage.db`** (SQLite, WAL). Ingest is incremental by byte offset and lock-protected; `--full` rebuilds. The dashboard server ingests within about a second of any activity (see *Live updates*). The mod also runs an ingest 45s after a session starts and then every 30 minutes, as a fallback when the server is not running.
+`bin/claude-usage ingest` folds both into **`<mods home>/usage-analytics/usage.db`** (SQLite, WAL). Ingest is incremental by byte offset and lock-protected; `--full` rebuilds. The dashboard server ingests within about a second of any activity (see *Live updates*). The mod also runs an ingest 45s after a session starts and then every 30 minutes, as a fallback when the server is not running.
+
+## Setup, backfill and the server
+
+Nothing is required: on first start the mod writes its config with defaults, registers the profile's config dir, starts the dashboard server and toasts once that `/analytics setup` can tailor it. **`/analytics setup`** runs `claude-usage setup --json` (detected profiles with history, what is already imported, the port) and asks which profiles to track, whether to keep prompt text, and when the dashboard runs.
+
+**Backfill.** When the server starts it imports every transcript already on disk in the background, so the dashboard has your full history from day one. The page shows a progress bar (files, requests, %) and redraws as data arrives; an empty database shows a first-run screen instead of empty charts. `/api/meta` carries the same `progress`.
+
+**One server per machine, started when needed.** Every session start, every `/analytics` command and `/dashboard` start it if it is not running (a lock file keeps it to one), and replace one older than the installed mod. `claude-usage autostart on` also starts it at login (a launchd agent on macOS, a systemd user unit on Linux); `off` removes it. `"dashboard": false` keeps it off until you run `/dashboard`.
 
 ## Use it
 
 | | |
 | --- | --- |
+| `/analytics setup` | the setup wizard |
 | `/dashboard [tab]` or `/analytics dashboard [tab]` | starts the dashboard in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, tools, agents, projects, prompts, health, engine, impact, savings, sql) |
 | `/analytics impact [--days N] [--profile P]` | are the mods saving money or costing more ([mod-impact.md](mod-impact.md)) |
 | `/analytics status` · `/analytics ingest` · `/analytics stop` | data and dashboard status · ingest now · stop the dashboard |
-| `/analytics [overview\|daily\|models\|projects\|tools\|bash\|files\|agents\|sessions\|context\|hours\|cache\|prompts\|all] [--days N] [--profile claude-infi] [--project x]` | terminal report (ingests first) |
+| `/analytics [overview\|daily\|models\|projects\|tools\|bash\|files\|agents\|sessions\|context\|hours\|cache\|prompts\|all] [--days N] [--profile P] [--project x]` | terminal report (ingests first) |
 | `claude-usage serve [--port 8787] [--daemon] [--open] [--tab T] [--quiet]` · `stop` · `status` · `impact [--json]` | the same from a shell |
+| `claude-usage setup [--json]` · `autostart on\|off\|status` | what was detected · start the server at login |
 | `claude-usage sql "SELECT …"` · `schema` · `export TABLE --format csv\|jsonl` · `reprice` · `path` | everything else |
 
 `claude-usage` lives at `usage-analytics/bin/claude-usage` (Python 3, stdlib only). An alias is handy:
@@ -125,9 +135,9 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 
 **Views:** `v_requests` (adds `context_tokens` and `agent_type`), `v_mod_steps`, `v_mod_tools`, `v_context`, `v_measure`, `v_compactions`, `v_tool_schemas`, `v_system_prompt`.
 
-**Cost.** `cost_usd` is the list price from `~/.claude-shared/usage-analytics/pricing.json`. Models are matched by substring, longest key first; fast mode is ×2. After editing the file, run `claude-usage reprice`. Gateway (LiteLLM) billing can differ; budget-guard shows that separately.
+**Cost.** `cost_usd` is the list price from `<mods home>/usage-analytics/pricing.json`. Models are matched by substring, longest key first; fast mode is ×2. After editing the file, run `claude-usage reprice`. Gateway (LiteLLM) billing can differ; budget-guard shows that separately.
 
-## Config: `~/.claude-shared/usage-analytics/config.json`
+## Config: `<mods home>/usage-analytics/config.json`
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -139,6 +149,8 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 | `autoIngest`, `ingestEveryMin` | true, 30 | background ingest |
 | `captureOtel` | true | also log Claude Code's own telemetry events |
 | `dashboard` | true | keep the one dashboard server running (started at session start and by `/analytics`) |
+| `port` | 8787 | dashboard port (127.0.0.1 only) |
+| `profileDirs` | `[]` | config dirs to read transcripts from; empty = auto: `~/.claude*` plus every config dir a session registered under `profiles/` |
 
 ## Files
 
@@ -148,7 +160,7 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 - `usage-analytics/bin/impact.py`: the mod impact analysis.
 - `usage-analytics/dashboard/index.html`: the page.
 - `usage-analytics/tests/usage-analytics.test.ts`: event paths, ordering, facets, and a check that no secret leaks.
-- Data lives in `~/.claude-shared/usage-analytics/`: `usage.db`, `events/`, `pricing.json`, `config.json`, `dashboard.log`, `dashboard.lock`, `ingest.lock`, `live/<profile>.json` (activity pulses).
+- Data lives in `<mods home>/usage-analytics/` (or `$CLAUDE_USAGE_DIR`): `usage.db`, `events/`, `pricing.json`, `config.json`, `profiles/<profile>.json` (registered config dirs), `dashboard.log`, `dashboard.lock`, `ingest.lock`, `live/<profile>.json` (activity pulses).
 
 ## Secrets
 
@@ -157,7 +169,7 @@ Before anything is written, the mod (event files) and the ingester (`usage.db`) 
 ## Troubleshooting
 
 - **Dashboard shows old data:** click *Ingest now*, or run `claude-usage ingest`.
-- **Port in use:** `claude-usage serve --daemon --port 8790`.
+- **Port in use:** set `port` in the config (or run `/analytics setup`).
 - **Stop the dashboard:** `/analytics stop` or `claude-usage stop`. It comes back at the next session start unless `"dashboard": false`. After a mod update, the next session start replaces an older running server by itself.
 - **Sidebar says "reconnecting…":** the server stopped. Any `/analytics` command or new session starts it again, and the page reconnects on its own.
 - **Open on a tab:** `http://127.0.0.1:8787/#impact`.

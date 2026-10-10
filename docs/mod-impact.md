@@ -62,7 +62,7 @@ The same rate is computed in holdout sessions for the moments a nudge *would* ha
 
 ## Events
 
-Mods write to `~/.claude-shared/usage-analytics/events/<profile>/<day>/<sid>.<ts>.<mod>-*.jsonl`. Each line has the form `{ts, ev:'mod', sid, profile, mod, kind, arm, ...}`. After ingest they are in the `events` table, and the `v_mod_actions` view shows them flattened.
+Mods write to `<mods home>/usage-analytics/events/<profile>/<day>/<sid>.<ts>.<mod>-*.jsonl`. Each line has the form `{ts, ev:'mod', sid, profile, mod, kind, arm, ...}`. After ingest they are in the `events` table, and the `v_mod_actions` view shows them flattened.
 
 | Mod | kinds |
 | --- | --- |
@@ -79,7 +79,7 @@ Mods write to `~/.claude-shared/usage-analytics/events/<profile>/<day>/<sid>.<ts
 | lean-tools | 20% | `/lean holdout 0.2` |
 | lsp-first | 20% | `/lsp-first holdout 0.2` |
 
-The value is stored in each mod's `config.json` under `~/.claude-shared/<mod>/` and applies from the next session. `0` turns the experiment off (always active); `1` makes the mod fully passive.
+The value is stored in each mod's `config.json` under `<mods home>/<mod>/` and applies from the next session. `0` turns the experiment off (always active); `1` makes the mod fully passive.
 
 **What budget-guard's holdout switches off:** routing, subagent routing, output trimming, keep-alive, the new-task check, the subagent cap, the image block, the generated-file block and the effort cap. The band, the budgets and the context hold at `block` stay on in both arms.
 

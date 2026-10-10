@@ -16,6 +16,8 @@ import json, os, random
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
+from paths import mods_home
+
 MODS = ('budget-guard', 'lean-tools', 'lsp-first')
 MIN_SESSIONS = 30
 BOOT = 1000
@@ -142,7 +144,7 @@ def _carry(pr, reqs, comp, sid, ts, tokens, survives_compaction=False):
 
 
 def _ledgers():
-    d = os.path.expanduser('~/.claude-shared/budget-guard/sessions')
+    d = os.path.join(mods_home(), 'budget-guard', 'sessions')
     out = {}
     for f in os.listdir(d) if os.path.isdir(d) else []:
         if f.endswith('.json'):

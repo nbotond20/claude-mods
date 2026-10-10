@@ -71,39 +71,56 @@ nav a .badge { margin-left: auto; font-size: 10px; color: var(--accent); }
 .titlerow { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .titlerow h1 { font-size: 19px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
 .titlerow .sub { color: var(--muted); font-size: 12.5px; }
-.status { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-.filters { display: flex; flex-wrap: wrap; gap: 8px 10px; align-items: center; margin-top: 9px; }
+.status { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.titlerow { align-items: center; min-height: 28px; }
+.iconbtn { flex: none; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; color: var(--muted); }
+.iconbtn:hover { color: var(--ink); }
+.iconbtn svg { width: 15px; height: 15px; }
+.iconbtn.spin svg { animation: spin .7s linear; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 9px; }
 .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
-.seg button { border: 0; background: transparent; padding: 3px 10px; border-radius: 6px; color: var(--muted); font-size: 12.5px; }
+.seg button { border: 0; background: transparent; padding: 3px 9px; border-radius: 6px; color: var(--muted); font-size: 12.5px; }
 .seg button.on { background: var(--ink); color: var(--bg); }
 .chips { display: flex; gap: 4px; flex-wrap: wrap; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; user-select: none; color: var(--muted); font-size: 12.5px; transition: all .12s; }
 .chip i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .chip.on { color: var(--ink); border-color: var(--ink); }
-.toggle { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; cursor: pointer; user-select: none; }
+.toggle { display: inline-flex; height: 28px; padding: 0 2px; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; cursor: pointer; user-select: none; }
+.toggle input { margin: 0; accent-color: var(--accent); }
 .filters .grow { flex: 1; }
-.filters select, .filters input { font-size: 12.5px; padding: 4px 8px; }
+.filters select, .filters input { font-size: 12.5px; padding: 4px 8px; height: 28px; }
+.filters select { max-width: 150px; }
+.filters #project { width: 130px; }
+.seg, .chip { height: 28px; }
+.seg button { height: 22px; padding-top: 0; padding-bottom: 0; }
 .filters .btn { font-size: 12.5px; padding: 4px 10px; }
 .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
 
 .content { padding: 18px 22px 70px; max-width: 1640px; width: 100%; }
-.tabnote { color: var(--muted); margin: 0 0 14px; max-width: 980px; }
+.tabnote { color: var(--muted); margin: 0 0 16px; max-width: 980px; }
+.tabnote b { color: var(--ink); font-weight: 600; }
+.topbar.nofilters .filters { display: none; }
 
 /* ---------- KPI cards ---------- */
-.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 10px; margin-bottom: 16px; }
-.kpi { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 11px 13px 9px; box-shadow: var(--shadow); overflow: hidden; min-height: 92px; }
-.kpi small { color: var(--muted); font-size: 11.5px; display: block; }
-.kpi b { display: block; font-size: 22px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin: 2px 0 1px; transition: color .4s; }
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.kpi { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px 10px; box-shadow: var(--shadow); overflow: hidden; min-width: 0; display: flex; flex-direction: column; }
+.kpi small { color: var(--muted); font-size: 11.5px; font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi b { display: block; font-size: 22px; line-height: 1.2; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin: 3px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .4s; }
+.kpi b .unit { font-size: 13px; color: var(--muted); font-weight: 500; letter-spacing: 0; margin-left: 1px; }
 .kpi b.bump { color: var(--accent); }
-.kpi .delta { font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.kpi .delta { font-size: 11.5px; line-height: 16px; min-height: 16px; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .delta .vs { color: var(--faint); }
 .kpi .delta.up.bad, .kpi .delta.down.bad { color: var(--bad); }
 .kpi .delta.up.good, .kpi .delta.down.good { color: var(--good); }
-.kpi svg.spark { position: absolute; right: 12px; top: 14px; width: 64px; height: 24px; opacity: .9; }
-.kpi.hero svg.spark { width: 150px; height: 40px; top: 18px; }
+.kpi svg.spark { display: block; width: 100%; height: 26px; margin-top: auto; padding-top: 8px; overflow: visible; }
+.kpi .nospark { height: 26px; margin-top: auto; padding-top: 8px; }
 .kpi.hero { grid-column: span 2; }
-.kpi.hero small { max-width: calc(100% - 160px); }
-.kpi.hero b { font-size: 28px; }
-.meter { height: 5px; background: var(--line2); border-radius: 9px; overflow: hidden; margin-top: 6px; }
+.kpi.hero b { font-size: 30px; }
+.kpi.hero svg.spark { height: 34px; }
+.kpis.flat .kpi.hero { grid-column: auto; }
+.meter { height: 5px; background: var(--line2); border-radius: 9px; overflow: hidden; margin-top: auto; }
+.kpi .meter { margin-top: auto; position: relative; top: -3px; }
 .meter > i { display: block; height: 100%; background: var(--accent); border-radius: 9px; transition: width .5s; }
 
 /* ---------- panels ---------- */
@@ -130,12 +147,21 @@ nav a .badge { margin-left: auto; font-size: 10px; color: var(--accent); }
 .chart.short { height: 200px; }
 .tbl { overflow: auto; max-height: 470px; border-radius: 6px; }
 table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
-th, td { padding: 5px 9px; border-bottom: 1px solid var(--line2); text-align: left; white-space: nowrap; }
-th { position: sticky; top: 0; z-index: 1; background: var(--panel); cursor: pointer; color: var(--muted); font-weight: 600; font-size: 11.5px; border-bottom: 1px solid var(--line); user-select: none; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--line2); text-align: left; white-space: nowrap; }
+td { position: relative; }
+td .b { position: absolute; right: 10px; bottom: 3px; height: 3px; background: color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 2px; pointer-events: none; }
+td:last-child .b { right: 2px; }
+td.num > span.v { position: relative; }
+td.path { max-width: 380px; overflow: hidden; text-overflow: ellipsis; }
+tbody tr:last-child td { border-bottom: 0; }
+th { position: sticky; top: 0; z-index: 2; background: var(--panel); cursor: pointer; color: var(--muted); font-weight: 600; font-size: 11.5px; border-bottom: 1px solid var(--line); user-select: none; }
+th:first-child, td:first-child { padding-left: 2px; }
+th:last-child, td:last-child { padding-right: 2px; }
+th .arrow { color: var(--accent); margin-left: 3px; font-size: 9px; }
 th:hover { color: var(--ink); }
 th.num { text-align: right; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
-td.long { white-space: normal; min-width: 260px; max-width: 560px; }
+td.long { white-space: normal; min-width: 240px; max-width: 520px; }
 td a { cursor: pointer; text-decoration: none; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
 tbody tr { transition: background .1s; }
 tbody tr:hover td { background: var(--hover); }
@@ -148,22 +174,43 @@ tr.new td { animation: flash 2.2s ease-out; }
 .gauge .meter > i.warm { background: var(--warn); }
 .pill { display: inline-block; padding: 0 7px; border-radius: 99px; font-size: 11px; border: 1px solid var(--line); color: var(--muted); }
 .pill.err { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
-.insights { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); gap: 8px; margin-bottom: 16px; }
-.insight { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: 9px 13px; box-shadow: var(--shadow); }
-.insight.good { border-left-color: var(--good); }
-.insight.warn { border-left-color: var(--warn); }
-.insight.bad { border-left-color: var(--bad); }
+.insights { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 2px 14px 3px; margin-bottom: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); column-gap: 28px; }
+.insights:empty { display: none; }
+.insight { display: flex; gap: 10px; align-items: baseline; padding: 9px 0; border-top: 1px solid var(--line2); font-size: 13px; line-height: 1.5; }
+.insight::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); position: relative; top: -1px; }
+.insight.good::before { background: var(--good); }
+.insight.warn::before { background: var(--warn); }
+.insight.bad::before { background: var(--bad); }
+.insights-head { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 0 8px; }
+.insights-head h3 { margin: 0; font-size: 13.5px; font-weight: 620; }
+.insights-head small { color: var(--faint); font-size: 11.5px; }
 .empty { color: var(--muted); padding: 26px; text-align: center; }
 .err { color: var(--bad); }
 .skel { height: 240px; border-radius: 8px; background: linear-gradient(90deg, var(--line2) 0%, var(--hover) 40%, var(--line2) 80%); background-size: 300% 100%; animation: shimmer 1.3s infinite linear; }
 .skel.s { height: 60px; }
 @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -50% 0; } }
 .heat { display: grid; grid-template-columns: 34px repeat(24, 1fr); gap: 2px; font-size: 10px; color: var(--muted); }
-.heat div { height: 22px; border-radius: 3px; display: flex; align-items: center; justify-content: center; }
-h2.sec { margin: 22px 0 8px; font-size: 15px; display: flex; gap: 10px; align-items: baseline; }
+.heat div { height: 26px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
+.heat > div:nth-child(-n+25) { height: 18px; }
+h2.sec { margin: 26px 0 10px; font-size: 15px; font-weight: 640; display: flex; gap: 10px; align-items: baseline; }
 h2.sec small { color: var(--muted); font-weight: normal; font-size: 12px; }
-.banner { display: none; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: 7px 12px; margin-bottom: 12px; font-size: 12.5px; }
+.banner { display: none; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 8px 10px 8px 14px; margin-bottom: 14px; font-size: 12.5px; }
 .banner.on { display: flex; }
+.banner > span:first-child { flex: 1; min-width: 0; }
+.banner .btn { flex: none; }
+.progress { display: none; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 11px 14px 12px; margin-bottom: 14px; }
+.progress.on { display: grid; }
+.progress .ptop { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; font-size: 12.5px; }
+.progress .ptop b { font-weight: 620; }
+.progress .ptop span { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.progress .meter { margin: 0; height: 6px; }
+.progress .meter > i { background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 70%, #fff)); }
+.onboard { max-width: 640px; margin: 48px auto; text-align: center; }
+.onboard .logo { width: 44px; height: 44px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 22px; font-weight: 700; margin: 0 auto 16px; }
+.onboard h2 { font-size: 20px; margin: 0 0 8px; letter-spacing: -.01em; }
+.onboard p { color: var(--muted); margin: 0 0 18px; }
+.onboard ol { text-align: left; display: inline-grid; gap: 8px; margin: 0; padding-left: 20px; }
+.onboard code { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
 
 /* ---------- drawer, palette, toast ---------- */
 .drawer { position: fixed; inset: 0; background: rgba(0,0,0,.38); z-index: 40; opacity: 0; pointer-events: none; transition: opacity .2s; }
@@ -172,6 +219,9 @@ h2.sec small { color: var(--muted); font-weight: normal; font-size: 12px; }
 .drawer.open > div { transform: none; }
 .drawer .dhead { display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
 .drawer .dhead h3 { margin: 0; font-size: 16px; }
+.drawer .grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); }
+.drawer .dhead h3 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawer .dhead .btn { flex: none; width: 30px; height: 30px; padding: 0; display: grid; place-items: center; }
 .facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 14px; }
 .palette { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.3); display: none; align-items: flex-start; justify-content: center; padding-top: 12vh; }
 .palette.open { display: flex; }
@@ -189,33 +239,47 @@ h2.sec small { color: var(--muted); font-weight: normal; font-size: 12px; }
 .fade { animation: fadein .25s ease-out; }
 @keyframes fadein { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 
+@media (max-width: 1180px) and (min-width: 901px) {
+  .kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+  .kpi b { font-size: 19px; }
+  .kpi.hero b { font-size: 24px; }
+}
 @media (max-width: 900px) {
   .app { grid-template-columns: minmax(0, 1fr); }
-  .kpis { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
-  .kpi.hero svg.spark { width: 64px; height: 24px; top: 14px; }
-  .kpi.hero small { max-width: none; }
-  .kpi { min-height: 0; }
-  .kpi.hero b { font-size: 22px; }
-  .kpi svg.spark { opacity: .5; }
-  .status { flex-basis: 100%; }
+  .status { flex: 1 1 0; }
   .acts input { width: 80px; }
   aside { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--line); }
   .brand { padding: 0 6px 0 0; }
   .search { display: none; }
-  nav { order: 3; flex-basis: 100%; display: flex; gap: 2px; overflow-x: auto; }
+  nav { order: 3; flex-basis: 100%; display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; -webkit-mask-image: linear-gradient(90deg, #000 88%, transparent); mask-image: linear-gradient(90deg, #000 88%, transparent); }
   nav .group { display: none; }
   nav a { white-space: nowrap; }
   .sidefoot { border: 0; padding: 0; margin-left: auto; grid-auto-flow: column; }
   .sidefoot .row2 { display: none; }
   .topbar { position: static; padding: 10px 16px; }
   .content { padding: 14px 16px 60px; }
-  .kpi.hero { grid-column: span 1; }
   .status { margin-left: 0; }
 }
+@media (max-width: 640px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .kpis.flat .kpi.hero { grid-column: span 2; }
+  .kpi b { font-size: 20px; }
+  .kpi.hero b { font-size: 26px; }
+  .filters select, .filters input:not([type]) { flex: 1 1 140px; min-width: 0; max-width: none; }
+  .titlerow .sub { flex-basis: 100%; }
+  .panel { padding: 12px; }
+  .chart { height: 240px; }
+  .chart.tall { height: 340px; }
+  .heat { grid-template-columns: 28px repeat(24, 1fr); gap: 1px; font-size: 8.5px; }
+  .heat div { height: 20px; border-radius: 2px; }
+  .heat > div:nth-child(-n+25) { height: 14px; }
+  .drawer > div { padding: 14px 16px; }
+}
+.preload * { transition: none !important; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 </head>
-<body>
+<body class="preload">
 <div class="app">
   <aside>
     <div class="brand"><div class="logo">C</div><div>Claude <span>Usage</span></div></div>
@@ -228,18 +292,17 @@ h2.sec small { color: var(--muted); font-weight: normal; font-size: 12px; }
   </aside>
   <div class="main">
     <div class="topbar">
-      <div class="titlerow"><h1 id="title">Overview</h1><span class="sub" id="subtitle"></span><span class="status" id="status"></span></div>
+      <div class="titlerow"><h1 id="title">Overview</h1><span class="sub" id="subtitle"></span><span class="status" id="status"></span><button class="btn iconbtn" id="refresh" title="Refresh (r)" aria-label="Refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg></button></div>
       <div class="filters">
         <div class="seg" id="period"></div>
         <div class="chips" id="profiles" title="Profiles (none selected = all)"></div>
         <select id="model" title="Model"><option value="">All models</option></select>
-        <input id="project" placeholder="Project contains…  (/)" size="18">
-        <label class="toggle" title="Show change against the previous period of the same length"><input type="checkbox" id="compare" checked> vs previous</label>
-        <span class="grow"></span>
-        <button class="btn" id="refresh" title="Refresh (r)">Refresh</button>
+        <input id="project" placeholder="Project…  (/)">
+        <label class="toggle" title="Show change against the previous period of the same length"><input type="checkbox" id="compare" checked> Compare</label>
       </div>
     </div>
     <div class="content">
+      <div class="progress" id="progress"><div class="ptop"><b id="progressTitle">Importing your history</b><span id="progressText"></span></div><div class="meter"><i id="progressBar" style="width:0"></i></div></div>
       <div class="banner" id="banner"><span id="bannerText">New data is in.</span><button class="btn" id="bannerBtn">Update this view</button></div>
       <div class="kpis" id="kpis"></div>
       <div id="view"></div>
@@ -268,7 +331,7 @@ const big = v => { if (v == null) return '–'; const a = Math.abs(v)
 const pct = v => v == null ? '–' : (+v).toFixed(1) + '%'
 const fmtCell = (col, v) => {
   if (v == null) return ''
-  if (typeof v !== 'number') return String(v)
+  if (typeof v !== 'number') return col === 'tool' ? prettyTool(v) : String(v)
   if (/cost|saved|spent|usd/.test(col)) return usd(v)
   if (/pct|share/.test(col)) return pct(v)
   if (/^(hour|weekday|spawn_depth|is_error|deferred)$/.test(col)) return String(v)
@@ -281,6 +344,13 @@ const ago = ts => { if (!ts) return '–'; const s = Math.max(0, (Date.now() - n
   return s < 60 ? Math.round(s) + 's ago' : s < 3600 ? Math.round(s / 60) + 'm ago' : s < 86400 ? (s / 3600).toFixed(1) + 'h ago' : Math.round(s / 86400) + 'd ago' }
 const hhmm = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 const shortModel = m => String(m || '').replace(/^claude-/, '').replace(/-\d{8}$/, '')
+/** Column and series names as people read them: cache_read → cache read, hit_pct → cache hit %. */
+const HEADS = { pct: '%', usd: '$', ctx: 'context', avg_s: 'avg seconds', max_s: 'max seconds', n: 'count', cost_per_1k_req: 'cost per 1k requests', hit_pct: 'cache hit %', subagent_pct: 'subagent share %', followed_pct: 'followed %', is_error: 'error' }
+const human = c => HEADS[c] ?? String(c).replace(/_pct$/, ' %').replace(/_/g, ' ')
+/** mcp__plugin_x_server__tool → server · tool */
+const prettyTool = t => { const m = /^mcp__(.+?)__(.+)$/.exec(String(t)); if (!m) return String(t)
+  return `${m[1].replace(/^plugin_[^_]+_/, '').replace(/^claude_ai_/, '').replace(/_/g, ' ')} · ${m[2]}` }
+const shortPath = (p, n = 38) => { p = String(p); return p.length <= n ? p : '…' + p.slice(-(n - 1)).replace(/^[^/]*\//, '/') }
 
 // ---------- icons ----------
 const I = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`
@@ -332,10 +402,16 @@ function prevRange() {
 }
 
 // ---------- colors ----------
+// Profiles take the palette in order (the same colour on every chart); well-known series keep one meaning everywhere.
 const colorIdx = new Map()
+const FIXED = [[/^(main|main_cost|main loop)$/i, 1], [/^subagent(_cost|s)?$/i, 2], [/^opus$/i, 4], [/^sonnet$/i, 6], [/^haiku$/i, 5], [/^fable$/i, 7],
+  [/^cache.?read/i, 6], [/^cache.?write/i, 4], [/^input/i, 5], [/^output/i, 1], [/^(other|–)$/i, 8], [/^(lsp)$/i, 3], [/^text.?search$/i, 8],
+  [/^saved$/i, 3], [/^spent$/i, 1], [/^prompts$/i, 1], [/^commands$/i, 2], [/^agent.?prompts$/i, 4]]
 function colorFor(label) {
+  const pal = PALETTE(), isProfile = state.meta?.profiles?.includes(label)
+  if (!isProfile && !colorIdx.has(label)) { const f = FIXED.find(([re]) => re.test(String(label))); if (f) return pal[f[1] - 1] }
   if (!colorIdx.has(label)) colorIdx.set(label, colorIdx.size % 12)
-  return PALETTE()[colorIdx.get(label)]
+  return pal[colorIdx.get(label)]
 }
 
 // ---------- charts ----------
@@ -355,6 +431,7 @@ function pivot(objs, x, s, y) {
   return { labels: xs, series: ss.map(k => ({ label: k, data: data[k] })) }
 }
 
+const type_ = p => p.kind === 'stacked' || p.kind === 'hbar' ? 'bar' : p.kind === 'area' ? 'line' : p.kind
 function chartConfig(p, d) {
   const objs = asObjs(d)
   const grid = css('--line2'), tick = css('--muted')
@@ -375,19 +452,23 @@ function chartConfig(p, d) {
   if (p.series) {
     const pv = pivot(objs, p.x, p.series, p.y)
     labels = pv.labels
-    datasets = pv.series.slice(0, p.maxSeries || 10).map(s => ({ label: s.label, data: s.data }))
+    datasets = pv.series.slice(0, p.maxSeries || 10).map(s => ({ label: p.series === 'model' ? shortModel(s.label) : s.label, data: s.data }))
   } else {
     labels = objs.map(o => o[p.x])
     datasets = (Array.isArray(p.y) ? p.y : [p.y]).map(y => ({ label: y, data: objs.map(o => o[y]), yAxisID: p.y2 && p.y2.includes(y) ? 'y2' : 'y' }))
+    if (type_(p) === 'doughnut') labels = labels.map(human)
   }
   if (p.labelFmt) labels = labels.map(p.labelFmt)
+  else if (p.x === 'tool' || p.x === 'program') labels = labels.map(prettyTool)
+  else if (p.x === 'project') labels = labels.map(v => shortPath(v, 40))
   const type = p.kind === 'stacked' || p.kind === 'hbar' ? 'bar' : p.kind === 'area' ? 'line' : p.kind
   const single = datasets.length === 1 && !p.series && type !== 'doughnut'
-  datasets.forEach(ds => {
+  datasets.forEach((ds, i) => {
     const c = single ? css('--accent') : colorFor(ds.label)
+    if (!p.series) { ds.key = ds.label; ds.label = human(ds.label) }
     if (type === 'doughnut') Object.assign(ds, { backgroundColor: labels.map(l => colorFor(l)), borderColor: css('--panel'), borderWidth: 2, hoverOffset: 6 })
     else Object.assign(ds, { backgroundColor: p.kind === 'area' ? c + '44' : type === 'bar' ? c + 'd9' : c, borderColor: c, borderWidth: type === 'line' ? 2 : 0,
-      borderRadius: type === 'bar' ? (p.kind === 'stacked' ? 2 : 4) : 0, pointRadius: 0, pointHoverRadius: 4, tension: .3, fill: p.kind === 'area', spanGaps: true, maxBarThickness: 46 })
+      borderRadius: type === 'bar' ? (p.kind === 'stacked' ? 2 : 4) : 0, pointRadius: 0, pointHoverRadius: 4, tension: .25, cubicInterpolationMode: 'monotone', fill: p.kind === 'area' ? (i ? '-1' : 'origin') : false, spanGaps: true, maxBarThickness: p.kind === 'hbar' ? 22 : 46 })
   })
   const stacked = p.kind === 'stacked' || p.kind === 'area'
   // Paths keep their tail (the project name), everything else its head.
@@ -402,11 +483,13 @@ function chartConfig(p, d) {
     responsive: true, maintainAspectRatio: false, indexAxis: p.kind === 'hbar' ? 'y' : 'x', cutout: type === 'doughnut' ? '62%' : undefined,
     interaction: { mode: type === 'doughnut' ? 'nearest' : 'index', intersect: false },
     plugins: {
-      legend: { display: datasets.length > 1 || type === 'doughnut', position: type === 'doughnut' ? 'right' : 'bottom', labels: { color: tick, boxWidth: 9, boxHeight: 9, useBorderRadius: true, borderRadius: 2 } },
+      legend: { display: datasets.length > 1 || type === 'doughnut', position: type === 'doughnut' ? 'right' : 'bottom', labels: { color: tick, boxWidth: 9, boxHeight: 9, useBorderRadius: true, borderRadius: 2, padding: 12,
+        ...(type === 'doughnut' ? { generateLabels: ch => { const sum = ch.data.datasets[0].data.reduce((a, b) => a + (+b || 0), 0)
+          return Chart.overrides.doughnut.plugins.legend.labels.generateLabels(ch).map((l, i) => ({ ...l, text: `${l.text}  ${sum ? Math.round(100 * ch.data.datasets[0].data[i] / sum) : 0}%` })) } } : {}) } },
       tooltip: { backgroundColor: css('--ink'), titleColor: css('--bg'), bodyColor: css('--bg'), padding: 9, cornerRadius: 7, boxPadding: 3,
         itemSort: (a, b) => (b.raw || 0) - (a.raw || 0),
         filter: c => type === 'doughnut' || c.raw !== 0,
-        callbacks: { label: c => `${type === 'doughnut' ? c.label : c.dataset.label}: ${(p.y2 && p.y2.includes(c.dataset.label) ? (p.y2money ? usd : big) : fmtY)(c.raw)}`,
+        callbacks: { label: c => `${type === 'doughnut' ? c.label : c.dataset.label}: ${(p.y2 && p.y2.includes(c.dataset.key) ? (p.y2money ? usd : big) : fmtY)(c.raw)}`,
           footer: items => stacked && items.length > 1 ? 'total: ' + fmtY(items.reduce((a, i) => a + (+i.raw || 0), 0)) : '' } },
     },
     scales,
@@ -476,15 +559,20 @@ function drawTable(P, opts = P.opts || {}) {
   const hide = new Set(opts.hide || [])
   const numCol = d.cols.map((c, i) => d.rows.some(r => typeof r[i] === 'number'))
   const prev = el.querySelector('.tbl'), top = prev ? prev.scrollTop : 0
-  el.innerHTML = `<div class="tbl"><table><thead><tr>${d.cols.map((c, i) => hide.has(c) ? '' : `<th data-i="${i}" class="${numCol[i] ? 'num' : ''}">${esc(opts.heads?.[c] ?? c)}${i === col ? (asc ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead><tbody>${
+  el.innerHTML = `<div class="tbl"><table><thead><tr>${d.cols.map((c, i) => hide.has(c) ? '' : `<th data-i="${i}" class="${numCol[i] ? 'num' : ''}" title="${esc(c)}">${esc(opts.heads?.[c] ?? human(c))}${i === col ? `<span class="arrow">${asc ? '▲' : '▼'}</span>` : ''}</th>`).join('')}</tr></thead><tbody>${
     shown.map(r => `<tr class="${opts.rowClass ? opts.rowClass(r) : ''}">${r.map((v, i) => {
       const c = d.cols[i]
       if (hide.has(c)) return ''
       const custom = opts.cell && opts.cell(c, v, r)
       if (custom != null) return custom
       if (c === 'session_id' && v) return `<td><a data-sid="${esc(v)}" title="Open session">${esc(String(v).slice(0, 8))}</a></td>`
-      const style = barCols[i] && typeof v === 'number' && v > 0 ? ` style="background:linear-gradient(90deg,transparent ${100 - 100 * v / barCols[i]}%,var(--bar) 0)"` : ''
-      return `<td class="${typeof v === 'number' ? 'num' : long.has(c) ? 'long' : ''}"${style} title="${typeof v === 'string' && v.length > 60 ? esc(v.slice(0, 2000)) : ''}">${esc(fmtCell(c, v))}</td>`
+      if (typeof v === 'number') {
+        const bar = barCols[i] && v > 0 ? `<span class="b" style="width:calc(${(100 * v / barCols[i]).toFixed(1)}% - 14px)"></span>` : ''
+        return `<td class="num">${bar}<span class="v">${esc(fmtCell(c, v))}</span></td>`
+      }
+      if (typeof v === 'string' && /^(project|cwd|file|path)$/.test(c) && !long.has(c)) return `<td class="path" title="${esc(v)}">${esc(shortPath(v))}</td>`
+      const tip = typeof v === 'string' && (v.length > 60 || (c === 'tool' && v.startsWith('mcp__'))) ? esc(v.slice(0, 2000)) : ''
+      return `<td class="${long.has(c) ? 'long' : ''}"${tip ? ` title="${tip}"` : ''}>${esc(fmtCell(c, v))}</td>`
     }).join('')}</tr>`).join('')}</tbody></table></div>${rows.length > LIMIT ? `<div class="more">Showing ${LIMIT} of ${rows.length} rows · download CSV for all</div>` : P.filter ? `<div class="more">${rows.length} of ${d.rows.length} rows</div>` : ''}`
   el.querySelector('.tbl').scrollTop = top
   el.querySelectorAll('th').forEach(th => th.onclick = () => {
@@ -528,7 +616,7 @@ $('#scrim').onclick = () => maxed && toggleMax(maxed)
 // ---------- tabs ----------
 const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context']], ['Work', ['tools', 'agents', 'projects', 'prompts']], ['Quality', ['health', 'engine']], ['Mods', ['impact', 'savings']], ['Data', ['sql']]]
 const TABS = {
-  live: { label: 'Live', sub: 'right now, pushed as you work', custom: renderLive, live: true, noKpis: true },
+  live: { label: 'Live', sub: 'right now, pushed as you work', custom: renderLive, live: true, noKpis: true, filters: ['profiles'] },
   overview: { label: 'Overview', sub: 'spend, efficiency and where it goes', panels: [
     { title: 'Spend per day by profile', q: 'daily_profile', kind: 'stacked', x: 'day', series: 'profile', y: 'cost', money: true, wide: true },
     { title: 'Where the money goes (token kind)', q: 'cost_kinds', kind: 'doughnut', x: 'kind', y: 'cost', money: true, note: 'Cache reads are the whole context re-read on every request; cache writes are new or changed context.' },
@@ -619,9 +707,9 @@ const TABS = {
     { title: 'Rate limits seen', q: 'mod_rate_limits', kind: 'table' },
     { title: 'Mod events', q: 'mod_events', kind: 'table' },
   ] },
-  impact: { label: 'Mod impact', sub: 'are the mods saving money or costing more?', custom: renderImpact },
-  savings: { label: 'Savings', sub: 'what budget-guard’s levers avoided', custom: renderSavings },
-  sql: { label: 'SQL', sub: 'read-only console on the database', custom: renderSql, noKpis: true, quiet: true },
+  impact: { label: 'Mod impact', sub: 'are the mods saving money or costing more?', custom: renderImpact, noKpis: true, filters: ['period', 'profiles'] },
+  savings: { label: 'Savings', sub: 'what budget-guard’s levers avoided', custom: renderSavings, noKpis: true, filters: [] },
+  sql: { label: 'SQL', sub: 'read-only console on the database', custom: renderSql, noKpis: true, quiet: true, filters: [] },
 }
 const ORDER = GROUPS.flatMap(g => g[1])
 
@@ -631,6 +719,7 @@ function buildNav() {
 }
 function go(t) {
   if (!TABS[t]) return
+  if (t !== state.tab) scrollTo(0, 0)
   state.tab = t; store.set('cu-tab', t)
   history.replaceState(null, '', '#' + t)
   render()
@@ -648,12 +737,16 @@ async function render() {
   const tab = TABS[state.tab]
   document.querySelectorAll('#tabs a').forEach(a => a.classList.toggle('on', a.dataset.t === state.tab))
   $('#title').textContent = tab.label; $('#subtitle').textContent = tab.sub || ''
+  // Only the filters a tab uses are shown.
+  $('.topbar').classList.toggle('nofilters', tab.filters?.length === 0)
+  document.querySelectorAll('.filters > :not(.grow):not(#refresh)').forEach(el => el.style.display = !tab.filters || tab.filters.includes(el.id) ? '' : 'none')
+  if (empty()) return onboard()
   document.title = `${tab.label} · Claude Usage`
   $('#banner').classList.remove('on'); state.stale = false
   const view = $('#view')
   view.innerHTML = tab.note ? `<p class="tabnote">${tab.note}</p>` : ''
   $('#kpis').style.display = tab.noKpis ? 'none' : ''
-  if (!tab.noKpis) $('#kpis').innerHTML = Array(10).fill('<div class="kpi"><div class="skel s" style="height:64px"></div></div>').join('')
+  if (!tab.noKpis) $('#kpis').innerHTML = '<div class="kpi hero"><div class="skel s" style="height:88px"></div></div>' + Array(8).fill('<div class="kpi"><div class="skel s" style="height:88px"></div></div>').join('')
   if (tab.custom) { await refresh(); return }
   if (state.tab === 'overview') view.insertAdjacentHTML('beforeend', '<div class="insights" id="insights"></div>')
   const grid = document.createElement('div'); grid.className = 'grid'; view.appendChild(grid)
@@ -691,18 +784,18 @@ $('#bannerBtn').onclick = () => { $('#banner').classList.remove('on'); refresh()
 function spark(vals, color) {
   const v = vals.filter(x => x != null)
   if (v.length < 2) return ''
-  const max = Math.max(...v), min = Math.min(...v, 0), w = 76, h = 26, n = vals.length
+  const max = Math.max(...v), min = Math.min(...v), w = 120, h = 26, n = vals.length
   const pts = vals.map((x, i) => [i * w / (n - 1), h - 2 - ((x ?? 0) - min) / ((max - min) || 1) * (h - 4)])
   const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('')
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${line}L${w} ${h}L0 ${h}Z" fill="${color}" opacity=".12"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/></svg>`
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${line}L${w} ${h}L0 ${h}Z" fill="${color}" opacity=".1"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`
 }
 function deltaHtml(cur, prev, sense, label) {
-  if (label === 'none') return '<span class="delta" style="color:var(--faint)">no full previous period</span>'
+  if (label === 'none') return '<span class="delta"><span class="vs">no full previous period</span></span>'
   if (cur == null || prev == null || !state.compare) return '<span class="delta">&nbsp;</span>'
   if (!prev) return `<span class="delta">new vs ${esc(label || 'previous')}</span>`
   const d = (cur - prev) / Math.abs(prev), up = d > 0
   const cls = Math.abs(d) < .02 ? '' : `${up ? 'up' : 'down'} ${sense === 0 ? '' : (up === (sense > 0)) ? 'good' : 'bad'}`
-  return `<span class="delta ${cls}">${up ? '▲' : '▼'} ${Math.abs(100 * d).toFixed(Math.abs(d) < .1 ? 1 : 0)}% <span style="color:var(--faint)">vs ${esc(label || 'prev')}</span></span>`
+  return `<span class="delta ${cls}">${up ? '▲' : '▼'} ${Math.abs(100 * d).toFixed(Math.abs(d) < .1 ? 1 : 0)}% <span class="vs">vs ${esc(label || 'prev')}</span></span>`
 }
 let lastKpis = {}
 async function renderKpis(seq) {
@@ -720,8 +813,7 @@ async function renderKpis(seq) {
     if (n > 1 && !pr && state.compare) Object.assign(p, { _none: true })
     const acc = css('--accent'), mut = css('--muted')
     const cards = [
-      ['cost', usd(k.cost), 'spend (list price)', n === 1 ? live?.today.yesterdaySameTime : p.cost, -1, series(r => r.cost), acc, 'hero'],
-      ['cost_per_day', usd(k.cost_per_day), 'per active day', p.cost_per_day, -1, null],
+      ['cost', usd(k.cost), `spend at list price${k.cost_per_day != null && n !== 1 ? ` · ${usd(k.cost_per_day)} per active day` : ''}`, n === 1 ? live?.today.yesterdaySameTime : p.cost, -1, series(r => r.cost), acc, 'hero'],
       ['sessions', big(k.sessions), 'sessions', p.sessions, 0, series(r => r.sessions), mut],
       ['cost_per_session', usd(k.cost_per_session), 'per session', p.cost_per_session, -1, series(r => r.sessions ? r.cost / r.sessions : null), mut],
       ['requests', big(k.requests), 'requests', p.requests, 0, series(r => r.requests), mut],
@@ -734,7 +826,7 @@ async function renderKpis(seq) {
     $('#kpis').innerHTML = cards.map(([key, v, l, prevV, sense, sp, color, cls]) => {
       const curV = key === 'cost' ? k.cost : k[key]
       const bump = lastKpis[key] != null && lastKpis[key] !== curV ? ' bump' : ''
-      return `<div class="kpi ${cls || ''}" title="${esc(l)}"><small>${l}</small><b class="${bump}">${v}</b>${deltaHtml(curV, n === 1 && key !== 'cost' ? null : prevV, sense, p._none ? (key === 'cost' ? 'none' : '') : label)}${sp && dd.length > 1 ? spark(sp, color) : ''}</div>`
+      return `<div class="kpi ${cls || ''}" title="${esc(l)}"><small>${esc(l)}</small><b class="${bump}">${v}</b>${deltaHtml(curV, n === 1 && key !== 'cost' ? null : prevV, sense, p._none ? (key === 'cost' ? 'none' : '') : label)}${(sp && dd.length > 1 && spark(sp, color)) || '<div class="nospark"></div>'}</div>`
     }).join('')
     lastKpis = Object.fromEntries(cards.map(([key]) => [key, k[key]]))
     setTimeout(() => document.querySelectorAll('.kpi b.bump').forEach(b => b.classList.remove('bump')), 900)
@@ -767,8 +859,8 @@ async function insights(seq) {
   if (reqs && single / reqs > .6) out.push(['', `<b>${pct(100 * single / reqs)}</b> of requests made exactly one tool call. Independent reads in parallel would save whole round trips.`])
   if (total) out.push([k.hit_pct > 90 ? 'good' : 'warn', `Cache hit rate <b>${pct(k.hit_pct)}</b>; ${usd(k.subagent_cost)} (${pct(100 * (k.subagent_cost || 0) / total)}) spent inside subagents.`])
   const lsp = asObjs(d.search_vs_lsp).reduce((a, r) => [a[0] + r.lsp, a[1] + r.text_search], [0, 0])
-  if (lsp[1]) out.push([lsp[0] ? 'good' : 'warn', `LSP calls: <b>${lsp[0]}</b> vs ${lsp[1]} grep/rg/find searches.`])
-  el.innerHTML = out.map(([c, t]) => `<div class="insight ${c}">${t}</div>`).join('')
+  if (lsp[1]) out.push([lsp[0] ? 'good' : 'warn', `LSP calls: <b>${big(lsp[0])}</b> vs ${big(lsp[1])} grep/rg/find searches.`])
+  el.innerHTML = out.length ? `<div class="insights-head"><h3>Insights</h3><small>for the selected period and filters</small></div>` + out.map(([c, t]) => `<div class="insight ${c}"><span>${t}</span></div>`).join('') : ''
 }
 
 // ---------- Live ----------
@@ -776,7 +868,7 @@ const seenFeed = new Set()
 async function renderLive(view, { live, seq } = {}) {
   let root = $('#liveRoot')
   if (!root) {
-    view.insertAdjacentHTML('beforeend', `<div id="liveRoot"><div class="kpis" id="liveKpis">${Array(5).fill('<div class="kpi"><div class="skel s" style="height:64px"></div></div>').join('')}</div><div class="grid" id="liveGrid"></div></div>`)
+    view.insertAdjacentHTML('beforeend', `<div id="liveRoot"><div class="kpis flat" id="liveKpis"><div class="kpi hero"><div class="skel s" style="height:88px"></div></div>${Array(4).fill('<div class="kpi"><div class="skel s" style="height:88px"></div></div>').join('')}</div><div class="grid" id="liveGrid"></div></div>`)
     root = $('#liveRoot')
     const g = $('#liveGrid')
     const specs = [
@@ -795,11 +887,11 @@ async function renderLive(view, { live, seq } = {}) {
   const t = L.today, h = L.lastHour, m = L.month
   const liveDelta = (cur, prev, label) => deltaHtml(cur, prev, -1, label)
   $('#liveKpis').innerHTML = [
-    `<div class="kpi hero"><small>today</small><b>${usd(t.cost)}</b>${liveDelta(t.cost, t.yesterdaySameTime, `yesterday by now (${usd(t.yesterdaySameTime)})`)}</div>`,
-    `<div class="kpi"><small>last 60 minutes</small><b>${usd(h.cost)}<span style="font-size:13px;color:var(--muted);font-weight:500">/h</span></b><span class="delta">${big(h.requests)} requests</span></div>`,
-    `<div class="kpi"><small>month to date</small><b>${usd(m.mtd)}</b><span class="delta">${m.projected ? `on pace for ${usd(m.projected)}` : '&nbsp;'}</span><div class="meter"><i style="width:${Math.min(100, m.elapsedPct)}%"></i></div></div>`,
-    `<div class="kpi"><small>active sessions</small><b>${L.active.rows.length}</b><span class="delta">${t.sessions} today</span></div>`,
-    `<div class="kpi"><small>requests today</small><b>${big(t.requests)}</b><span class="delta">${t.requests ? usd(t.cost / t.requests) + ' each' : '&nbsp;'}</span></div>`,
+    `<div class="kpi hero"><small>spent today</small><b>${usd(t.cost)}</b>${liveDelta(t.cost, t.yesterdaySameTime, 'yesterday by now').replace('<span class="delta', `<span title="yesterday by this time: ${usd(t.yesterdaySameTime)}" class="delta`)}<div class="nospark"></div></div>`,
+    `<div class="kpi"><small>last 60 minutes</small><b>${usd(h.cost)}<span class="unit">/h</span></b><span class="delta">${big(h.requests)} requests</span><div class="nospark"></div></div>`,
+    `<div class="kpi"><small>month to date</small><b>${usd(m.mtd)}</b><span class="delta">${m.projected ? `on pace for ${usd(m.projected)}` : '&nbsp;'}</span><div class="nospark"></div><div class="meter" title="${m.elapsedPct}% of the month"><i style="width:${Math.min(100, m.elapsedPct)}%"></i></div></div>`,
+    `<div class="kpi"><small>active sessions</small><b>${L.active.rows.length}</b><span class="delta">${t.sessions} today</span><div class="nospark"></div></div>`,
+    `<div class="kpi"><small>requests today</small><b>${big(t.requests)}</b><span class="delta">${t.requests ? usd(t.cost / t.requests) + ' each' : '&nbsp;'}</span><div class="nospark"></div></div>`,
   ].join('')
   $('#liveBadge') && ($('#liveBadge').textContent = L.active.rows.length ? L.active.rows.length : '')
   // Per-minute series with the empty minutes filled in, labelled in local time.
@@ -814,7 +906,7 @@ async function renderLive(view, { live, seq } = {}) {
   const ctxCell = v => { if (v == null) return '<td></td>'; const cap = v > 200000 ? 1000000 : 200000, w = Math.min(100, 100 * v / cap); return `<td><span class="gauge"><span class="meter"><i class="${v > 250000 ? 'hot' : v > 150000 ? 'warm' : ''}" style="width:${w}%"></i></span>${big(v)}</span></td>` }
   const agoCell = v => `<td class="num" data-ts="${esc(v)}">${ago(v)}</td>`
   fill(P.active, L.active, { hide: ['last_ts'], cell: (c, v, r) => c === 'context' ? ctxCell(v) : c === 'model' ? `<td>${esc(shortModel(v))}</td>` : c === 'title' ? `<td class="long">${esc(v || '')}</td>` : null,
-    heads: { cost_last_hour: 'last hour' }, long: ['title'] })
+    heads: { cost_last_hour: 'last hour', session_id: 'session' }, long: ['title'] })
   if (P.active.data.rows.length) {
     // last seen column at the end, rendered from last_ts
     const d = P.active.data
@@ -848,8 +940,8 @@ async function renderImpact(view) {
   view.querySelector('.skel').remove()
   const cls = { saving: 'good', costing: 'bad', collecting: '', unclear: 'warn' }
   const sign = v => v == null ? '–' : (v > 0 ? '+' : '') + (100 * v).toFixed(0) + '%'
-  view.insertAdjacentHTML('beforeend', `<div class="insights">${r.mods.map(m => `<div class="insight ${cls[m.verdict[0]]}"><b>${esc(m.mod)}</b>: ${esc(m.verdict[1])}${m.costs.length || m.savings.length ? ` · ledger net <b>${usd(m.net)}</b>` : ''}</div>`).join('')}
-    <div class="insight good"><b>usage-analytics</b>: ${esc(r.observer.note)}</div></div>`)
+  view.insertAdjacentHTML('beforeend', `<div class="insights"><div class="insights-head"><h3>Verdicts</h3><small>active vs holdout sessions</small></div>${r.mods.map(m => `<div class="insight ${cls[m.verdict[0]]}"><span><b>${esc(m.mod)}</b>: ${esc(m.verdict[1])}${m.costs.length || m.savings.length ? ` · ledger net <b>${usd(m.net)}</b>` : ''}</span></div>`).join('')}
+    <div class="insight good"><span><b>usage-analytics</b>: ${esc(r.observer.note)}</span></div></div>`)
   for (const m of r.mods) {
     view.insertAdjacentHTML('beforeend', `<h2 class="sec">${esc(m.mod)} <small>holdout share ${m.holdoutShare == null ? '?' : (100 * m.holdoutShare).toFixed(0) + '%'}</small></h2>`)
     const grid = document.createElement('div'); grid.className = 'grid'; view.appendChild(grid)
@@ -859,9 +951,10 @@ async function renderImpact(view) {
     add({ title: 'Ledger: saved vs own cost (active sessions)', kind: 'table' }, { cols: ['', 'item', 'usd', 'times'], rows: [...m.savings.map(x => ['+', ...x]), ...m.costs.map(x => ['−', ...x])] })
     if (m.compliance.length) add({ title: 'Nudges followed (vs would-have-been in holdout)', kind: 'table' }, { cols: ['nudge', 'arm', 'followed', 'total', 'followed_pct'], rows: m.compliance })
     add({ title: 'Actions', kind: 'table' }, { cols: ['kind', 'arm', 'n'], rows: m.actions })
-    if (m.warnings.length) view.insertAdjacentHTML('beforeend', `<div class="insights" style="margin-top:12px">${m.warnings.map(w => `<div class="insight warn">${esc(w)}</div>`).join('')}</div>`)
+    if (m.warnings.length) view.insertAdjacentHTML('beforeend', `<div class="insights" style="margin-top:14px">${m.warnings.map(w => `<div class="insight warn"><span>${esc(w)}</span></div>`).join('')}</div>`)
   }
-  const grid = document.createElement('div'); grid.className = 'grid'; grid.style.marginTop = '14px'; view.appendChild(grid)
+  view.insertAdjacentHTML('beforeend', '<h2 class="sec">All mods</h2>')
+  const grid = document.createElement('div'); grid.className = 'grid'; view.appendChild(grid)
   const agg = {}, daily = { cols: ['day', 'mod', 'n'], rows: [] }
   asObjs(r.daily).forEach(o => agg[o.day + '|' + o.mod] = (agg[o.day + '|' + o.mod] || 0) + o.n)
   Object.entries(agg).forEach(([k, n]) => daily.rows.push([...k.split('|'), n]))
@@ -905,7 +998,8 @@ function renderSql(view) {
     if (!r.ok) { $('#sqlOut').innerHTML = `<div class="err">${esc(j.error)}</div>`; return }
     $('#sqlInfo').textContent = `${j.rows.length} rows · ${Math.round(performance.now() - t)} ms`
     P.data = j; P.sort = { col: -1, asc: false }
-    drawTable(P, { long: j.cols })
+    // Raw column names here; only columns holding long text wrap.
+    drawTable(P, { heads: Object.fromEntries(j.cols.map(c => [c, c])), long: j.cols.filter((c, i) => j.rows.some(r => typeof r[i] === 'string' && r[i].length > 60)) })
   }
   $('#sqlRun').onclick = run
   $('#sqlCsv').onclick = () => P.data && csv('query', P.data)
@@ -950,10 +1044,25 @@ $('#drawer').onclick = e => { if (e.target.id === 'drawer') closeDrawer() }
 // ---------- status, meta, filters ----------
 function status() {
   const m = state.meta
-  $('#status').textContent = m ? `${m.range[0]} → ${m.range[1]} · ingested ${m.lastIngest ? ago(m.lastIngest) : 'never'} · ${big(m.modEvents)} mod events` : ''
+  $('#status').textContent = !m ? '' : m.range?.[0] ? `${m.range[0]} → ${m.range[1]} · ingested ${m.lastIngest ? ago(m.lastIngest) : 'never'}` : `ingested ${m.lastIngest ? ago(m.lastIngest) : 'never'}`
+  $('#status').title = m ? `${big(m.modEvents)} mod events · server ${m.version || ''}` : ''
+}
+const empty = () => state.meta && !state.meta.range?.[0]
+/** First run: nothing ingested yet (or still importing). */
+function onboard() {
+  teardown()
+  $('.topbar').classList.add('nofilters')
+  $('#kpis').style.display = 'none'
+  const p = state.meta.progress, importing = p && p.running
+  $('#view').innerHTML = `<div class="onboard"><div class="logo">C</div><h2>${importing ? 'Importing your Claude Code history…' : 'No usage recorded yet'}</h2>
+    <p>${importing ? 'The bar above fills as past transcripts are read. Charts appear as soon as there is data.' : 'Requests show up here as soon as a Claude Code session with usage-analytics runs, and past sessions are imported from the transcripts on disk.'}</p>
+    ${importing ? '' : `<ol><li>Run <code>/analytics setup</code> in Claude Code to choose profiles and when the dashboard runs.</li><li>Or import now: <button class="btn" id="obIngest">Import transcripts</button></li></ol>`}</div>`
+  const b = $('#obIngest'); if (b) b.onclick = ingestNow
+  status()
 }
 async function loadMeta() {
   state.meta = await (await fetch('/api/meta')).json()
+  showProgress(state.meta.progress)
   state.meta.profiles.forEach(colorFor)
   $('#profiles').innerHTML = state.meta.profiles.map(p => `<span class="chip ${state.profiles.has(p) ? 'on' : ''}" data-p="${esc(p)}"><i style="background:${colorFor(p)}"></i>${esc(p.replace(/^claude-/, ''))}</span>`).join('')
   $('#profiles').querySelectorAll('.chip').forEach(c => c.onclick = () => {
@@ -969,6 +1078,16 @@ function buildPeriod() {
   $('#period').querySelectorAll('button').forEach(b => b.onclick = () => setDays(b.dataset.d))
 }
 function setDays(v) { state.days = v; store.set('cu-days', v); buildPeriod(); render() }
+function showProgress(p) {
+  const el = $('#progress')
+  if (state.meta) { const was = !!state.meta.progress?.running; state.meta.progress = p; if (empty() && was !== !!p?.running && TABS[state.tab]) onboard() }
+  if (!p || !p.running || !p.total) { if (el.classList.contains('on') && p && !p.running) { el.classList.remove('on'); toast(`Import finished: ${big(p.requests || 0)} requests`); loadMeta().then(render) } else el.classList.remove('on'); return }
+  el.classList.add('on')
+  const pc = Math.min(100, 100 * (p.done || 0) / p.total)
+  $('#progressTitle').textContent = p.backfill ? 'Importing your Claude Code history' : 'Ingesting new transcripts'
+  $('#progressText').textContent = `${big(p.done || 0)} of ${big(p.total)} files · ${big(p.requests || 0)} requests · ${Math.floor(pc)}%`
+  $('#progressBar').style.width = pc.toFixed(1) + '%'
+}
 function cycleTheme() {
   const order = ['system', 'light', 'dark'], cur = store.get('cu-theme', 'system'), next = order[(order.indexOf(cur) + 1) % 3]
   store.set('cu-theme', next); applyTheme(); toast(`Theme: ${next}`); render()
@@ -982,11 +1101,12 @@ let toastT
 function toast(text) { const t = $('#toast'); t.textContent = text; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2200) }
 async function ingestNow() {
   $('#ingest').disabled = true; toast('Ingesting…')
+  if (empty()) { state.meta.progress = { running: true, total: 1, done: 0 }; onboard() }
   try {
     const r = await (await fetch('/api/ingest', { method: 'POST' })).json()
     toast(`Ingested in ${r.seconds}s`)
   } finally { $('#ingest').disabled = false }
-  await loadMeta(); refresh()
+  await loadMeta(); render()
 }
 
 // ---------- live updates (server-sent events) ----------
@@ -999,7 +1119,10 @@ function scheduleLive() {
   liveTimer = setTimeout(async () => {
     lastLive = Date.now()
     if (maxed || $('#palette').classList.contains('open')) { scheduleLive(); return }
+    const wasEmpty = empty()
     await loadMeta().catch(() => {})
+    if (wasEmpty && !empty()) return render()
+    if (empty()) return
     refresh({ live: true })
   }, wait)
 }
@@ -1009,6 +1132,13 @@ function connectLive() {
   es.addEventListener('hello', () => { liveUi('on', 'Live'); state.lastUpdate = null })
   es.addEventListener('update', e => {
     state.lastUpdate = Date.now()
+    let info = {}; try { info = JSON.parse(e.data || '{}') } catch {}
+    if (info.reason === 'backfill') {
+      // Progress ticks often: move the bar, and redraw the view at most every 8s while it runs.
+      showProgress(info.progress)
+      if (info.progress?.running && Date.now() - (state.lastBackfillDraw || 0) < 8000) return
+      state.lastBackfillDraw = Date.now()
+    }
     const l = $('#live'); l.classList.remove('flash'); void l.offsetWidth; l.classList.add('flash')
     scheduleLive()
   })
@@ -1069,13 +1199,14 @@ buildNav(); buildPeriod(); applyTheme()
 $('#compare').checked = state.compare
 $('#compare').onchange = () => { state.compare = $('#compare').checked; store.set('cu-compare', state.compare ? '1' : '0'); renderKpis(state.seq) }
 $('#model').onchange = render
-$('#refresh').onclick = () => loadMeta().then(render)
+$('#refresh').onclick = () => { const b = $('#refresh'); b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin'); loadMeta().then(render) }
 $('#theme').onclick = cycleTheme
 $('#ingest').onclick = ingestNow
 let pt; $('#project').oninput = () => { clearTimeout(pt); pt = setTimeout(render, 400) }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (store.get('cu-theme', 'system') === 'system') render() })
 if (!TABS[state.tab]) state.tab = 'overview'
 loadMeta().then(render).catch(e => { $('#status').innerHTML = `<span class="err">${esc(e.message)}</span>` })
+requestAnimationFrame(() => requestAnimationFrame(() => document.body.classList.remove('preload')))
 connectLive()
 </script>
 </body>

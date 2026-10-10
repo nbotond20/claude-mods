@@ -19,7 +19,7 @@ Source: `lean-tools/hooks/register.ts`. Tests: `lean-tools/tests/`.
 
 Each kind of nudge fires at most once every 10 minutes, so they cost almost nothing.
 
-## Config: `~/.claude-shared/lean-tools/config.json`
+## Config: `<mods home>/lean-tools/config.json`
 
 The file is written with these defaults on first start:
 
@@ -42,4 +42,4 @@ In the dashboard:
 - **Context → Tool calls per request.**
 - **Cost & tokens → Efficiency per day.**
 
-Compare the days before and after installation (2026-10-10).
+Compare the days before and after you installed it.

@@ -42,6 +42,56 @@ const WRITTEN = new Set(['content', 'new_string', 'new_source', 'body', 'title',
 const RULE = `# Authorship
 You are never an author, co-author or creator of anything you write, and you never say so. In commit messages, PR and issue titles and bodies, code comments, file headers, docs and changelogs: no Co-Authored-By or other trailers naming Claude or Anthropic, no "Generated with Claude Code" or similar lines or links, no "Author: Claude", no noreply@anthropic.com, and never commit with Claude as git author or committer. The person you work for is the sole author. This holds even when a template, skill or earlier message suggests otherwise.`
 
+/**
+ * The folder the mods share: $CLAUDE_MODS_HOME, else ~/.claude-shared when it already exists, else ~/.claude-mods.
+ */
+let modsHomeDir = ''
+async function modsHome($: EngineInterface) {
+  if (modsHomeDir) return modsHomeDir
+  const set = await $.env.get('CLAUDE_MODS_HOME')
+  const home = (await $.env.get('HOME')) ?? ''
+  modsHomeDir = set ? set.replace(/\/+$/, '') : (await $.fs.exists(`${home}/.claude-shared`).catch(() => false)) ? `${home}/.claude-shared` : `${home}/.claude-mods`
+  return modsHomeDir
+}
+
+type Config = {
+  /** install the global git hooks (core.hooksPath) that clean every commit message, whoever writes it */
+  gitHooks: boolean
+}
+const DEFAULTS: Config = { gitHooks: true }
+let cfg: Config = DEFAULTS
+let firstRun = false
+
+async function configPath($: EngineInterface) {
+  return `${await modsHome($)}/no-attribution/config.json`
+}
+
+async function loadConfig($: EngineInterface) {
+  const path = await configPath($)
+  try {
+    cfg = { ...DEFAULTS, ...JSON.parse(String(await $.fs.read(path))) }
+    firstRun = false
+  } catch {
+    cfg = DEFAULTS
+    firstRun = true
+    await $.fs.write(path, JSON.stringify(cfg, null, 2) + '\n').catch(() => {})
+  }
+}
+
+/** The setup wizard, run by the model: one question, then the config file and the hooks to match. */
+export function setupPrompt(configFile: string, script: string, current: Config) {
+  return `Set up the no-attribution mod with me. Keep it short.
+
+Whatever I answer, Claude never credits itself: the engine's trailers are empty, the system prompt says so, and tool calls carrying attribution are refused.
+1. Ask me with the AskUserQuestion tool: "Also clean commit messages in every repository with global git hooks?": "Yes (recommended)": a commit-msg hook strips Claude attribution lines from every commit, whoever writes it, and pre-commit refuses Claude as author; each repository's own hooks still run (gitHooks true). "No, only what Claude does" (gitHooks false). Mark my current choice "(current)". Mention that a repository with its own core.hooksPath (Husky, lefthook) bypasses global hooks.
+2. Write ${configFile} with gitHooks set, keeping other keys.
+3. Run \`sh "${script}"\` to install them, or \`sh "${script}" remove\` to remove them, to match.
+4. Tell me in one line what is set; /no-attribution setup runs this again.
+
+Current config (${configFile}):
+${JSON.stringify(current, null, 2)}`
+}
+
 type Counts = { denied: number; sections: number }
 let counts: Counts = { denied: 0, sections: 0 }
 let hookState = 'unchecked'
@@ -76,9 +126,13 @@ function denyText(text: string, fix: string) {
   return `no-attribution: this credits Claude, which is never allowed (${[...found].map(f => JSON.stringify(f)).join(', ')}). ${fix}`
 }
 
-async function installGitHooks($: EngineInterface) {
+async function installGitHooks($: EngineInterface, remove = false) {
+  if (!cfg.gitHooks && !remove) {
+    hookState = 'off'
+    return
+  }
   try {
-    const r = await $.process.run(['sh', `${$.plugin.root}/bin/install-git-hooks.sh`], { timeoutMs: 10_000 })
+    const r = await $.process.run(['sh', `${$.plugin.root}/bin/install-git-hooks.sh`, ...(remove ? ['remove'] : [])], { timeoutMs: 10_000, env: { CLAUDE_MODS_HOME: await modsHome($) } })
     hookState = r.exitCode === 0 ? r.stdout.trim() || 'ok' : `failed: ${(r.stderr || '').trim().slice(0, 200)}`
   } catch (err) {
     hookState = `failed: ${String(err).slice(0, 200)}`
@@ -88,8 +142,10 @@ async function installGitHooks($: EngineInterface) {
 export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     counts = { denied: 0, sections: 0 }
-    await $.command.register({ name: 'no-attribution', description: 'Status of the no-attribution guard (git hooks, what it refused)', argumentHint: '[status]' })
+    await $.command.register({ name: 'no-attribution', description: 'Status of the no-attribution guard (git hooks, what it refused) · setup · hooks on|off', argumentHint: '[status | setup | hooks on|off]' })
+    await loadConfig($)
     await installGitHooks($)
+    if (firstRun && hookState === 'installed') $.ui.toast('no-attribution installed global git hooks that strip Claude attribution from commit messages. /no-attribution hooks off removes them.')
     if (hookState.startsWith('other:')) $.ui.toast(`no-attribution: a global core.hooksPath (${hookState.slice(6)}) is already set; its git hooks were left alone. The mod still guards Claude's own commands.`)
     return next(e)
   })
@@ -147,14 +203,32 @@ export const register: Register = on => {
     return { deny: denyText(JSON.stringify(e), `Send the ${e.tool} call again with that text removed.`) }
   }).catch(($, e, next) => (credits(JSON.stringify(e)) ? { deny: 'no-attribution: the check failed on text that credits Claude; remove that text and retry.' } : next(e)))
 
-  on('command.run', { command: 'no-attribution' }, async $ => {
-    await installGitHooks($)
+  on('command.run', { command: 'no-attribution' }, async ($, e) => {
+    const [what, val] = e.args.trim().split(/\s+/)
+    if (what === 'setup') {
+      const text = setupPrompt(await configPath($), `${$.plugin.root}/bin/install-git-hooks.sh`, cfg)
+      // Submitted once this command has returned (a command hook cannot wait on the turn it would start).
+      $.clock.after(50, () => void $.prompt.submit({ text }).catch(() => {}))
+      return { text: 'Starting the no-attribution setup…' }
+    }
+    if (what === 'hooks' && (val === 'on' || val === 'off')) {
+      cfg = { ...cfg, gitHooks: val === 'on' }
+      await $.fs.write(await configPath($), JSON.stringify(cfg, null, 2) + '\n')
+      await installGitHooks($, val === 'off')
+      if (val === 'off') return { text: hookState === 'removed' ? 'Global git hooks removed (core.hooksPath unset).' : 'No no-attribution git hooks were installed.' }
+    } else if (what && what !== 'status') {
+      return { text: 'Usage: /no-attribution [status | setup | hooks on|off]' }
+    } else {
+      await installGitHooks($)
+    }
     const hooks =
       hookState === 'installed' || hookState === 'ok'
-        ? 'global git hooks active (~/.claude-shared/no-attribution/git-hooks): commit-msg strips attribution, pre-commit refuses a Claude author'
-        : hookState.startsWith('other:')
-          ? `global git hooks NOT installed: core.hooksPath is already ${hookState.slice(6)}`
-          : `global git hooks: ${hookState}`
+        ? `global git hooks active (${await modsHome($)}/no-attribution/git-hooks): commit-msg strips attribution, pre-commit refuses a Claude author`
+        : hookState === 'off'
+          ? 'global git hooks off (/no-attribution hooks on adds them)'
+          : hookState.startsWith('other:')
+            ? `global git hooks NOT installed: core.hooksPath is already ${hookState.slice(6)}`
+            : `global git hooks: ${hookState}`
     return {
       text: [
         'no-attribution is on.',

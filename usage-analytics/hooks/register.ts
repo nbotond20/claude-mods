@@ -1,10 +1,23 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 /**
+ * The folder the mods share (data, configs, event log): $CLAUDE_MODS_HOME, else ~/.claude-shared when it
+ * already exists (installs from before the variable), else ~/.claude-mods. Profiles are told apart inside it.
+ */
+let modsHomeDir = ''
+async function modsHome($: EngineInterface) {
+  if (modsHomeDir) return modsHomeDir
+  const set = await $.env.get('CLAUDE_MODS_HOME')
+  const home = (await $.env.get('HOME')) ?? ''
+  modsHomeDir = set ? set.replace(/\/+$/, '') : (await $.fs.exists(`${home}/.claude-shared`).catch(() => false)) ? `${home}/.claude-shared` : `${home}/.claude-mods`
+  return modsHomeDir
+}
+
+/**
  * usage-analytics: a raw event log of everything that costs tokens, from every profile, in one place.
  *
  * Every session appends immutable JSONL chunks under
- *   ~/.claude-shared/usage-analytics/events/<profile>/<YYYY-MM-DD>/<session>.<stamp>.jsonl
+ *   <mods home>/usage-analytics/events/<profile>/<YYYY-MM-DD>/<session>.<stamp>.jsonl
  * so concurrent sessions never write the same file. `bin/claude-usage` folds these chunks and the
  * profiles' own transcripts into one SQLite database for analysis.
  */
@@ -28,8 +41,12 @@ type Config = {
   ingestEveryMin: number
   /** record OpenTelemetry collector records the engine emits */
   captureOtel: boolean
-  /** keep the dashboard server (one per machine, 127.0.0.1:8787) running: started at session start and by /analytics */
+  /** keep the dashboard server (one per machine, on 127.0.0.1) running: started at session start and by /analytics */
   dashboard: boolean
+  /** the dashboard's port on 127.0.0.1 */
+  port: number
+  /** Claude config dirs to read transcripts from; empty: every ~/.claude* dir plus each one a session ran from */
+  profileDirs: string[]
 }
 
 const DEFAULTS: Config = {
@@ -42,6 +59,8 @@ const DEFAULTS: Config = {
   ingestEveryMin: 30,
   captureOtel: true,
   dashboard: true,
+  port: 8787,
+  profileDirs: [],
 }
 
 const FLUSH_MS = 15_000
@@ -140,14 +159,18 @@ async function flush($: EngineInterface) {
   }
 }
 
+/** Reads the config, and writes it back complete so new keys show up for editing. True on the very first run. */
 async function loadConfig($: EngineInterface) {
   const path = `${root}/config.json`
+  let saved: Partial<Config> | null = null
   try {
-    cfg = { ...DEFAULTS, ...JSON.parse(String(await $.fs.read(path))) }
+    saved = JSON.parse(String(await $.fs.read(path)))
   } catch {
-    cfg = DEFAULTS
-    await $.fs.write(path, JSON.stringify(DEFAULTS, null, 2) + '\n').catch(() => {})
+    // first run, or an unreadable file: the defaults
   }
+  cfg = { ...DEFAULTS, ...saved }
+  if (!saved || Object.keys(DEFAULTS).some(k => !(k in saved!))) await $.fs.write(path, JSON.stringify(cfg, null, 2) + '\n').catch(() => {})
+  return saved === null
 }
 
 async function git($: EngineInterface, cwd: string, args: string[]) {
@@ -160,17 +183,45 @@ async function git($: EngineInterface, cwd: string, args: string[]) {
 }
 
 const TABS = ['live', 'overview', 'cost', 'context', 'tools', 'agents', 'projects', 'prompts', 'health', 'engine', 'impact', 'savings', 'sql']
-const cli = (pluginRoot: string, args: string[]) => ['python3', `${pluginRoot}/bin/claude-usage`, ...args]
+/** Runs the claude-usage CLI (Python 3, standard library only) on the same data folder as this mod. */
+async function cli($: EngineInterface, args: string[], timeoutMs: number) {
+  return $.process.run(['python3', `${$.plugin.root}/bin/claude-usage`, ...args], { timeoutMs, env: { CLAUDE_USAGE_DIR: root } })
+}
 
+let pythonWarned = false
 /** Starts the dashboard server unless one already answers (the CLI holds a machine-wide lock while deciding). */
 async function ensureDashboard($: EngineInterface) {
   if (!cfg.dashboard) return
-  await $.process.run(cli($.plugin.root, ['serve', '--daemon', '--quiet']), { timeoutMs: 15_000 }).catch(() => {})
+  const r = await cli($, ['serve', '--daemon', '--quiet'], 15_000).catch((err: unknown) => ({ exitCode: -1, stdout: '', stderr: String(err) }))
+  if (r.exitCode !== 0 && !pythonWarned && /python3|ENOENT|not found|No such file/i.test(r.stderr)) {
+    pythonWarned = true
+    $.ui.toast('usage-analytics needs python3 on PATH for its database and dashboard; events are still recorded.')
+  }
 }
 
 async function ingest($: EngineInterface) {
   await flush($).catch(() => {})
-  await $.process.run(cli($.plugin.root, ['ingest', '--quiet']), { timeoutMs: 600_000 }).catch(() => {})
+  await cli($, ['ingest', '--quiet'], 600_000).catch(() => {})
+}
+
+/** The setup wizard: hands the model what to detect, what to ask and where to write the answers. */
+export function setupPrompt(pluginRoot: string, dataDir: string, current: Config) {
+  const run = `CLAUDE_USAGE_DIR="${dataDir}" python3 "${pluginRoot}/bin/claude-usage"`
+  return `Set up the usage-analytics mod with me. Keep it short.
+
+1. Run \`${run} setup --json\` to see what was detected: the Claude config dirs (profiles) with history on disk, what is already in the database, and the dashboard.
+2. Ask me with the AskUserQuestion tool, in a single call (recommended option first, my current choice marked "(current)"):
+   - "Which profiles should be tracked?" (multiSelect): one option per detected config dir, with its transcript count and how far back it goes. Choosing all of them means auto (an empty "profileDirs", which also picks up new profiles); otherwise "profileDirs" lists the chosen dirs.
+   - "Keep the text of your prompts?": "Full text (searchable in the dashboard)" (storePrompts true) or "Length only" (false).
+   - "When should the dashboard run?": "With Claude Code (recommended)": started by any session and by /analytics, one per machine (dashboard true); "Also from login": the same, plus a login item (dashboard true and autostart on); "Only when I run /dashboard" (dashboard false).
+   Only if the setup output shows the dashboard port is taken by something else, also ask for another port.
+3. Write ${dataDir}/config.json: the current config below with only those keys changed (profileDirs, storePrompts, dashboard, port). Keep every other key.
+4. Run \`${run} autostart on\` or \`${run} autostart off\` to match the dashboard answer.
+5. Unless the answer was "Only when I run /dashboard", run \`${run} serve --daemon --open\`. It imports every transcript already on disk in the background (backfill); the dashboard shows the progress.
+6. Tell me in two or three lines what is set, and that /analytics setup runs this again.
+
+Current config (${dataDir}/config.json):
+${JSON.stringify(current, null, 2)}`
 }
 
 /** What a tool call was about, pulled out of its input so the database can group by it. */
@@ -243,15 +294,19 @@ export const register: Register = on => {
     const r = await next(e)
     const home = (await $.env.get('HOME')) ?? ''
     const configDir = await $.env.get('CLAUDE_CONFIG_DIR')
-    profile = (configDir ?? `${home}/.claude`).replace(/\/+$/, '').split('/').pop()!.replace(/^\./, '')
-    root = `${home}/.claude-shared/usage-analytics`
+    profile = (configDir || `${home}/.claude`).replace(/\/+$/, '').split('/').pop()!.replace(/^\./, '')
+    root = `${await modsHome($)}/usage-analytics`
     sid = null
-    await loadConfig($)
+    const firstRun = await loadConfig($)
+    // So `claude-usage` finds this profile's transcripts wherever its config dir is, and the login item the newest CLI.
+    await $.fs.write(`${root}/profiles/${profile}.json`, JSON.stringify({ profile, configDir: configDir || `${home}/.claude` }) + '\n').catch(() => {})
+    await $.fs.write(`${root}/cli-path`, `${$.plugin.root}/bin/claude-usage`).catch(() => {})
+    if (firstRun) $.ui.toast('usage-analytics is recording, and importing your past sessions. /dashboard opens it; /analytics setup tailors it.')
 
     await $.command.register({
       name: 'analytics',
-      description: 'Usage analytics across all profiles: dashboard [tab] · impact (are the mods saving money?) · status · ingest · stop · or a report: overview|daily|models|projects|tools|agents|sessions|context|hours [--days N] [--profile P]',
-      argumentHint: '[dashboard [tab] | impact | status | ingest | stop | <report>] [--days N] [--profile P]',
+      description: 'Usage analytics across all profiles: setup · dashboard [tab] · impact (are the mods saving money?) · status · ingest · stop · or a report: overview|daily|models|projects|tools|agents|sessions|context|hours [--days N] [--profile P]',
+      argumentHint: '[setup | dashboard [tab] | impact | status | ingest | stop | <report>] [--days N] [--profile P]',
     })
     await $.command.register({
       name: 'dashboard',
@@ -509,12 +564,18 @@ export const register: Register = on => {
 /** Runs one /analytics subcommand through the claude-usage CLI and returns its output. */
 async function analytics($: EngineInterface, sub: string | undefined, rest: string[]) {
   const run = async (args: string[], timeoutMs: number) => {
-    const r = await $.process.run(cli($.plugin.root, args), { timeoutMs })
+    const r = await cli($, args, timeoutMs)
     return (r.stdout || r.stderr || `claude-usage exited ${r.exitCode}`).trimEnd()
   }
-  if (sub !== 'dashboard' && sub !== 'stop') void ensureDashboard($)
+  if (sub !== 'dashboard' && sub !== 'stop' && sub !== 'setup') void ensureDashboard($)
   switch (sub) {
-    // The dashboard runs detached on 127.0.0.1:8787 and outlives the session; a second call just opens it.
+    case 'setup': {
+      // Submitted once this command has returned (a command hook cannot wait on the turn it would start).
+      const text = setupPrompt($.plugin.root, root, cfg)
+      $.clock.after(50, () => void $.prompt.submit({ text }).catch(() => {}))
+      return 'Starting the usage-analytics setup…'
+    }
+    // The dashboard runs detached on 127.0.0.1 and outlives the session; a second call just opens it.
     case 'dashboard': {
       const tab = rest[0] && !rest[0].startsWith('-') ? rest.shift()! : undefined
       if (tab && !TABS.includes(tab)) return `Unknown tab "${tab}". Tabs: ${TABS.join(', ')}`

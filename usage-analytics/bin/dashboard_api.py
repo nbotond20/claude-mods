@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from paths import mods_home
+
 # Which filter columns each source has.
 COLS = {
     'requests': ('day', 'profile', 'project', 'model'),
@@ -305,7 +307,7 @@ def session_detail(con, sid):
 
 def savings():
     """budget-guard's per-session ledgers: what each lever saved, by day and profile."""
-    d = os.path.expanduser('~/.claude-shared/budget-guard/sessions')
+    d = os.path.join(mods_home(), 'budget-guard', 'sessions')
     by_cat, by_day, by_prof = {}, {}, {}
     for f in os.listdir(d) if os.path.isdir(d) else []:
         if not f.endswith('.json'):
@@ -336,6 +338,12 @@ class Live:
         self.cond = threading.Condition()
         self.version = 0
         self.info = {}
+        self.progress = None  # the running backfill: {running, total, done, requests, startedAt, finishedAt}
+
+    def report(self, state):
+        """A long ingest's progress: kept for /api/ping and pushed to the pages as an update."""
+        self.progress = state
+        self.bump(reason='backfill', progress=state)
 
     def bump(self, **info):
         with self.cond:
@@ -384,7 +392,7 @@ def watch(db, ingest, live, live_dir, fallback_s=20, trailer_s=3):
             trailer_at = None
         last_ingest = now
         try:
-            ingest()
+            ingest(live.report)
         except Exception as ex:
             print('ingest failed:', ex, file=sys.stderr)
             continue
@@ -434,19 +442,20 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
                     return self.send(200, open(html_path, 'rb').read(), 'text/html; charset=utf-8')
                 if u.path == '/api/ping':
                     return self.send(200, {'ok': True, 'app': 'claude-usage', 'pid': os.getpid(), 'version': version,
-                                           'live': live.version if live else None})
+                                           'live': live.version if live else None, 'progress': live.progress if live else None})
                 if u.path == '/api/stream':
                     return self.stream()
                 con = ro()
                 try:
                     if u.path == '/api/meta':
-                        return self.send(200, meta(con))
+                        return self.send(200, {**meta(con), 'version': version, 'progress': live.progress if live else None})
                     if u.path == '/api/cost_kinds':
                         return self.send(200, cost_kinds(con, qs, coster))
                     if u.path == '/api/session':
                         return self.send(200, session_detail(con, (qs.get('id') or [''])[0]))
                     if u.path == '/api/live':
-                        return self.send(200, {**live_view(con, qs), 'version': live.version if live else 0})
+                        return self.send(200, {**live_view(con, qs), 'version': live.version if live else 0,
+                                               'progress': live.progress if live else None})
                     if u.path == '/api/savings':
                         return self.send(200, savings())
                     if u.path == '/api/impact':
@@ -511,7 +520,7 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
                         con.close()
                 if u.path == '/api/ingest':
                     t0 = time.time()
-                    ingest()
+                    ingest(live.report if live else None)
                     if live:
                         live.bump(reason='manual')
                     return self.send(200, {'ok': True, 'seconds': round(time.time() - t0, 1)})

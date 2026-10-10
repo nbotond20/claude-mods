@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """claude-usage: one SQLite database of every Claude Code profile's token spend.
 
-Sources, all folded incrementally into ~/.claude-shared/usage-analytics/usage.db:
-  * every profile's transcripts   ~/.claude*/projects/**/*.jsonl  (incl. subagents/)
-  * the usage-analytics mod's log ~/.claude-shared/usage-analytics/events/**.jsonl
+Sources, all folded incrementally into <data>/usage.db (`claude-usage path` prints <data>):
+  * every profile's transcripts   ~/.claude*/projects/**/*.jsonl  (incl. subagents/), plus any config
+                                  dir a session ran from (registered by the mod) or listed in `profileDirs`
+  * the usage-analytics mod's log <data>/events/**.jsonl
+<data> is $CLAUDE_USAGE_DIR, else <mods home>/usage-analytics, where <mods home> is $CLAUDE_MODS_HOME,
+else ~/.claude-shared if it exists, else ~/.claude-mods.
 
 Commands:
   ingest  [--quiet] [--full]          fold new data in (lock-protected, incremental by byte offset)
@@ -14,15 +17,20 @@ Commands:
   schema                              list tables and views
   export  TABLE|VIEW [--format csv|jsonl] [--out FILE]
   reprice                             recompute cost_usd after editing pricing.json
-  serve   [--port 8787] [--daemon] [--open]   the web dashboard (127.0.0.1 only)
+  serve   [--port N] [--daemon] [--open]      the web dashboard (127.0.0.1 only; port from config, default 8787)
+  setup   [--json]                    what was detected (profiles, history, python, dashboard) for the setup wizard
+  autostart on|off|status             also keep the dashboard running from login (launchd on macOS, systemd on Linux)
   path                                print the data directory
 Only the Python standard library is used.
 """
 import argparse, csv, fcntl, glob, json, os, re, sqlite3, sys, time
 from datetime import datetime, timedelta, timezone
 
-HOME = os.path.expanduser('~')
-DATA = os.environ.get('CLAUDE_USAGE_DIR', os.path.join(HOME, '.claude-shared', 'usage-analytics'))
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import paths  # noqa: E402
+
+HOME = paths.HOME
+DATA = paths.DATA
 DB = os.path.join(DATA, 'usage.db')
 PRICING = os.path.join(DATA, 'pricing.json')
 SCHEMA_VERSION = 1
@@ -511,8 +519,7 @@ class Ingest:
                 cfg = json.load(f)
         except Exception:
             pass
-        roots = cfg.get('profileDirs') or sorted(p for p in glob.glob(os.path.join(HOME, '.claude*')) if os.path.isdir(os.path.join(p, 'projects')))
-        for root in roots:
+        for root in profile_dirs(cfg):
             profile = os.path.basename(root.rstrip('/')).lstrip('.')
             proj = os.path.join(root, 'projects')
             for dirpath, dirs, files in os.walk(proj):
@@ -527,7 +534,7 @@ class Ingest:
         for p in glob.glob(os.path.join(DATA, 'events', '*', '*', '*.jsonl')):
             yield 'events', p.split(os.sep)[-3], p, None
 
-    def run(self, full=False):
+    def run(self, full=False, progress=None):
         con = self.con
         if full:
             for t in ('files', 'requests', 'tool_uses', 'prompts', 'attachments', 'system_events', 'sessions', 'agents', 'events'):
@@ -547,6 +554,11 @@ class Ingest:
         # main transcripts before subagents so sessions are attributed to the top-level file
         todo.sort(key=lambda x: (x[0] != 'transcript', x[3] is not None, x[2]))
         t0, last_commit = time.time(), time.time()
+        # A long ingest (the first one backfills every transcript on disk) reports how far it got.
+        backfill = sum(1 for x in todo if x[5] == 0) > 50
+        state = {'running': True, 'backfill': backfill, 'total': len(todo), 'done': 0, 'requests': 0, 'startedAt': int(t0)}
+        if backfill:
+            write_progress(state, progress)
         for i, (kind, profile, path, aid, st, start) in enumerate(todo):
             try:
                 if kind == 'agent_meta':
@@ -568,9 +580,47 @@ class Ingest:
                 con.commit()
                 last_commit = time.time()
                 log(self.args, f'  {i + 1}/{len(todo)} files, {self.n["requests"]} request rows, {time.time() - t0:.0f}s')
+                if backfill:
+                    write_progress({**state, 'done': i + 1, 'requests': self.n['requests']}, progress)
         con.commit()
+        if backfill:
+            write_progress({**state, 'running': False, 'done': len(todo), 'requests': self.n['requests'], 'finishedAt': int(time.time())}, progress)
         log(self.args, f'ingested {self.n["files"]} files: {self.n["requests"]} request rows, {self.n["tools"]} tool calls, '
                        f'{self.n["prompts"]} prompts, {self.n["events"]} mod events in {time.time() - t0:.1f}s')
+
+
+def profile_dirs(cfg=None):
+    """Claude config dirs to read transcripts from: `profileDirs` from config when set, else every ~/.claude*
+    dir with a projects/ folder plus each dir a session with the mod ran from (<data>/profiles/*.json)."""
+    cfg = paths.config() if cfg is None else cfg
+    if cfg.get('profileDirs'):
+        return [os.path.expanduser(p) for p in cfg['profileDirs']]
+    dirs = set(p for p in glob.glob(os.path.join(HOME, '.claude*')) if os.path.isdir(os.path.join(p, 'projects')))
+    for f in glob.glob(os.path.join(DATA, 'profiles', '*.json')):
+        try:
+            d = json.load(open(f)).get('configDir')
+        except (OSError, ValueError):
+            continue
+        if d and os.path.isdir(os.path.join(d, 'projects')):
+            dirs.add(d)
+    seen, out = set(), []
+    for d in sorted(dirs):
+        r = os.path.realpath(d)
+        if r not in seen:
+            seen.add(r)
+            out.append(d)
+    return out
+
+
+def write_progress(state, progress=None):
+    try:
+        with open(os.path.join(DATA, 'ingest-progress.json.tmp'), 'w') as f:
+            json.dump(state, f)
+        os.replace(os.path.join(DATA, 'ingest-progress.json.tmp'), os.path.join(DATA, 'ingest-progress.json'))
+    except OSError:
+        pass
+    if progress:
+        progress(state)
 
 
 def cmd_ingest(args):
@@ -581,7 +631,7 @@ def cmd_ingest(args):
     except BlockingIOError:
         return 0  # another ingest is running; this one's data will be picked up by it or the next
     con = connect()
-    Ingest(con, args).run(full=getattr(args, 'full', False))
+    Ingest(con, args).run(full=getattr(args, 'full', False), progress=getattr(args, 'progress', None))
     con.close()
     return 0
 
@@ -774,13 +824,13 @@ def cmd_serve(args):
     connect().close()  # make sure the database and views exist
     html = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'dashboard', 'index.html')
 
-    def ingest():
-        cmd_ingest(argparse.Namespace(quiet=True, full=False))
+    def ingest(progress=None):
+        cmd_ingest(argparse.Namespace(quiet=True, full=False, progress=progress))
     try:
         version = json.load(open(os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), '.claude-plugin', 'plugin.json')))['version']
     except (OSError, ValueError, KeyError):
         version = None
-    return dashboard_api.serve(DB, html, make_coster(), ingest, port=args.port, open_browser=args.open,
+    return dashboard_api.serve(DB, html, make_coster(), ingest, port=args.port or paths.port(), open_browser=args.open,
                                daemon=args.daemon, tab=args.tab, log_path=os.path.join(DATA, 'dashboard.log'),
                                live_dir=os.path.join(DATA, 'live'), version=version, quiet=args.quiet)
 
@@ -834,7 +884,7 @@ def cmd_scrub(args):
 def cmd_stop(args):
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import dashboard_api
-    print('dashboard stopped' if dashboard_api.stop(args.port) else 'dashboard was not running')
+    print('dashboard stopped' if dashboard_api.stop(args.port or paths.port()) else 'dashboard was not running')
     return 0
 
 
@@ -852,8 +902,165 @@ def cmd_status(args):
     print(f'ingested:  {ing or "?"}')
     for mod, n, last_ in con.execute("SELECT json_extract(data,'$.mod'), COUNT(*), MAX(day) FROM events WHERE ev = 'mod' GROUP BY 1"):
         print(f'mod events: {mod:<14} {n:>7,}  last {last_}')
-    p = dashboard_api.ping(8787)
-    print('dashboard: ' + (f'running on http://127.0.0.1:8787/ (version {p.get("version") or "?"}, pid {p.get("pid")}, live updates on)' if p else 'stopped (claude-usage serve --daemon --open)'))
+    port = paths.port()
+    p = dashboard_api.ping(port)
+    print('dashboard: ' + (f'running on http://127.0.0.1:{port}/ (version {p.get("version") or "?"}, pid {p.get("pid")}, live updates on)' if p else 'stopped (claude-usage serve --daemon --open)'))
+    print(f'autostart: {autostart_state()}')
+    return 0
+
+
+def cmd_setup(args):
+    """Everything the setup wizard asks about, detected: which profiles have history, how far back, and what runs."""
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import dashboard_api
+    cfg = paths.config()
+    known = {}
+    if os.path.exists(DB):
+        con = connect()
+        known = {r[0]: r[1:] for r in con.execute(
+            "SELECT profile, COUNT(*), MIN(day), MAX(day), ROUND(SUM(cost_usd), 2) FROM requests GROUP BY 1")}
+        con.close()
+    profiles = []
+    for d in sorted(set(profile_dirs({})) | set(profile_dirs(cfg))):
+        files, oldest, size = 0, None, 0
+        for dirpath, _, fns in os.walk(os.path.join(d, 'projects')):
+            for fn in fns:
+                if fn.endswith('.jsonl'):
+                    try:
+                        st = os.stat(os.path.join(dirpath, fn))
+                    except OSError:
+                        continue
+                    files += 1
+                    size += st.st_size
+                    oldest = st.st_mtime if oldest is None else min(oldest, st.st_mtime)
+        name = os.path.basename(d.rstrip('/')).lstrip('.')
+        settings = {}
+        try:
+            settings = json.load(open(os.path.join(d, 'settings.json')))
+        except (OSError, ValueError):
+            pass
+        k = known.get(name)
+        profiles.append({
+            'profile': name, 'dir': d, 'included': d in profile_dirs(cfg), 'transcripts': files, 'mb': round(size / 1e6, 1),
+            'oldestOnDisk': datetime.fromtimestamp(oldest).date().isoformat() if oldest else None,
+            'cleanupPeriodDays': settings.get('cleanupPeriodDays', 30),
+            'inDatabase': {'requests': k[0], 'from': k[1], 'to': k[2], 'cost': k[3]} if k else None,
+        })
+    port = paths.port()
+    p = dashboard_api.ping(port)
+    out = {
+        'data': DATA, 'modsHome': paths.mods_home(), 'python': sys.version.split()[0], 'config': cfg,
+        'profiles': profiles,
+        'dashboard': {'port': port, 'running': bool(p), 'version': p.get('version') if p else None,
+                      'autostartAtLogin': autostart_state()},
+    }
+    if args.json:
+        print(json.dumps(out, indent=1))
+        return 0
+    print(f'data:      {DATA}')
+    print(f'python:    {out["python"]}')
+    for x in profiles:
+        db = x['inDatabase']
+        print(f'profile:   {x["profile"]:<16} {x["dir"]}  {"included" if x["included"] else "EXCLUDED"}  '
+              f'{x["transcripts"]} transcripts ({x["mb"]} MB) since {x["oldestOnDisk"] or "-"}, kept {x["cleanupPeriodDays"]} days; '
+              + (f'in database {db["requests"]:,} requests {db["from"]} → {db["to"]}' if db else 'not in the database yet'))
+    print(f'dashboard: http://127.0.0.1:{port}/ ' + ('running' if p else 'stopped') + f'; at login: {out["dashboard"]["autostartAtLogin"]}')
+    return 0
+
+
+LABEL = 'dev.claude-mods.usage-dashboard'
+
+
+def _shim():
+    """A stable launcher in the data dir that runs the newest installed copy of this CLI (plugin updates move it)."""
+    path = os.path.join(DATA, 'bin', 'claude-usage')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    me = os.path.realpath(__file__)
+    with open(path, 'w') as f:
+        f.write(f"""#!/bin/sh
+# Written by `claude-usage autostart on`: runs the newest installed claude-usage (the mod updates cli-path).
+cli=$(cat "{DATA}/cli-path" 2>/dev/null)
+[ -x "$cli" ] || cli="{me}"
+exec python3 "$cli" "$@"
+""")
+    os.chmod(path, 0o755)
+    with open(os.path.join(DATA, 'cli-path'), 'w') as f:
+        f.write(me)
+    return path
+
+
+def _unit_paths():
+    if sys.platform == 'darwin':
+        return os.path.join(HOME, 'Library', 'LaunchAgents', f'{LABEL}.plist')
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config'), 'systemd', 'user', 'claude-usage-dashboard.service')
+
+
+def autostart_state():
+    return 'on' if os.path.exists(_unit_paths()) else 'off'
+
+
+def cmd_autostart(args):
+    """`serve --daemon --quiet` at login and every 10 minutes: idempotent, so it only starts one when none runs."""
+    import subprocess
+    unit = _unit_paths()
+    if args.state == 'status':
+        print(autostart_state())
+        return 0
+    if args.state == 'off':
+        if sys.platform == 'darwin':
+            subprocess.run(['launchctl', 'unload', unit], capture_output=True)
+        else:
+            subprocess.run(['systemctl', '--user', 'disable', '--now', 'claude-usage-dashboard.timer'], capture_output=True)
+            timer = unit[:-len('.service')] + '.timer'
+            if os.path.exists(timer):
+                os.remove(timer)
+        if os.path.exists(unit):
+            os.remove(unit)
+        print('autostart off')
+        return 0
+    shim = _shim()
+    os.makedirs(os.path.dirname(unit), exist_ok=True)
+    if sys.platform == 'darwin':
+        with open(unit, 'w') as f:
+            f.write(f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>{LABEL}</string>
+  <key>ProgramArguments</key><array><string>/bin/sh</string><string>{shim}</string><string>serve</string><string>--daemon</string><string>--quiet</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>600</integer>
+  <key>EnvironmentVariables</key><dict><key>CLAUDE_USAGE_DIR</key><string>{DATA}</string><key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string></dict>
+</dict></plist>
+""")
+        subprocess.run(['launchctl', 'unload', unit], capture_output=True)
+        r = subprocess.run(['launchctl', 'load', unit], capture_output=True, text=True)
+    else:
+        with open(unit, 'w') as f:
+            f.write(f"""[Unit]
+Description=claude-usage dashboard (starts one if none runs)
+
+[Service]
+Type=oneshot
+Environment=CLAUDE_USAGE_DIR={DATA}
+ExecStart=/bin/sh {shim} serve --daemon --quiet
+""")
+        with open(unit[:-len('.service')] + '.timer', 'w') as f:
+            f.write("""[Unit]
+Description=keep the claude-usage dashboard running
+
+[Timer]
+OnStartupSec=10
+OnUnitActiveSec=600
+
+[Install]
+WantedBy=timers.target
+""")
+        subprocess.run(['systemctl', '--user', 'daemon-reload'], capture_output=True)
+        r = subprocess.run(['systemctl', '--user', 'enable', '--now', 'claude-usage-dashboard.timer'], capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f'autostart written to {unit}, but loading it failed: {(r.stderr or r.stdout).strip()}')
+        return 1
+    print(f'autostart on: the dashboard starts at login and is checked every 10 minutes ({unit})')
     return 0
 
 
@@ -887,17 +1094,21 @@ def main(argv=None):
     e.add_argument('--out'); e.set_defaults(fn=cmd_export)
     sub.add_parser('reprice').set_defaults(fn=cmd_reprice)
     v = sub.add_parser('serve', help='the dashboard on http://127.0.0.1:PORT/')
-    v.add_argument('--port', type=int, default=8787); v.add_argument('--open', action='store_true')
+    v.add_argument('--port', type=int, help='default: "port" in config.json, else 8787'); v.add_argument('--open', action='store_true')
     v.add_argument('--daemon', action='store_true', help='run in the background'); v.set_defaults(fn=cmd_serve)
     v.add_argument('--tab', help='open the dashboard on this tab, e.g. impact')
     v.add_argument('--quiet', action='store_true', help='print nothing (used by the mod to start it at session start)')
     m = sub.add_parser('impact', help='is each mod saving money or costing more (holdout comparison + ledger)')
     m.add_argument('--days', type=int, default=30, help='0 = all time'); m.add_argument('--profile')
     m.add_argument('--json', action='store_true'); m.add_argument('--ingest', action='store_true'); m.set_defaults(fn=cmd_impact)
-    st = sub.add_parser('stop', help='stop the background dashboard'); st.add_argument('--port', type=int, default=8787)
+    st = sub.add_parser('stop', help='stop the background dashboard'); st.add_argument('--port', type=int)
     st.set_defaults(fn=cmd_stop)
     sub.add_parser('scrub', help='blank secrets in rows already in the database').set_defaults(fn=cmd_scrub)
     sub.add_parser('status', help='data, ingest and dashboard status').set_defaults(fn=cmd_status)
+    su = sub.add_parser('setup', help='what the setup wizard needs to know: profiles, history on disk, dashboard')
+    su.add_argument('--json', action='store_true'); su.set_defaults(fn=cmd_setup)
+    au = sub.add_parser('autostart', help='keep the dashboard running from login too')
+    au.add_argument('state', choices=['on', 'off', 'status']); au.set_defaults(fn=cmd_autostart)
     sub.add_parser('path').set_defaults(fn=lambda a: print(DATA) or 0)
     args = ap.parse_args(argv)
     if not getattr(args, 'fn', None):

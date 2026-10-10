@@ -8,11 +8,11 @@ Each layer works on its own; together they cover each other's gaps.
 
 | # | Where | What |
 | --- | --- | --- |
-| 1 | Settings (`~/.claude-shared/settings.json`) | `attribution: { commit: "", pr: "", sessionUrl: false }`, `includeCoAuthoredBy: false` |
+| 1 | Your `settings.json` (optional, recommended) | `attribution: { commit: "", pr: "", sessionUrl: false }`, `includeCoAuthoredBy: false` |
 | 2 | `attribution.text` | The engine's commit trailer and PR footer are returned empty, whatever the settings say. |
 | 3 | `prompt.compose` / `skill.prompt` | Attribution lines are removed from the engine's system prompt sections and skill prompts. The section `no-attribution:rule` tells the model it is never an author, anywhere. |
 | 4 | `tool.call` | Anything carrying attribution is **refused, never rewritten**, so what runs is exactly what you approved. The refusal names the offending text and, for Bash, gives the clean command, so the model sends it again. This covers Bash commands (heredoc commit messages, `-m`, `--body`, `--trailer`, …), the new text in Write/Edit/NotebookEdit (Edit's `old_string` may still contain it, which allows removing attribution), and every string argument of MCP tools such as a GitHub PR tool. **Also refused:** committing as Claude (`--author`, `GIT_AUTHOR_*`/`GIT_COMMITTER_*`, `git config user.name/email`) and skipping hooks (`--no-verify`, `git commit -n`, `-c core.hooksPath`, `git config core.hooksPath`). If the check itself fails, the call is refused, not let through. |
-| 5 | Global git hooks (`git config --global core.hooksPath ~/.claude-shared/no-attribution/git-hooks`) | **`commit-msg`** strips attribution lines from every commit message, whoever wrote it. **`pre-commit`** refuses a Claude/Anthropic author or committer. Every hook then runs the repository's own `.git/hooks/<name>`, so existing repo hooks keep working. |
+| 5 | Global git hooks, when `gitHooks` is on (`git config --global core.hooksPath <mods home>/no-attribution/git-hooks`) | **`commit-msg`** strips attribution lines from every commit message, whoever wrote it. **`pre-commit`** refuses a Claude/Anthropic author or committer. Every hook then runs the repository's own `.git/hooks/<name>`, so existing repo hooks keep working. |
 
 What counts as attribution:
 - trailers (`Co-Authored-By`, `Signed-off-by`, `Assisted-by`, `Generated-by`, `Written-by`, `Author`, …) that name Claude or Anthropic;
@@ -29,6 +29,10 @@ Ordinary mentions are kept, such as "Use the Claude API for summaries".
 - whether the git hooks are active.
 
 It also reinstalls the hooks if they are missing. They are installed again at every session start.
+
+## Config: `<mods home>/no-attribution/config.json`
+
+`{ "gitHooks": true }`. `/no-attribution setup` asks; `/no-attribution hooks off` removes the global hooks (only if they are this mod's) and keeps them off.
 
 ## Limits and notes
 

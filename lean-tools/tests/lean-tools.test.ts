@@ -14,7 +14,7 @@ function engine(on: any, seen: { command?: string }, holdout = 0) {
   on('clock.now', () => ({ value: (now += 1000) }))
   on('fs.read', ($: any, e: any) => (files.has(e.path) ? { value: files.get(e.path) } : { deny: 'ENOENT' }))
   on('fs.write', ($: any, e: any) => (files.set(e.path, e.text), { value: undefined }))
-  on('fs.exists', ($: any, e: any) => ({ value: files.has(e.path) }))
+  on('fs.exists', ($: any, e: any) => ({ value: [...files.keys()].some(f => f === e.path || f.startsWith(`${e.path}/`)) }))
   on('tool.call', ($: any, e: any) => {
     if (e.tool === 'Bash') seen.command = e.command
     const text = e.tool === 'Read' ? 'y'.repeat(e.limit ? 100 : 50_000) : 'ok'

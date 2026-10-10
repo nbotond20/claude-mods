@@ -1,6 +1,6 @@
 # budget-guard
 
-Keeps spend and context visible and pushes work to cheaper models where that is safe. Source: `budget-guard/hooks/register.tsx`. The state contract is in `budget-guard/types/index.d.ts`. Version 0.8.0.
+Keeps spend and context visible and pushes work to cheaper models where that is safe. Source: `budget-guard/hooks/register.tsx`. The state contract is in `budget-guard/types/index.d.ts`.
 
 ## What you see
 
@@ -64,10 +64,10 @@ Limits set with `/budget` last for the current session. Budgets persist.
 
 | Path | Contents |
 | --- | --- |
-| `~/.claude-shared/budget-guard/budgets.json` | `{ profiles: { "claude-infi": { daily: 25, monthly: 500 } } }` |
-| `~/.claude-shared/budget-guard/sessions/<profile>-<session>.json` | Per-session ledger: day, profile, spend, and savings by category. The dashboard's Savings tab reads these. |
-| `~/.claude-shared/budget-guard/config.json` | `{ "holdout": 0.1 }`: the holdout share (see /budget holdout). |
-| `~/.claude-shared/budget-guard/key-baselines.json` | LiteLLM key spend at period starts, used for the daily and monthly gauges on gateway profiles. |
+| `<mods home>/budget-guard/budgets.json` | `{ profiles: { "<profile>": { daily: 25, monthly: 500 } } }` (set by `/budget setup` or `/budget daily|monthly`) |
+| `<mods home>/budget-guard/sessions/<profile>-<session>.json` | Per-session ledger: day, profile, spend, and savings by category. The dashboard's Savings tab reads these. |
+| `<mods home>/budget-guard/config.json` | What every session starts from: `holdout` (0.1, see /budget holdout), `limits` (overrides of the defaults below, e.g. `{ "route": false, "block": 400000 }`), `opusMaxEffort` (`medium`; `max` means no cap), `litellm` (`auto`: poll LiteLLM key spend on a gateway and stop if it has no `/key/info`; `on`; `off`). `/budget setup` writes it. |
+| `<mods home>/budget-guard/key-baselines.json` | LiteLLM key spend at period starts, used for the daily and monthly gauges on gateway profiles. |
 | `$TMPDIR/budget-guard.*` | Full logs of trimmed commands. |
 
 ## Is it worth it?

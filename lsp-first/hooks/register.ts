@@ -1,13 +1,26 @@
 import type { EngineInterface, Register } from 'claude-code'
 
 /**
+ * The folder the mods share (data, configs, event log): $CLAUDE_MODS_HOME, else ~/.claude-shared when it
+ * already exists (installs from before the variable), else ~/.claude-mods. Profiles are told apart inside it.
+ */
+let modsHomeDir = ''
+async function modsHome($: EngineInterface) {
+  if (modsHomeDir) return modsHomeDir
+  const set = await $.env.get('CLAUDE_MODS_HOME')
+  const home = (await $.env.get('HOME')) ?? ''
+  modsHomeDir = set ? set.replace(/\/+$/, '') : (await $.fs.exists(`${home}/.claude-shared`).catch(() => false)) ? `${home}/.claude-shared` : `${home}/.claude-mods`
+  return modsHomeDir
+}
+
+/**
  * lsp-first: make the model reach for the TypeScript language server.
  *
  * 1. The LSP tool's schema sits in the prompt's tool list instead of behind ToolSearch,
  *    so using it costs no extra round trip.
  * 2. A short system prompt section says when it beats Grep/Read.
  * 3. A Grep for a bare identifier over TS/JS gets a one-line reminder, at most every 10 minutes.
- * Config: ~/.claude-shared/lsp-first/config.json. Command: /lsp-first.
+ * Config: <mods home>/lsp-first/config.json. Command: /lsp-first.
  *
  * Impact tracking (below): symbol searches, LSP calls, nudges and whether LSP followed are logged to
  * the usage-analytics store; a `holdout` share of sessions runs passive for comparison.
@@ -18,7 +31,7 @@ import type { EngineInterface, Register } from 'claude-code'
  * Mod-impact tracking (the same block in budget-guard, lean-tools and lsp-first; $ cannot cross files).
  *
  * Every action a mod takes is logged as `{ ev: 'mod', mod, kind, arm, ... }` into the usage-analytics
- * event store (~/.claude-shared/usage-analytics/events/<profile>/<day>/), which `claude-usage ingest`
+ * event store (<mods home>/usage-analytics/events/<profile>/<day>/), which `claude-usage ingest`
  * folds into the `events` table (view `v_mod_actions`).
  *
  * The holdout: each session is put in arm `holdout` with probability `holdout`, from a hash of the mod
@@ -60,8 +73,8 @@ async function trackStart($: EngineInterface, name: string, holdout: number, set
   mod = name
   const home = (await $.env.get('HOME')) ?? ''
   const configDir = await $.env.get('CLAUDE_CONFIG_DIR')
-  profile = (configDir ?? `${home}/.claude`).replace(/\/+$/, '').split('/').pop()!.replace(/^\./, '')
-  root = `${home}/.claude-shared/usage-analytics`
+  profile = (configDir || `${home}/.claude`).replace(/\/+$/, '').split('/').pop()!.replace(/^\./, '')
+  root = `${await modsHome($)}/usage-analytics`
   sid = await $.session.id().catch(() => 'unknown')
   arm = bucket(`${mod}:${sid}`) < holdout ? 'holdout' : 'on'
   await trackLog($, 'arm', { holdout, version: $.plugin.root.split('/').pop(), settings })
@@ -118,6 +131,7 @@ const TSJS = /\.(c|m)?(t|j)sx?\b|\b(ts|tsx|js|jsx)\b/
 
 let cfg: Config = DEFAULTS
 let started = false
+let firstRun = false
 let lastNudge = 0
 let window: { total: number; used: boolean } | null = null
 const logged = new Set<string>()
@@ -126,7 +140,23 @@ const counts = { searches: 0, lspCalls: 0, nudges: 0 }
 const active = () => cfg.enabled && trackOn()
 
 async function configPath($: EngineInterface) {
-  return `${(await $.env.get('HOME')) ?? ''}/.claude-shared/lsp-first/config.json`
+  return `${await modsHome($)}/lsp-first/config.json`
+}
+
+/** The setup wizard, run by the model: what to ask, then the config file to write. */
+export function setupPrompt(configFile: string, current: unknown) {
+  return `Set up the lsp-first mod with me. Keep it short.
+
+0. First check whether you have an LSP tool (it may be deferred behind ToolSearch). If there is none, tell me this mod needs a language server plugin, for TypeScript/JavaScript: \`/plugin install typescript-lsp@claude-plugins-official\` (it needs \`typescript-language-server\` on PATH: \`npm i -g typescript-language-server typescript\`), then carry on.
+1. Ask me with the AskUserQuestion tool, in a single call (recommended option first, my current choice marked "(current)"):
+   - "Steer code navigation to the language server?": "Yes (recommended)": the LSP tool is loaded up front and a short guide says when it beats grep (enabled true, upfront true, guide true); "Off" (enabled false).
+   - "Remind the model when it greps for a TS/JS symbol?": "Yes, at most every 10 minutes (recommended)" (nudges true); "No" (nudges false).
+   - "Measure whether it saves money?": "Yes, 20% of sessions run without it for comparison (recommended)" (holdout 0.2); "No, always on" (holdout 0).
+2. Write ${configFile}: the current config below with only the keys those answers set. Keep every other key.
+3. Tell me in one or two lines what is set. It applies from the next session; /lsp-first setup runs this again.
+
+Current config (${configFile}):
+${JSON.stringify(current, null, 2)}`
 }
 
 /** Config and arm, once per session; tool.describe can run before session.start. */
@@ -138,6 +168,7 @@ async function ensureStarted($: EngineInterface) {
     cfg = { ...DEFAULTS, ...JSON.parse(String(await $.fs.read(path))) }
   } catch {
     cfg = DEFAULTS
+    firstRun = true
   }
   await $.fs.write(path, JSON.stringify(cfg, null, 2) + '\n').catch(() => {})
   await trackStart($, 'lsp-first', cfg.enabled ? cfg.holdout : 0, cfg)
@@ -196,9 +227,10 @@ export const register: Register = on => {
     $.clock.every(30_000, () => void trackFlush($).catch(() => {}))
     await $.command.register({
       name: 'lsp-first',
-      description: 'lsp-first: status | on | off | holdout <0-1> | nudges on|off | guide on|off',
-      argumentHint: '[status | on | off | holdout <0-1> | nudges|guide on|off]',
+      description: 'lsp-first: status | setup | on | off | holdout <0-1> | nudges on|off | guide on|off',
+      argumentHint: '[status | setup | on | off | holdout <0-1> | nudges|guide on|off]',
     })
+    if (firstRun) $.ui.toast('lsp-first is on: code navigation goes through the language server when one is installed. /lsp-first setup tailors it.')
     return r
   })
 
@@ -266,11 +298,17 @@ export const register: Register = on => {
       cfg = { ...cfg, ...patch }
       await $.fs.write(await configPath($), JSON.stringify(cfg, null, 2) + '\n')
     }
+    if (what === 'setup') {
+      const text = setupPrompt(await configPath($), cfg)
+      // Submitted once this command has returned (a command hook cannot wait on the turn it would start).
+      $.clock.after(50, () => void $.prompt.submit({ text }).catch(() => {}))
+      return { text: 'Starting the lsp-first setup…' }
+    }
     if (what === 'on' || what === 'off') await save({ enabled: what === 'on' })
     else if (what === 'holdout' && Number(val) >= 0 && Number(val) <= 1) await save({ holdout: Number(val) })
     else if (what === 'nudges') await save({ nudges: val === 'on' })
     else if (what === 'guide') await save({ guide: val === 'on' })
-    else if (what && what !== 'status') return { text: 'Usage: /lsp-first [status | on | off | holdout <0-1> | nudges|guide on|off]' }
+    else if (what && what !== 'status') return { text: 'Usage: /lsp-first [status | setup | on | off | holdout <0-1> | nudges|guide on|off]' }
     return {
       text: [
         `lsp-first ${cfg.enabled ? 'on' : 'OFF'} · this session: ${trackOn() ? 'active' : 'holdout (passive, for comparison)'} · holdout share ${Math.round(cfg.holdout * 100)}%`,
