@@ -1,0 +1,11 @@
+#!/bin/sh
+# no-attribution: never commit with Claude/Anthropic as author or committer, then run the repo's own hook.
+for v in GIT_AUTHOR_IDENT GIT_COMMITTER_IDENT; do
+  id=$(git var $v 2>/dev/null)
+  case "$(printf '%s' "$id" | tr '[:upper:]' '[:lower:]')" in
+    *claude*|*anthropic*) echo "no-attribution: refusing to commit as \"${id% * *}\"" >&2; exit 1 ;;
+  esac
+done
+h="$(git rev-parse --git-common-dir 2>/dev/null)/hooks/pre-commit"
+[ -x "$h" ] && exec "$h" "$@"
+exit 0

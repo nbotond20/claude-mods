@@ -1,0 +1,5 @@
+#!/bin/sh
+# no-attribution: global hooks dir; run the repository's own hook of the same name.
+h="$(git rev-parse --git-common-dir 2>/dev/null)/hooks/$(basename "$0")"
+[ -x "$h" ] && exec "$h" "$@"
+exit 0

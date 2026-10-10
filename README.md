@@ -8,6 +8,7 @@ Local Claude Code mods (function-hook plugins), shipped as the marketplace **`my
 | **usage-analytics** | Logs every session to a central store, folds all profiles' transcripts into one SQLite DB, `/analytics` reports and a web dashboard | [docs/usage-analytics.md](docs/usage-analytics.md) |
 | **lean-tools** | Caps huge shell output, bounds `git log`, nudges toward batched calls / ranged reads / Edit over Write | [docs/lean-tools.md](docs/lean-tools.md) |
 | **lsp-first** | Keeps the LSP tool loaded and tells the model to use it for TS/JS symbols instead of grep + Read | [docs/lsp-first.md](docs/lsp-first.md) |
+| **no-attribution** | Claude never credits itself: engine attribution off, prompt rule, tool calls cleaned/denied, global git `commit-msg`/`pre-commit` hooks, `/no-attribution` | [docs/no-attribution.md](docs/no-attribution.md) |
 | *Mod impact* | Each mod leaves a random holdout of sessions untouched; `/analytics impact` says whether it saves money or costs more | [docs/mod-impact.md](docs/mod-impact.md) |
 | *typescript-lsp* (official plugin) | The LSP server lsp-first relies on | [docs/lsp-first.md](docs/lsp-first.md#the-typescript-language-server) |
 
@@ -21,14 +22,15 @@ Local Claude Code mods (function-hook plugins), shipped as the marketplace **`my
 | `/analytics [report] [--days N] [--profile P]` | terminal reports |
 | `/budget …` · `/budget holdout <0-1>` | budget-guard (see its doc) |
 | `/lean [status\|on\|off\|holdout <0-1>\|cap\|nudges\|guide on\|off]` | lean-tools |
+| `/no-attribution` | no-attribution status: git hooks, what was cleaned/denied |
 | `/lsp-first [status\|on\|off\|holdout <0-1>\|nudges\|guide on\|off]` | lsp-first |
 
 ## Where everything lives
 
 ```
 ~/Desktop/projects/claude-mods/          ← this repo (the source; marketplace "my-mods")
-  .claude-plugin/marketplace.json        ← lists the four mods
-  budget-guard/  usage-analytics/  lean-tools/  lsp-first/
+  .claude-plugin/marketplace.json        ← lists the mods
+  budget-guard/  usage-analytics/  lean-tools/  lsp-first/  no-attribution/
     .claude-plugin/plugin.json           ← name, version, description
     hooks/hooks.json → hooks/register.ts(x)   ← the mod
     tests/*.test.ts                      ← `claude plugin test <dir>`
@@ -40,6 +42,7 @@ Local Claude Code mods (function-hook plugins), shipped as the marketplace **`my
   usage-analytics/ config.json, events/<profile>/<day>/*.jsonl, usage.db, pricing.json, dashboard.log
   lean-tools/     config.json
   lsp-first/      config.json
+  no-attribution/ git-hooks/              ← global core.hooksPath (commit-msg, pre-commit + chaining shims)
 
 ~/.claude-<profile>/plugins/cache/my-mods/<mod>/<version>/   ← installed copies (what actually runs)
 ~/.local/bin/typescript-language-server, tsc                 ← for the LSP
@@ -50,8 +53,9 @@ Local Claude Code mods (function-hook plugins), shipped as the marketplace **`my
 - `model: claude-opus-5-5`, `effortLevel: high` with an Opus override to `medium` (budget-guard also caps Opus at medium).
 - `env.CLAUDE_CODE_SUBAGENT_MODEL = claude-sonnet-5-5`: subagents default to Sonnet.
 - `autoCompactWindow: 200000` (was 250000). About 40–50% of spend came from requests over 200k context, so auto-compaction now fires earlier. budget-guard reads this value and shows `compacts ~200k` in its band.
-- `enabledPlugins`: `budget-guard@my-mods`, `usage-analytics@my-mods`, `lean-tools@my-mods`, `lsp-first@my-mods`, `typescript-lsp@claude-plugins-official`.
+- `enabledPlugins`: `budget-guard@my-mods`, `usage-analytics@my-mods`, `lean-tools@my-mods`, `lsp-first@my-mods`, `no-attribution@my-mods`, `typescript-lsp@claude-plugins-official`.
 - `outputStyle: Concise`.
+- `attribution: { commit: "", pr: "", sessionUrl: false }`, `includeCoAuthoredBy: false`: no Claude attribution (enforced by no-attribution).
 
 ## Installing and updating
 
@@ -61,7 +65,7 @@ The settings file is shared, but every profile keeps its own plugin cache. Insta
 for p in db infi my; do
   export CLAUDE_CONFIG_DIR=~/.claude-$p
   claude plugin marketplace update my-mods
-  for m in budget-guard usage-analytics lean-tools lsp-first; do
+  for m in budget-guard usage-analytics lean-tools lsp-first no-attribution; do
     claude plugin update $m@my-mods || claude plugin install $m@my-mods
   done
 done

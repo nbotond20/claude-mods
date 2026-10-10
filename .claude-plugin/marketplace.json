@@ -19,6 +19,10 @@
     {
       "name": "lean-tools",
       "source": "./lean-tools"
+    },
+    {
+      "name": "no-attribution",
+      "source": "./no-attribution"
     }
   ]
 }

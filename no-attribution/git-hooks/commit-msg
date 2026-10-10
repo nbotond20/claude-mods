@@ -1,0 +1,11 @@
+#!/bin/sh
+# no-attribution: strip any line crediting Claude/Anthropic from the commit message, then run the repo's own hook.
+perl -0pi -e '
+  s/^[ \t]*(?:co-authored-by|signed-off-by|authored-by|assisted-by|generated-by|written-by|created-by|helped-by|made-with|author)[ \t]*:[^\n]*\b(?:claude|anthropic)\b[^\n]*(?:\n|\z)//gim;
+  s/^[^\n]*\b(?:generated|created|written|made|built|authored|co-authored|produced|drafted)[ \t]+(?:with|by|using)[ \t]+\[?(?:claude|anthropic)\b[^\n]*(?:\n|\z)//gim;
+  s/^[^\n]*noreply\@anthropic\.com[^\n]*(?:\n|\z)//gim;
+  s/\n{3,}/\n\n/g; s/\s+\z/\n/;
+' "$1"
+h="$(git rev-parse --git-common-dir 2>/dev/null)/hooks/commit-msg"
+[ -x "$h" ] && exec "$h" "$@"
+exit 0
