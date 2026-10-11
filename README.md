@@ -63,6 +63,7 @@ A running dashboard server older than the installed mod is replaced at the next 
 | --- | --- |
 | `/dashboard [tab]` | opens the dashboard, e.g. `/dashboard live`, `/dashboard impact`. One server per machine; it is started on demand and updates live as you work. |
 | `/analytics setup` · `status` · `ingest` · `stop` | setup wizard · data status · fold in new data now · stop the dashboard |
+| `/analytics advise` · `advise bg` · `advise apply <id>` · `advise trial <id>` · `advise reproduce <id>` | research how to use Claude cheaper, leaner, faster and more reliably, from your own data, with every claim backed by a re-runnable query; apply a recommendation, or A/B-trial it on a random half of sessions; each one is measured (randomized, controlled, or before/after with a placebo check), graded A–D and gets a verdict (helped, backfired, no effect) that anyone can reproduce |
 | `/analytics impact` | are the mods saving money or costing more |
 | `/analytics [report] [--days N] [--profile P]` | terminal reports |
 | `/budget …` · `/budget setup` | budget-guard (see its doc) |

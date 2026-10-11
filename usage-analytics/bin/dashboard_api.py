@@ -403,6 +403,8 @@ def watch(db, ingest, live, live_dir, fallback_s=20, trailer_s=3):
 
 
 def make_handler(db, html_path, coster, ingest, live=None, version=None):
+    advice = {}   # (live version, days, profiles) -> the advisor's page; it takes seconds to compute
+
     def ro():
         con = sqlite3.connect(f'file:{db}?mode=ro', uri=True, timeout=30)
         con.execute('PRAGMA query_only = 1')
@@ -463,6 +465,19 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
                         days = int((qs.get('days') or ['30'])[0] or 0)
                         profiles = [v for v in (qs.get('profile') or [''])[0].split(',') if v]
                         return self.send(200, impact.impact(con, coster, days=days, profiles=profiles or None))
+                    if u.path == '/api/advisor':
+                        import advisor
+                        days = int((qs.get('days') or ['30'])[0] or 30)
+                        profiles = [v for v in (qs.get('profile') or [''])[0].split(',') if v]
+                        key = (live.version if live else time.time() // 60, days, tuple(profiles))
+                        if key not in advice:
+                            a = advisor.adb(os.path.dirname(db))
+                            try:
+                                advice.clear()
+                                advice[key] = advisor.dashboard(con, a, profiles or None, days)
+                            finally:
+                                a.close()
+                        return self.send(200, advice[key])
                     if u.path == '/api/batch':
                         names = [n for n in (qs.get('q') or [''])[0].split(',') if n in Q]
                         return self.send(200, {n: query(con, n, qs) for n in names})
@@ -517,6 +532,17 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
                         r['rows'] = r['rows'][:5000]
                         return self.send(200, r)
                     finally:
+                        con.close()
+                if u.path == '/api/advisor/status':
+                    import advisor
+                    req = json.loads(body or b'{}')
+                    con, a = ro(), advisor.adb(os.path.dirname(db))
+                    try:
+                        advisor.set_status(con, a, str(req.get('id', '')), str(req.get('status', '')), req.get('note') or None)
+                        advice.clear()
+                        return self.send(200, {'ok': True, 'rec': dict(a.execute('SELECT id, status, verdict FROM recs WHERE id = ?', (req.get('id'),)).fetchone() or {})})
+                    finally:
+                        a.close()
                         con.close()
                 if u.path == '/api/ingest':
                     t0 = time.time()

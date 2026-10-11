@@ -113,7 +113,16 @@ nav a .badge { margin-left: auto; font-size: 10px; color: var(--accent); }
 .kpi .delta .vs { color: var(--faint); }
 .kpi .delta.up.bad, .kpi .delta.down.bad { color: var(--bad); }
 .kpi .delta.up.good, .kpi .delta.down.good { color: var(--good); }
-.kpi svg.spark { display: block; width: 100%; height: 26px; margin-top: auto; padding-top: 8px; overflow: visible; }
+.kpi .sparkw { position: relative; margin-top: auto; border-top: 8px solid transparent; cursor: crosshair; }
+.kpi svg.spark { display: block; width: 100%; height: 26px; overflow: visible; }
+.sparkw .sline, .sparkw .sdot { position: absolute; opacity: 0; pointer-events: none; transition: opacity .1s; }
+.sparkw .sline { top: 0; bottom: 0; width: 1px; margin-left: -.5px; background: var(--faint); }
+.sparkw .sdot { width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--panel); border: 2px solid; box-sizing: border-box; }
+.sparkw.hot .sline { opacity: .7; } .sparkw.hot .sdot { opacity: 1; }
+#tip { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity .08s; background: var(--ink); color: var(--bg); font-size: 11.5px; line-height: 1.45; font-variant-numeric: tabular-nums; padding: 6px 9px; border-radius: 7px; white-space: pre-line; max-width: 280px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+#tip.on { opacity: 1; }
+#tip::first-line { font-weight: 600; }
+.heat div[data-tip]:hover { outline: 2px solid var(--ink); outline-offset: -1px; }
 .kpi .nospark { height: 26px; margin-top: auto; padding-top: 8px; }
 .kpi.hero { grid-column: span 2; }
 .kpi.hero b { font-size: 30px; }
@@ -211,6 +220,114 @@ h2.sec small { color: var(--muted); font-weight: normal; font-size: 12px; }
 .onboard p { color: var(--muted); margin: 0 0 18px; }
 .onboard ol { text-align: left; display: inline-grid; gap: 8px; margin: 0; padding-left: 20px; }
 .onboard code { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
+
+/* ---------- advisor ---------- */
+.recs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); gap: 12px; margin-bottom: 16px; }
+.rec { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12.5px; }
+.rec h4 { margin: 0; font-size: 13.5px; font-weight: 620; line-height: 1.35; }
+.rec .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: 11.5px; }
+.rec .act { background: var(--panel2); border: 1px solid var(--line2); border-radius: 6px; padding: 6px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rec p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+.rec .row { margin: 2px 0 0; }
+.rec .row .btn { font-size: 12px; padding: 3px 9px; }
+.rec { gap: 10px; padding: 14px 16px 12px; }
+.rec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rec-tags { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.rec-id { color: var(--faint); font-size: 11px; flex: none; }
+.rec h4 { font-size: 14.5px; }
+.rec-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 12px; margin-top: -4px; }
+.rec-sub > span:not(.scope) + span:not(.scope)::before { content: "·"; margin-right: 8px; color: var(--faint); }
+.rec-sub .scope { padding: 0 7px; border-radius: 5px; background: var(--panel2); border: 1px solid var(--line2); font-size: 11px; line-height: 18px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); border: 1px solid var(--line2); border-radius: 8px; background: var(--panel2); overflow: hidden; }
+.rstat { padding: 8px 12px; min-width: 0; border-left: 1px solid var(--line2); }
+.rstat:first-child { border-left: 0; }
+.rstat small { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); font-weight: 600; }
+.rstat b { display: block; font-size: 16px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; margin: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rstat span { display: block; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rstat.bad b { color: var(--bad); } .rstat.warn b { color: var(--warn); font-size: 14px; }
+.rfields { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 7px 12px; margin: 0; }
+.rfields:empty { display: none; }
+@media (max-width: 600px) { .rfields, .rchecks { grid-template-columns: minmax(0, 1fr); gap: 2px; } .rfields dd, .rchecks dd { margin-bottom: 6px; } .recs { grid-template-columns: minmax(0, 1fr); } }
+.rfields dt { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; padding-top: 2px; }
+.rfields dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; line-height: 1.5; }
+.rec .act { padding: 5px 9px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.rec .instr { margin: 0; padding: 5px 10px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--panel2)); border-radius: 0 6px 6px 0; white-space: pre-wrap; }
+.rec .hint { display: block; color: var(--faint); font-size: 11px; margin-top: 3px; }
+.rresult { border: 1px solid var(--line2); border-left: 3px solid var(--faint); border-radius: 8px; padding: 10px 12px; display: grid; gap: 6px; }
+.rresult.good { border-left-color: var(--good); background: color-mix(in srgb, var(--good) 4%, var(--panel)); }
+.rresult.bad { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 4%, var(--panel)); }
+.rresult.warn { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 5%, var(--panel)); }
+.rresult.pending { border-left-color: var(--accent); }
+.rresult-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.rresult .verdict { font-weight: 650; font-size: 12.5px; }
+.rresult.good .verdict { color: var(--good); } .rresult.bad .verdict { color: var(--bad); } .rresult.warn .verdict { color: var(--warn); }
+.rresult .method { color: var(--muted); font-size: 11.5px; }
+.rresult-main { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 14px; }
+.rresult-main b { font-size: 22px; font-weight: 680; letter-spacing: -.02em; font-variant-numeric: tabular-nums; min-width: 64px; }
+.rresult-sub, .rresult-note { margin: 0; color: var(--muted); font-size: 12px; }
+.ci { position: relative; height: 14px; }
+.ci .zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--faint); }
+.ci .band { position: absolute; top: 4px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--muted) 45%, transparent); }
+.ci.good .band { background: color-mix(in srgb, var(--good) 55%, transparent); }
+.ci.bad .band { background: color-mix(in srgb, var(--bad) 55%, transparent); }
+.ci .pt { position: absolute; top: 2px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--panel); border: 2px solid var(--ink); }
+.ci-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; margin-top: 1px; }
+.rchecks { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 4px 12px; margin: 2px 0 0; padding-top: 7px; border-top: 1px solid var(--line2); font-size: 12px; }
+.rchecks dt { color: var(--muted); cursor: help; }
+.rchecks dd { margin: 0; font-variant-numeric: tabular-nums; }
+.rchecks small { color: var(--faint); margin-left: 4px; }
+.rchecks .bad { color: var(--bad); }
+.progress { height: 4px; border-radius: 2px; background: var(--line2); overflow: hidden; }
+.progress i { display: block; height: 100%; background: var(--accent); }
+.rdisc { border-top: 1px solid var(--line2); padding-top: 8px; }
+.rresult .rdisc { margin-top: 2px; }
+.rdisc summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 12.5px; user-select: none; }
+.rdisc summary::-webkit-details-marker { display: none; }
+.rdisc summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); transition: transform .15s; margin: 0 3px 0 1px; }
+.rdisc[open] summary::before { transform: rotate(45deg); }
+.rdisc summary small { color: var(--faint); font-weight: 400; font-size: 11.5px; margin-left: auto; }
+.rdisc .count { font-size: 10.5px; font-weight: 600; color: var(--muted); background: var(--panel2); border: 1px solid var(--line2); border-radius: 99px; padding: 0 6px; line-height: 16px; }
+.rec .claim { margin: 10px 0 0; display: grid; gap: 5px; }
+.rec .claim p { color: var(--ink); }
+.rec pre { margin: 0; padding: 7px 9px; background: var(--panel2); border: 1px solid var(--line2); border-radius: 6px; font: 11.5px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; color: var(--muted); }
+.errline { color: var(--bad) !important; font-size: 12px; }
+.minitbl { overflow-x: auto; margin-top: 6px; border: 1px solid var(--line2); border-radius: 6px; }
+table.mini { font-size: 11.5px; width: 100%; }
+table.mini th, table.mini td { padding: 4px 9px; border-bottom: 1px solid var(--line2); white-space: nowrap; }
+table.mini tr:last-child td { border-bottom: 0; }
+table.mini th { position: static; background: var(--panel2); cursor: default; font-size: 11px; }
+table.mini th:first-child, table.mini td:first-child { padding-left: 9px; }
+table.mini th.num, table.mini td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.mini td.good { color: var(--good); } table.mini td.bad { color: var(--bad); }
+.callout { border-radius: 8px; padding: 8px 12px; font-size: 12px; border: 1px solid; }
+.callout.warn { border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 7%, var(--panel)); }
+.callout b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--warn); margin-bottom: 2px; }
+.callout ul { margin: 0; padding-left: 16px; color: var(--ink); }
+.rsources { display: flex; flex-wrap: wrap; gap: 6px; }
+.src { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 11.5px; background: var(--panel); }
+.src a { text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.src a:hover { text-decoration: underline; }
+.src em { font-style: normal; font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; color: var(--good); }
+.rec-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line2); }
+.rec-actions, .rec-copy { display: flex; gap: 6px; flex-wrap: wrap; }
+.rec .btn { font-size: 12px; padding: 4px 11px; height: 28px; }
+.rec .btn.sm { font-size: 11.5px; padding: 3px 8px; height: 26px; color: var(--muted); }
+.btn.ghost { background: transparent; border-color: transparent; }
+.btn.ghost:hover { background: var(--hover); color: var(--ink); }
+.btn.primary:hover { background: color-mix(in srgb, var(--ink) 85%, var(--bg)); }
+.rec .tagv { line-height: 18px; }
+.rec .tagv.st { background: var(--panel2); color: var(--ink); }
+.st-trial .tagv.st { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+.insight a[data-go] { cursor: pointer; color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.insight a[data-go]:hover { text-decoration: underline; }
+.kpi .trendline { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line2); font-size: 10.5px; line-height: 14px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kpi .trendline span { overflow: hidden; text-overflow: ellipsis; }
+.kpi .trendline .good { color: var(--good); } .kpi .trendline .bad { color: var(--bad); }
+.tagv { display: inline-block; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.tagv.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.tagv.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
+.tagv.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
+.advkpis { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
 
 /* ---------- drawer, palette, toast ---------- */
 .drawer { position: fixed; inset: 0; background: rgba(0,0,0,.38); z-index: 40; opacity: 0; pointer-events: none; transition: opacity .2s; }
@@ -329,6 +446,9 @@ const usdAxis = v => Math.abs(v) >= 10 ? (v < 0 ? '−' : '') + '$' + Math.round
 const big = v => { if (v == null) return '–'; const a = Math.abs(v)
   return a >= 1e9 ? (v/1e9).toFixed(2)+'B' : a >= 1e6 ? (v/1e6).toFixed(1)+'M' : a >= 1e4 ? Math.round(v/1e3)+'k' : a >= 1e3 ? (v/1e3).toFixed(1)+'k' : String(Math.round(v*100)/100) }
 const pct = v => v == null ? '–' : (+v).toFixed(1) + '%'
+/** A relative change (0.12 → +12%) and its 95% interval, the same on every page. */
+const chg = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(100 * v).toFixed(Math.abs(v) < .1 && v !== 0 ? 1 : 0).replace(/\.0$/, '') + '%'
+const ciText = (lo, hi) => lo == null ? '' : `${chg(lo)} to ${chg(hi)}`
 const fmtCell = (col, v) => {
   if (v == null) return ''
   if (typeof v !== 'number') return col === 'tool' ? prettyTool(v) : String(v)
@@ -365,6 +485,7 @@ const ICON = {
   prompts: I('<path d="M4 5h16v11H8l-4 4z"/>'),
   health: I('<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>'),
   engine: I('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>'),
+  advisor: I('<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2V16h5v-.2c.1-.8.5-1.5 1.1-2A6 6 0 0 0 12 3z"/>'),
   impact: I('<path d="M3 20h18M6 16l4-5 3 3 5-7"/><path d="M15 7h3v3"/>'),
   savings: I('<path d="M5 11a7 6 0 0 1 13-2h2v4h-2a7 6 0 0 1-3 3v3h-3v-2h-3v2H6v-3.5A6 6 0 0 1 5 11z"/>'),
   sql: I('<ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v13c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-13M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/>'),
@@ -418,6 +539,64 @@ function colorFor(label) {
 Chart.defaults.font.family = getComputedStyle(document.body).fontFamily
 Chart.defaults.font.size = 11
 Chart.defaults.animation.duration = 380
+/** What the pointer is on: the series under it (bars: the segment, lines: the nearest line) and a band at the hovered
+ *  column, so a stacked or multi-line chart says which value is which. Hovering a legend entry dims the other series. */
+Chart.register({
+  id: 'hoverAid',
+  afterEvent(ch, args) {
+    const e = args.event, type = ch.config.type
+    if (type === 'doughnut') return
+    let hov = null
+    if (e.type === 'mousemove') {
+      const line = type === 'line'
+      const hit = ch.getElementsAtEventForMode(e, line ? 'nearest' : 'point', line ? { intersect: false, axis: 'xy' } : { intersect: true }, false)[0]
+      hov = hit ? hit.datasetIndex : null
+    }
+    if (hov !== ch.$hov) { ch.$hov = hov; args.changed = true }
+  },
+  beforeDatasetsDraw(ch) {
+    const type = ch.config.type, act = ch.tooltip?.getActiveElements?.() || []
+    if (!act.length || type === 'doughnut' || type === 'scatter') return
+    const { ctx, chartArea: a } = ch, el = act[0].element, hbar = ch.options.indexAxis === 'y'
+    ctx.save()
+    if (type === 'bar') {
+      const size = (hbar ? el.height : el.width) || 0, n = ch.data.labels.length || 1
+      const slot = Math.max(size + 8, ((hbar ? a.bottom - a.top : a.right - a.left) / n) * .9)
+      ctx.fillStyle = css('--hover')
+      if (hbar) ctx.fillRect(a.left, el.y - slot / 2, a.right - a.left, slot)
+      else ctx.fillRect(el.x - slot / 2, a.top, slot, a.bottom - a.top)
+    } else {
+      ctx.strokeStyle = css('--faint'); ctx.lineWidth = 1; ctx.setLineDash([3, 3])
+      ctx.beginPath(); ctx.moveTo(Math.round(el.x) + .5, a.top); ctx.lineTo(Math.round(el.x) + .5, a.bottom); ctx.stroke()
+    }
+    ctx.restore()
+  },
+  beforeDatasetDraw(ch, args) {
+    const f = ch.$legendHov ?? (ch.config.type === 'line' && ch.data.datasets.length > 1 && !ch.data.datasets.some(d => d.fill) ? ch.$hov : null)
+    if (f != null && args.index !== f) { ch.ctx.save(); ch.ctx.globalAlpha = .22; ch.$dimmed = true }
+  },
+  afterDatasetDraw(ch) { if (ch.$dimmed) { ch.ctx.restore(); ch.$dimmed = false } },
+})
+// Tooltips sit beside the pointer, so they never cover the column or line being read.
+Chart.Tooltip.positioners.cursor = (items, pos) => items.length ? { x: pos.x, y: pos.y } : false
+/** A project as its last two folders, the same in legends, axes and tooltips. */
+const projectLabel = v => { const parts = String(v).split('/').filter(Boolean); return parts.length > 2 ? '…/' + parts.slice(-2).join('/') : String(v) }
+const legendHover = {
+  onHover(e, item, legend) {
+    const ch = legend.chart; e.native.target.style.cursor = 'pointer'
+    if (ch.config.type === 'doughnut') { const a = [{ datasetIndex: 0, index: item.index }]; ch.setActiveElements(a); ch.tooltip.setActiveElements(a, { x: 0, y: 0 }) }
+    else ch.$legendHov = item.datasetIndex
+    ch.update('none')
+  },
+  onLeave(e, item, legend) {
+    const ch = legend.chart; e.native.target.style.cursor = ''
+    ch.$legendHov = null
+    if (ch.config.type === 'doughnut') { ch.setActiveElements([]); ch.tooltip.setActiveElements([], { x: 0, y: 0 }) }
+    ch.update('none')
+  },
+}
+const TIP = () => ({ backgroundColor: css('--ink'), titleColor: css('--bg'), bodyColor: css('--bg'), footerColor: css('--bg'), padding: 10, cornerRadius: 7, boxPadding: 4, caretPadding: 8,
+  titleFont: { weight: '600' }, footerFont: { weight: '500' }, animation: { duration: 90 }, borderColor: 'transparent', usePointStyle: true })
 
 /** Long rows (x, series, y) -> one dataset per series. */
 function pivot(objs, x, s, y) {
@@ -431,6 +610,8 @@ function pivot(objs, x, s, y) {
   return { labels: xs, series: ss.map(k => ({ label: k, data: data[k] })) }
 }
 
+// Paths keep their tail (the project name), everything else its head.
+const trunc = (s, n) => { s = String(s); return s.length <= n ? s : /^[~\/]/.test(s) ? '…' + s.slice(-(n - 1)) : s.slice(0, n - 1) + '…' }
 const type_ = p => p.kind === 'stacked' || p.kind === 'hbar' ? 'bar' : p.kind === 'area' ? 'line' : p.kind
 function chartConfig(p, d) {
   const objs = asObjs(d)
@@ -442,9 +623,11 @@ function chartConfig(p, d) {
     const datasets = Object.entries(groups).map(([k, pts]) => { const c = colorFor(k); return { label: k, data: pts, backgroundColor: c + '99', borderColor: c, pointRadius: 3.5, pointHoverRadius: 6 } })
     return { type: 'scatter', data: { datasets }, options: {
       responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'nearest', intersect: false, axis: 'xy' },
+      onHover: (ev, els) => { ev.native.target.style.cursor = els.length ? 'pointer' : '' },
       onClick: (ev, els) => { const e = els[0]; if (e) { const o = datasets[e.datasetIndex].data[e.index].o; if (o.session_id) openSession(o.session_id) } },
-      plugins: { legend: { position: 'bottom', labels: { color: tick, boxWidth: 9, usePointStyle: true } },
-        tooltip: { callbacks: { label: c => { const o = c.raw.o; return `${o.project || ''} · ${usd(o.cost)} · peak ${big(o.max_context)} ctx · ${o.requests} req` } } } },
+      plugins: { legend: { position: 'bottom', labels: { color: tick, usePointStyle: true, pointStyleWidth: 9, boxHeight: 7, padding: 14 }, ...legendHover },
+        tooltip: { ...TIP(), callbacks: { title: items => projectLabel(items[0].raw.o.project || ''), label: c => { const o = c.raw.o; return `${c.dataset.label} · ${usd(o.cost)} · peak ${big(o.max_context)} context · ${big(o.requests)} requests` }, footer: () => 'click for the session timeline' } } },
       scales: { x: { type: p.logX ? 'logarithmic' : 'linear', title: { display: true, text: p.xLabel || p.x, color: tick }, grid: { color: grid }, ticks: { color: tick, callback: v => big(v) } },
                 y: { type: p.logY ? 'logarithmic' : 'linear', title: { display: true, text: p.yLabel || p.y, color: tick }, grid: { color: grid }, ticks: { color: tick, callback: v => usdAxis(v) } } } } }
   }
@@ -452,7 +635,7 @@ function chartConfig(p, d) {
   if (p.series) {
     const pv = pivot(objs, p.x, p.series, p.y)
     labels = pv.labels
-    datasets = pv.series.slice(0, p.maxSeries || 10).map(s => ({ label: p.series === 'model' ? shortModel(s.label) : s.label, data: s.data }))
+    datasets = pv.series.slice(0, p.maxSeries || 10).map(s => ({ label: p.series === 'model' ? shortModel(s.label) : p.series === 'project' ? projectLabel(s.label) : trunc(s.label, 40), data: s.data }))
   } else {
     labels = objs.map(o => o[p.x])
     datasets = (Array.isArray(p.y) ? p.y : [p.y]).map(y => ({ label: y, data: objs.map(o => o[y]), yAxisID: p.y2 && p.y2.includes(y) ? 'y2' : 'y' }))
@@ -460,7 +643,7 @@ function chartConfig(p, d) {
   }
   if (p.labelFmt) labels = labels.map(p.labelFmt)
   else if (p.x === 'tool' || p.x === 'program') labels = labels.map(prettyTool)
-  else if (p.x === 'project') labels = labels.map(v => shortPath(v, 40))
+  else if (p.x === 'project') labels = labels.map(projectLabel)
   const type = p.kind === 'stacked' || p.kind === 'hbar' ? 'bar' : p.kind === 'area' ? 'line' : p.kind
   const single = datasets.length === 1 && !p.series && type !== 'doughnut'
   datasets.forEach((ds, i) => {
@@ -468,14 +651,12 @@ function chartConfig(p, d) {
     if (!p.series) { ds.key = ds.label; ds.label = human(ds.label) }
     if (type === 'doughnut') Object.assign(ds, { backgroundColor: labels.map(l => colorFor(l)), borderColor: css('--panel'), borderWidth: 2, hoverOffset: 6 })
     else Object.assign(ds, { backgroundColor: p.kind === 'area' ? c + '44' : type === 'bar' ? c + 'd9' : c, borderColor: c, borderWidth: type === 'line' ? 2 : 0,
-      borderRadius: type === 'bar' ? (p.kind === 'stacked' ? 2 : 4) : 0, pointRadius: 0, pointHoverRadius: 4, tension: .25, cubicInterpolationMode: 'monotone', fill: p.kind === 'area' ? (i ? '-1' : 'origin') : false, spanGaps: true, maxBarThickness: p.kind === 'hbar' ? 22 : 46 })
+      borderRadius: type === 'bar' ? (p.kind === 'stacked' ? 2 : 4) : 0, hoverBackgroundColor: type === 'bar' ? c : undefined, pointRadius: 0, pointHoverRadius: 4, pointHoverBorderWidth: 2, pointHoverBackgroundColor: css('--panel'), tension: .25, cubicInterpolationMode: 'monotone', fill: p.kind === 'area' ? (i ? '-1' : 'origin') : false, spanGaps: true, maxBarThickness: p.kind === 'hbar' ? 22 : 46 })
   })
   const stacked = p.kind === 'stacked' || p.kind === 'area'
-  // Paths keep their tail (the project name), everything else its head.
-  const trunc = (s, n) => { s = String(s); return s.length <= n ? s : /^[~\/]/.test(s) ? '…' + s.slice(-(n - 1)) : s.slice(0, n - 1) + '…' }
   const scales = type === 'doughnut' ? {} : {
     x: { stacked, grid: { display: false }, border: { display: false }, ticks: { color: tick, maxRotation: 0, autoSkip: true, autoSkipPadding: 10, callback: p.kind === 'hbar' ? v => (p.money ? usdAxis : fmtY)(v) : function (v) { return trunc(this.getLabelForValue(v), 18) } } },
-    y: { stacked, grid: { color: grid }, border: { display: false }, ticks: { color: tick, callback: p.kind === 'hbar' ? function (v) { return trunc(this.getLabelForValue(v), 28) } : v => (p.money ? usdAxis : fmtY)(v) }, beginAtZero: true },
+    y: { stacked, grid: { color: grid }, border: { display: false }, ticks: { color: tick, callback: p.kind === 'hbar' ? function (v) { return trunc(this.getLabelForValue(v), 34) } : v => (p.money ? usdAxis : fmtY)(v) }, beginAtZero: true },
   }
   if (p.kind === 'hbar') { scales.x.grid = { color: grid }; scales.y.grid = { display: false } }
   if (p.y2) scales.y2 = { position: 'right', grid: { display: false }, border: { display: false }, ticks: { color: tick, callback: v => p.y2money ? usd(v) : big(v) }, beginAtZero: true }
@@ -483,14 +664,28 @@ function chartConfig(p, d) {
     responsive: true, maintainAspectRatio: false, indexAxis: p.kind === 'hbar' ? 'y' : 'x', cutout: type === 'doughnut' ? '62%' : undefined,
     interaction: { mode: type === 'doughnut' ? 'nearest' : 'index', intersect: false },
     plugins: {
-      legend: { display: datasets.length > 1 || type === 'doughnut', position: type === 'doughnut' ? 'right' : 'bottom', labels: { color: tick, boxWidth: 9, boxHeight: 9, useBorderRadius: true, borderRadius: 2, padding: 12,
+      legend: { display: datasets.length > 1 || type === 'doughnut', position: type === 'doughnut' ? 'right' : 'bottom', ...legendHover, labels: { color: tick, boxWidth: 9, boxHeight: 9, useBorderRadius: true, borderRadius: 2, padding: 12,
         ...(type === 'doughnut' ? { generateLabels: ch => { const sum = ch.data.datasets[0].data.reduce((a, b) => a + (+b || 0), 0)
           return Chart.overrides.doughnut.plugins.legend.labels.generateLabels(ch).map((l, i) => ({ ...l, text: `${l.text}  ${sum ? Math.round(100 * ch.data.datasets[0].data[i] / sum) : 0}%` })) } } : {}) } },
-      tooltip: { backgroundColor: css('--ink'), titleColor: css('--bg'), bodyColor: css('--bg'), padding: 9, cornerRadius: 7, boxPadding: 3,
-        itemSort: (a, b) => (b.raw || 0) - (a.raw || 0),
-        filter: c => type === 'doughnut' || c.raw !== 0,
-        callbacks: { label: c => `${type === 'doughnut' ? c.label : c.dataset.label}: ${(p.y2 && p.y2.includes(c.dataset.key) ? (p.y2money ? usd : big) : fmtY)(c.raw)}`,
-          footer: items => stacked && items.length > 1 ? 'total: ' + fmtY(items.reduce((a, i) => a + (+i.raw || 0), 0)) : '' } },
+      // The series under the pointer comes first and in full colour; at most 8 rows, the rest summed in the footer.
+      tooltip: { ...TIP(), position: type === 'doughnut' ? 'nearest' : 'cursor', yAlign: type === 'doughnut' ? undefined : 'center',
+        itemSort: (a, b) => (a.chart.$hov === a.datasetIndex ? -1 : 0) - (b.chart.$hov === b.datasetIndex ? -1 : 0) || (b.raw || 0) - (a.raw || 0),
+        filter: (c, i, all) => {
+          if (type === 'doughnut') return true
+          if (!c.raw) return false
+          const ranked = all.filter(x => x.raw).sort((a, b) => (b.raw || 0) - (a.raw || 0))
+          return ranked.length <= 8 || c.chart.$hov === c.datasetIndex || ranked.indexOf(c) < 7
+        },
+        callbacks: {
+          title: items => type === 'doughnut' ? '' : items[0] ? String(items[0].label) : '',
+          label: c => `${type === 'doughnut' ? c.label : c.dataset.label}: ${(p.y2 && p.y2.includes(c.dataset.key) ? (p.y2money ? usd : big) : fmtY)(c.raw)}${type === 'doughnut' ? `  (${Math.round(100 * c.raw / (c.dataset.data.reduce((a, b) => a + (+b || 0), 0) || 1))}%)` : ''}`,
+          labelTextColor: c => c.chart.$hov == null || c.chart.$hov === c.datasetIndex || c.chart.config.type === 'doughnut' ? css('--bg') : css('--bg') + 'b3',
+          footer: items => {
+            if (!items.length || type === 'doughnut') return ''
+            const ch = items[0].chart, i = items[0].dataIndex
+            const vals = ch.data.datasets.filter((d, k) => ch.isDatasetVisible(k)).map(d => +d.data[i] || 0), more = vals.filter(Boolean).length - items.length
+            return [more > 0 ? `+${more} more` : '', stacked && vals.filter(Boolean).length > 1 ? 'Total: ' + fmtY(vals.reduce((a, b) => a + b, 0)) : ''].filter(Boolean)
+          } } },
     },
     scales,
   } }
@@ -521,14 +716,13 @@ function makePanel(p, grid, list = state.panels) {
 function destroyChart(P) { if (P.chart) { P.chart.destroy(); P.chart = null } }
 function fill(P, d, opts) {
   if (!d) { P.body.innerHTML = '<div class="err">query missing</div>'; return }
-  if (P.p.top) d = { cols: d.cols, rows: d.rows.slice(0, P.p.top) }
   P.data = d
   if (P.p.kind === 'heatmap') { destroyChart(P); return heatmap(P.body, d) }
   if (P.view === 'table') return drawTable(P, opts)
   drawChart(P)
 }
 function drawChart(P) {
-  const d = P.data
+  const d = P.p.top ? { cols: P.data.cols, rows: P.data.rows.slice(0, P.p.top) } : P.data
   if (!d.rows.length) { destroyChart(P); P.body.innerHTML = '<div class="empty">No data for this filter</div>'; return }
   const cfg = chartConfig(P.p, d)
   const c = P.chart
@@ -570,7 +764,7 @@ function drawTable(P, opts = P.opts || {}) {
         const bar = barCols[i] && v > 0 ? `<span class="b" style="width:calc(${(100 * v / barCols[i]).toFixed(1)}% - 14px)"></span>` : ''
         return `<td class="num">${bar}<span class="v">${esc(fmtCell(c, v))}</span></td>`
       }
-      if (typeof v === 'string' && /^(project|cwd|file|path)$/.test(c) && !long.has(c)) return `<td class="path" title="${esc(v)}">${esc(shortPath(v))}</td>`
+      if (typeof v === 'string' && /^(project|cwd|file|path)$/.test(c) && !long.has(c)) return `<td class="path" title="${esc(v)}">${esc(c === 'project' || c === 'cwd' ? projectLabel(v) : shortPath(v))}</td>`
       const tip = typeof v === 'string' && (v.length > 60 || (c === 'tool' && v.startsWith('mcp__'))) ? esc(v.slice(0, 2000)) : ''
       return `<td class="${long.has(c) ? 'long' : ''}"${tip ? ` title="${tip}"` : ''}>${esc(fmtCell(c, v))}</td>`
     }).join('')}</tr>`).join('')}</tbody></table></div>${rows.length > LIMIT ? `<div class="more">Showing ${LIMIT} of ${rows.length} rows · download CSV for all</div>` : P.filter ? `<div class="more">${rows.length} of ${d.rows.length} rows</div>` : ''}`
@@ -590,7 +784,7 @@ function heatmap(el, d) {
     h += `<div>${days[w]}</div>`
     for (let i = 0; i < 24; i++) {
       const v = m[w + '-' + i] || 0, a = max ? Math.sqrt(v / max) : 0
-      h += `<div title="${days[w]} ${i}:00 — ${usd(v)}" style="background:${acc}${Math.round(a * 255).toString(16).padStart(2, '0')}"></div>`
+      h += `<div data-tip="${days[w]} ${i}:00–${i + 1}:00\n${usd(v)}" style="background:${acc}${Math.round(a * 255).toString(16).padStart(2, '0')}"></div>`
     }
   }
   el.innerHTML = h + '</div>'
@@ -614,21 +808,18 @@ function toggleMax(P) {
 $('#scrim').onclick = () => maxed && toggleMax(maxed)
 
 // ---------- tabs ----------
-const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context']], ['Work', ['tools', 'agents', 'projects', 'prompts']], ['Quality', ['health', 'engine']], ['Mods', ['impact', 'savings']], ['Data', ['sql']]]
+const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context']], ['Work', ['tools', 'agents', 'projects', 'prompts']], ['Quality', ['health', 'engine']], ['Improve', ['advisor', 'impact', 'savings']], ['Data', ['sql']]]
 const TABS = {
   live: { label: 'Live', sub: 'right now, pushed as you work', custom: renderLive, live: true, noKpis: true, filters: ['profiles'] },
   overview: { label: 'Overview', sub: 'spend, efficiency and where it goes', panels: [
     { title: 'Spend per day by profile', q: 'daily_profile', kind: 'stacked', x: 'day', series: 'profile', y: 'cost', money: true, wide: true },
     { title: 'Where the money goes (token kind)', q: 'cost_kinds', kind: 'doughnut', x: 'kind', y: 'cost', money: true, note: 'Cache reads are the whole context re-read on every request; cache writes are new or changed context.' },
-    { title: 'Spend by context size at request time', q: 'ctx_buckets', kind: 'stacked', x: 'bucket', y: ['main_cost', 'subagent_cost'], money: true, note: 'Every request re-reads its whole context: large contexts cost more per call.' },
     { title: 'Profiles', q: 'by_profile', kind: 'table' },
-    { title: 'Models', q: 'by_model', kind: 'table' },
-    { title: 'When you work (spend by weekday × hour)', q: 'heatmap', kind: 'heatmap' },
-    { title: 'Model family mix per day', q: 'model_mix_daily', kind: 'stacked', x: 'day', series: 'family', y: 'cost', money: true },
-    { title: 'Most expensive sessions', q: 'sessions', kind: 'table', wide: true },
+    { title: 'When you work (spend by weekday × hour)', q: 'heatmap', kind: 'heatmap', wide: true },
   ] },
   cost: { label: 'Cost & tokens', sub: 'models, tokens, cache and efficiency', panels: [
     { title: 'Spend per day by model', q: 'daily_model', kind: 'stacked', x: 'day', series: 'model', y: 'cost', money: true, wide: true },
+    { title: 'Models', q: 'by_model', kind: 'table', wide: true },
     { title: 'Tokens per day', q: 'daily_tokens', kind: 'area', x: 'day', y: ['cache_read', 'cache_write', 'input', 'output'], wide: true },
     { title: 'Efficiency per day', q: 'daily_efficiency', kind: 'line', x: 'day', y: ['cost_per_1k_req'], money: true, note: 'Cost per 1,000 requests: falls when context is kept small or cheaper models take the work.' },
     { title: 'Cache hit rate & subagent share per day', q: 'daily_efficiency', kind: 'line', x: 'day', y: ['hit_pct', 'subagent_pct'], pct: true },
@@ -649,13 +840,12 @@ const TABS = {
     { title: 'Injected attachments (reminders, listings, file snapshots…)', q: 'attachments', kind: 'table', wide: true },
   ] },
   tools: { label: 'Tools', sub: 'what fills the context, call by call', panels: [
-    { title: 'Tool output by tool (chars into context)', q: 'tools', kind: 'hbar', x: 'tool', y: 'result_chars', tall: true, top: 15 },
-    { title: 'All tools', q: 'tools', kind: 'table' },
-    { title: 'Tool output per day', q: 'tool_daily', kind: 'stacked', x: 'day', series: 'tool', y: 'result_chars', wide: true },
+    { title: 'Tools by output (chars into context)', q: 'tools', kind: 'hbar', x: 'tool', y: 'result_chars', tall: true, top: 15, note: 'The chart shows the top 15; the table view (top right) lists all, with every column.' },
     { title: 'Result size distribution', q: 'result_sizes', kind: 'stacked', x: 'tool', series: 'size', y: 'calls' },
+    { title: 'Tool output per day', q: 'tool_daily', kind: 'stacked', x: 'day', series: 'tool', y: 'result_chars', wide: true },
     { title: 'Bash programs by output', q: 'bash_programs', kind: 'hbar', x: 'program', y: 'result_chars', tall: true },
-    { title: 'Bash commands', q: 'bash', kind: 'table', wide: true, note: '<code>capped</code> = cut by lean-tools / budget-guard.' },
     { title: 'Read: whole file vs ranged', q: 'read_ranges', kind: 'table' },
+    { title: 'Bash commands', q: 'bash', kind: 'table', wide: true, note: '<code>capped</code> = cut by lean-tools / budget-guard.' },
     { title: 'Edit vs Write (input chars)', q: 'edit_vs_write', kind: 'table' },
     { title: 'Files by traffic', q: 'files', kind: 'table', wide: true },
     { title: 'Files read 3+ times in one session', q: 'rereads', kind: 'table', wide: true },
@@ -668,20 +858,18 @@ const TABS = {
     { title: 'Tool errors', q: 'tool_errors', kind: 'table' },
   ] },
   agents: { label: 'Agents', sub: 'subagents: who, which model, what it cost', panels: [
-    { title: 'Spend by agent type', q: 'by_agent_type', kind: 'hbar', x: 'agent_type', y: 'cost', money: true },
-    { title: 'Agent types', q: 'by_agent_type', kind: 'table' },
+    { title: 'Spend by agent type', q: 'by_agent_type', kind: 'hbar', x: 'agent_type', y: 'cost', money: true, note: 'The table view (top right) has calls, tokens and models per type.' },
     { title: 'Which model each agent type ran on', q: 'agent_model', kind: 'stacked', x: 'agent_type', series: 'model', y: 'cost', money: true },
-    { title: 'Spawns (Agent tool calls) by type and model parameter', q: 'agent_spawns', kind: 'table' },
+    { title: 'Spawns (Agent tool calls) by type and model parameter', q: 'agent_spawns', kind: 'table', wide: true },
     { title: 'Most expensive subagents', q: 'top_agents', kind: 'table', wide: true },
   ] },
   projects: { label: 'Projects & sessions', sub: 'where the work happened', panels: [
     { title: 'Spend per day by project (top 8)', q: 'project_daily', kind: 'stacked', x: 'day', series: 'project', y: 'cost', money: true, wide: true },
-    { title: 'Spend by project', q: 'by_project', kind: 'hbar', x: 'project', y: 'cost', money: true, tall: true, top: 15 },
+    { title: 'Spend by project', q: 'by_project', kind: 'hbar', x: 'project', y: 'cost', money: true, tall: true, top: 15, note: 'The chart shows the top 15; the table view (top right) lists all, with every column.' },
     { title: 'Session cost vs peak context', q: 'session_scatter', kind: 'scatter', x: 'max_context', y: 'cost', series: 'profile', xLabel: 'peak context (tokens)', yLabel: 'session cost', logY: true, tall: true, note: 'Each dot is a session; click one for its timeline. Top right = long sessions that grew huge.' },
     { title: 'Session cost distribution', q: 'session_sizes', kind: 'bar', x: 'size', y: ['sessions'], note: 'Click a session id in any table for its timeline.' },
     { title: 'Branches', q: 'by_branch', kind: 'table' },
-    { title: 'Projects', q: 'by_project', kind: 'table', wide: true },
-    { title: 'Sessions', q: 'sessions', kind: 'table', wide: true },
+    { title: 'Sessions, most expensive first', q: 'sessions', kind: 'table', wide: true },
   ] },
   prompts: { label: 'Prompts', sub: 'what you asked, and what each ask cost', panels: [
     { title: 'Prompts and commands per day', q: 'prompts_daily', kind: 'stacked', x: 'day', y: ['prompts', 'commands', 'agent_prompts'], wide: true },
@@ -701,12 +889,12 @@ const TABS = {
   engine: { label: 'Engine', sub: 'latency, schemas, system prompt (mod sessions only)', note: 'From the usage-analytics mod’s own event log: only sessions that ran with the mod installed.', panels: [
     { title: 'Request latency by model', q: 'mod_latency', kind: 'table', note: 'ttft = time to first token.' },
     { title: 'Tool latency', q: 'mod_tool_latency', kind: 'table' },
-    { title: 'Tool schemas in the prompt (chars)', q: 'mod_tool_schemas', kind: 'hbar', x: 'tool', y: 'chars', tall: true, top: 20, note: 'Deferred tools sit behind ToolSearch and cost nothing until loaded.' },
-    { title: 'Tool schemas', q: 'mod_tool_schemas', kind: 'table' },
+    { title: 'Tool schemas in the prompt (chars)', q: 'mod_tool_schemas', kind: 'hbar', x: 'tool', y: 'chars', tall: true, top: 20, note: 'Deferred tools sit behind ToolSearch and cost nothing until loaded. The chart shows the top 20; the table view (top right) lists all, with every column.' },
     { title: 'System prompt sections', q: 'mod_system_prompt', kind: 'table' },
     { title: 'Rate limits seen', q: 'mod_rate_limits', kind: 'table' },
     { title: 'Mod events', q: 'mod_events', kind: 'table' },
   ] },
+  advisor: { label: 'Advisor', sub: 'how to use Claude cheaper, leaner, faster and more reliably, and whether each change worked', custom: renderAdvisor, noKpis: true, filters: ['period', 'profiles'] },
   impact: { label: 'Mod impact', sub: 'are the mods saving money or costing more?', custom: renderImpact, noKpis: true, filters: ['period', 'profiles'] },
   savings: { label: 'Savings', sub: 'what budget-guard’s levers avoided', custom: renderSavings, noKpis: true, filters: [] },
   sql: { label: 'SQL', sub: 'read-only console on the database', custom: renderSql, noKpis: true, quiet: true, filters: [] },
@@ -781,13 +969,15 @@ function showStale() {
 $('#bannerBtn').onclick = () => { $('#banner').classList.remove('on'); refresh() }
 
 // ---------- KPIs ----------
-function spark(vals, color) {
+/** A sparkline you can read: hover shows each point's label and value (see the pointer handler under "tooltips"). */
+function spark(vals, color, labels = [], fmt = 'big') {
   const v = vals.filter(x => x != null)
   if (v.length < 2) return ''
   const max = Math.max(...v), min = Math.min(...v), w = 120, h = 26, n = vals.length
-  const pts = vals.map((x, i) => [i * w / (n - 1), h - 2 - ((x ?? 0) - min) / ((max - min) || 1) * (h - 4)])
+  const ys = vals.map(x => x == null ? null : h - 2 - (x - min) / ((max - min) || 1) * (h - 4))
+  const pts = vals.map((x, i) => [i * w / (n - 1), ys[i] ?? h - 2])
   const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('')
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${line}L${w} ${h}L0 ${h}Z" fill="${color}" opacity=".1"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`
+  return `<div class="sparkw" data-v="${esc(JSON.stringify(vals))}" data-y="${esc(JSON.stringify(ys.map(y => y == null ? null : +(100 * y / h).toFixed(1))))}" data-l="${esc(JSON.stringify(labels))}" data-f="${fmt}"><svg class="spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${line}L${w} ${h}L0 ${h}Z" fill="${color}" opacity=".1"/><path d="${line}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg><i class="sline"></i><i class="sdot" style="border-color:${color}"></i></div>`
 }
 function deltaHtml(cur, prev, sense, label) {
   if (label === 'none') return '<span class="delta"><span class="vs">no full previous period</span></span>'
@@ -823,10 +1013,11 @@ async function renderKpis(seq) {
       ['subagent_cost', usd(k.subagent_cost), 'in subagents', p.subagent_cost, -1, series(r => r.subagent_cost), mut],
       ['tool_calls', big(k.tool_calls), 'tool calls', p.tool_calls, 0, series(r => r.tool_calls), mut],
     ]
+    const FMT = { cost: 'usd', cost_per_session: 'usd', subagent_cost: 'usd', hit_pct: 'pct' }, days = dd.map(r => r.day)
     $('#kpis').innerHTML = cards.map(([key, v, l, prevV, sense, sp, color, cls]) => {
       const curV = key === 'cost' ? k.cost : k[key]
       const bump = lastKpis[key] != null && lastKpis[key] !== curV ? ' bump' : ''
-      return `<div class="kpi ${cls || ''}" title="${esc(l)}"><small>${esc(l)}</small><b class="${bump}">${v}</b>${deltaHtml(curV, n === 1 && key !== 'cost' ? null : prevV, sense, p._none ? (key === 'cost' ? 'none' : '') : label)}${(sp && dd.length > 1 && spark(sp, color)) || '<div class="nospark"></div>'}</div>`
+      return `<div class="kpi ${cls || ''}"><small title="${esc(l)}">${esc(l)}</small><b class="${bump}">${v}</b>${deltaHtml(curV, n === 1 && key !== 'cost' ? null : prevV, sense, p._none ? (key === 'cost' ? 'none' : '') : label)}${(sp && dd.length > 1 && spark(sp, color, days, FMT[key] || 'big')) || '<div class="nospark"></div>'}</div>`
     }).join('')
     lastKpis = Object.fromEntries(cards.map(([key]) => [key, k[key]]))
     setTimeout(() => document.querySelectorAll('.kpi b.bump').forEach(b => b.classList.remove('bump')), 900)
@@ -836,7 +1027,7 @@ async function renderKpis(seq) {
 // ---------- overview insights ----------
 async function insights(seq) {
   const el = $('#insights'); if (!el) return
-  const [d, live] = await Promise.all([api('/api/batch', { q: 'kpis,kpi_daily,ctx_buckets,tools,read_ranges,edit_vs_write,parallelism,by_agent_type,search_vs_lsp' }), api('/api/live')])
+  const [d, live] = await Promise.all([api('/api/batch', { q: 'kpis,kpi_daily,edit_vs_write,search_vs_lsp' }), api('/api/live')])
   if (seq !== state.seq) return
   const k = asObjs(d.kpis)[0] || {}, total = k.cost || 0, out = []
   const m = live.month
@@ -847,20 +1038,14 @@ async function insights(seq) {
     const spikes = days.filter(r => r.cost > mean + 2 * sd && r.cost > mean * 1.5).sort((a, b) => b.cost - a.cost).slice(0, 3)
     if (spikes.length) out.push(['warn', `Spend spike${spikes.length > 1 ? 's' : ''}: ${spikes.map(r => `<b>${r.day}</b> ${usd(r.cost)}`).join(', ')} (typical day ${usd(mean)}). Check Projects & sessions for those days.`])
   }
-  const ctx = asObjs(d.ctx_buckets), over = ctx.filter(r => r.lo >= 200000).reduce((a, r) => a + r.cost, 0)
-  if (total && over / total > .15) out.push(['warn', `<b>${pct(100 * over / total)}</b> of spend (${usd(over)}) came from requests above 200k context. Compacting or clearing earlier, and handing big reads to subagents, cuts this.`])
-  const tools = asObjs(d.tools), bash = tools.find(t => t.tool === 'Bash'), allOut = tools.reduce((a, t) => a + (t.result_chars || 0), 0)
-  if (bash && allOut) out.push(['', `Bash produced <b>${pct(100 * bash.result_chars / allOut)}</b> of all tool output (${big(bash.result_chars)} chars). See Tools → Bash commands for the heaviest ones.`])
-  const whole = asObjs(d.read_ranges).find(r => r.kind === 'whole file')
-  if (whole) out.push(['', `${big(whole.reads)} whole-file Reads returned ${big(whole.chars)} chars (avg ${big(whole.avg_chars)}). Ranged reads after a grep/LSP lookup return far less.`])
   const ew = Object.fromEntries(asObjs(d.edit_vs_write).map(r => [r.tool, r]))
   if (ew.Write && ew.Edit && ew.Write.input_chars > ew.Edit.input_chars) out.push(['warn', `Write sent ${big(ew.Write.input_chars)} chars vs Edit ${big(ew.Edit.input_chars)}: whole-file rewrites dominate. Edit the changed part instead.`])
-  const par = asObjs(d.parallelism), reqs = par.reduce((a, r) => a + r.requests, 0), single = par.filter(r => r.tools_in_request === '1').reduce((a, r) => a + r.requests, 0)
-  if (reqs && single / reqs > .6) out.push(['', `<b>${pct(100 * single / reqs)}</b> of requests made exactly one tool call. Independent reads in parallel would save whole round trips.`])
   if (total) out.push([k.hit_pct > 90 ? 'good' : 'warn', `Cache hit rate <b>${pct(k.hit_pct)}</b>; ${usd(k.subagent_cost)} (${pct(100 * (k.subagent_cost || 0) / total)}) spent inside subagents.`])
   const lsp = asObjs(d.search_vs_lsp).reduce((a, r) => [a[0] + r.lsp, a[1] + r.text_search], [0, 0])
   if (lsp[1]) out.push([lsp[0] ? 'good' : 'warn', `LSP calls: <b>${big(lsp[0])}</b> vs ${big(lsp[1])} grep/rg/find searches.`])
-  el.innerHTML = out.length ? `<div class="insights-head"><h3>Insights</h3><small>for the selected period and filters</small></div>` + out.map(([c, t]) => `<div class="insight ${c}"><span>${t}</span></div>`).join('') : ''
+  out.push(['', `Levers worth changing (large contexts, whole-file reads, heavy tool output, serial tool calls, model choice) are measured and verified in <a data-go="advisor">Advisor →</a>`])
+  el.innerHTML = `<div class="insights-head"><h3>Insights</h3><small>for the selected period and filters</small></div>` + out.map(([c, t]) => `<div class="insight ${c}"><span>${t}</span></div>`).join('')
+  el.querySelectorAll('[data-go]').forEach(a => a.onclick = () => go(a.dataset.go))
 }
 
 // ---------- Live ----------
@@ -939,15 +1124,14 @@ async function renderImpact(view) {
   const r = await api('/api/impact')
   view.querySelector('.skel').remove()
   const cls = { saving: 'good', costing: 'bad', collecting: '', unclear: 'warn' }
-  const sign = v => v == null ? '–' : (v > 0 ? '+' : '') + (100 * v).toFixed(0) + '%'
   view.insertAdjacentHTML('beforeend', `<div class="insights"><div class="insights-head"><h3>Verdicts</h3><small>active vs holdout sessions</small></div>${r.mods.map(m => `<div class="insight ${cls[m.verdict[0]]}"><span><b>${esc(m.mod)}</b>: ${esc(m.verdict[1])}${m.costs.length || m.savings.length ? ` · ledger net <b>${usd(m.net)}</b>` : ''}</span></div>`).join('')}
     <div class="insight good"><span><b>usage-analytics</b>: ${esc(r.observer.note)}</span></div></div>`)
   for (const m of r.mods) {
     view.insertAdjacentHTML('beforeend', `<h2 class="sec">${esc(m.mod)} <small>holdout share ${m.holdoutShare == null ? '?' : (100 * m.holdoutShare).toFixed(0) + '%'}</small></h2>`)
     const grid = document.createElement('div'); grid.className = 'grid'; view.appendChild(grid)
     const add = (p, d) => fill(makePanel(p, grid), d)
-    const fx = m.effects.map(e => [e.metric, e.on, e.holdout, sign(e.diff), e.lo == null ? '' : `${sign(e.lo)} … ${sign(e.hi)}`])
-    add({ title: 'Active vs holdout sessions', note: `${m.arms.on?.sessions || 0} active · ${m.arms.holdout?.sessions || 0} holdout sessions`, kind: 'table' }, { cols: ['metric', 'active', 'holdout', 'diff', '95% interval'], rows: fx.map(([k, a, b, d, ci]) => [k, k.includes('cost') ? usd(a) : big(a), k.includes('cost') ? usd(b) : big(b), d, ci]) })
+    const fx = m.effects.map(e => [e.metric, e.on, e.holdout, chg(e.diff), ciText(e.lo, e.hi)])
+    add({ title: 'Active vs holdout sessions', note: `${m.arms.on?.sessions || 0} active · ${m.arms.holdout?.sessions || 0} holdout sessions`, kind: 'table' }, { cols: ['metric', 'active', 'holdout', 'change', '95% interval'], rows: fx.map(([k, a, b, d, ci]) => [k, k.includes('cost') ? usd(a) : big(a), k.includes('cost') ? usd(b) : big(b), d, ci]) })
     add({ title: 'Ledger: saved vs own cost (active sessions)', kind: 'table' }, { cols: ['', 'item', 'usd', 'times'], rows: [...m.savings.map(x => ['+', ...x]), ...m.costs.map(x => ['−', ...x])] })
     if (m.compliance.length) add({ title: 'Nudges followed (vs would-have-been in holdout)', kind: 'table' }, { cols: ['nudge', 'arm', 'followed', 'total', 'followed_pct'], rows: m.compliance })
     add({ title: 'Actions', kind: 'table' }, { cols: ['kind', 'arm', 'n'], rows: m.actions })
@@ -962,16 +1146,177 @@ async function renderImpact(view) {
   status()
 }
 
+const VERDICT = {
+  improved: ['good', 'helped'], tradeoff: ['warn', 'helped, with a cost'], regressed: ['bad', 'made it worse'],
+  no_effect: ['', 'no measurable effect'], changed: ['', 'changed'], collecting: ['', 'measuring…'],
+}
+function advValue(m, v) {
+  if (v == null) return '–'
+  return m.unit === 'usd' ? '$' + v.toFixed(v < 10 ? 3 : 2) : m.unit === 'pct' ? v.toFixed(1) + '%' : m.unit === 'sec' ? v.toFixed(1) + 's' : v >= 100 ? big(Math.round(v)) : v.toFixed(2)
+}
+async function renderAdvisor(view) {
+  view.innerHTML = `<p class="tabnote">The advisor's loop: <b>measure</b> each goal per session, <b>detect</b> the biggest levers, <b>research</b> current guidance on the web (a background agent, every few days, or <code>/analytics advise</code>),
+    <b>recommend</b> concrete changes backed by queries on your own data (re-run and stored, so they can be reproduced), and <b>verify</b> each one with the strongest design the data allows:
+    <b>A</b> randomized (an instruction trialled in a random half of sessions), <b>B</b> controlled (untouched projects as a control, or before/after checked by a placebo window), <b>C</b>/<b>D</b> weaker.
+    Intervals are stratified bootstrap 95%, standardized by project, with fixed seeds; <code>/analytics advise reproduce &lt;id&gt;</code> re-runs everything.
+    Each verdict feeds the next research run. The trend cards use the profile filter; findings use the period.</p><div class="skel"></div>`
+  teardown()
+  $('#status').textContent = 'Loading…'
+  const d = await api('/api/advisor')
+  view.querySelector('.skel')?.remove()
+  const dirCls = { better: 'down good', worse: 'up bad', flat: '', neutral: '' }
+  const color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#888'
+  const sect = (title, small) => view.insertAdjacentHTML('beforeend', `<h2 class="sec">${title}${small ? ` <small>${small}</small>` : ''}</h2>`)
+
+  // Goals: each metric this week vs the four before, with eight weeks of history.
+  for (const g of ['cost', 'tokens', 'speed', 'reliability']) {
+    const ms = d.metrics.filter(m => m.goal === g)
+    if (!ms.length) continue
+    sect(g[0].toUpperCase() + g.slice(1), 'last 7 days vs the 28 before · weekly')
+    view.insertAdjacentHTML('beforeend', `<div class="kpis advkpis">${ms.map(m => `<div class="kpi">
+      <small title="${esc(m.label)}">${esc(m.label)}</small><b>${advValue(m, m.current)}</b>
+      <span class="delta ${dirCls[m.direction] || ''}"${m.lo != null ? ` title="95% interval ${ciText(m.lo, m.hi)}"` : ''}>${m.diff == null ? '&nbsp;' : `${chg(m.diff)} <span class="vs">vs ${advValue(m, m.baseline)}${m.direction === 'flat' ? ' · flat' : ''}</span>`}</span>
+      ${(() => { const i0 = Math.max(0, m.weekly.findIndex(x => x != null)); return spark(m.weekly.slice(i0), color, (m.weeks || []).slice(i0).map(w => 'week of ' + w), m.unit === 'usd' ? 'usd4' : m.unit === 'pct' ? 'pct' : m.unit === 'sec' ? 'sec' : 'num') })() || '<div class="nospark"></div>'}
+      <div class="trendline" title="8-week trend: Theil–Sen slope per week, Mann–Kendall p. Detects: the smallest change a 28-day before/after can tell from noise.">${m.slope == null ? '<span>8 wk: –</span>' : `<span class="${m.trend === 'better' ? 'good' : m.trend === 'worse' ? 'bad' : ''}">8 wk ${(m.slope > 0 ? '+' : m.slope < 0 ? '−' : '') + Math.abs(100 * m.slope).toFixed(0)}%/wk${m.slope_p != null ? ` · p ${m.slope_p < 0.001 ? '<.001' : m.slope_p.toFixed(2).replace(/^0/, '')}` : ''}</span>`}${m.mde != null ? `<span>detects ${m.mde < 0.01 ? '<1' : '±' + (100 * m.mde).toFixed(0)}%</span>` : ''}</div></div>`).join('')}</div>`)
+  }
+
+  const OPEN = ['proposed', 'accepted', 'trial', 'applied']
+  const live = d.recs.filter(r => OPEN.includes(r.status))
+  const done = d.recs.filter(r => !OPEN.includes(r.status))
+  const tr = Object.values(d.trackRecord || {}), applied = d.recs.filter(r => r.verdict && r.verdict !== 'collecting')
+  sect('Recommendations', `${live.length} open · ${applied.filter(r => r.verdict === 'improved').length} helped · ${applied.filter(r => ['regressed', 'tradeoff'].includes(r.verdict)).length} backfired or traded off`)
+  const GRADE = { A: ['good', 'Randomized on your sessions'], B: ['good', 'Controlled comparison on your data'], C: ['warn', 'Your data plus a primary source'], D: ['', 'Weak: before/after or unchecked evidence'] }
+  const METHOD = { randomized: 'Randomized A/B', control_group: 'Vs untouched projects', before_after: 'Before vs after', trend_adjusted: 'Before vs after, trend-adjusted' }
+  const STATUS = { proposed: 'Proposed', accepted: 'Accepted', trial: 'A/B trial', applied: 'Applied', dismissed: 'Dismissed', reverted: 'Reverted' }
+  const labelOf = Object.fromEntries(d.metrics.map(m => [m.key || m.metric, m.label]))
+  const lowerBetter = Object.fromEntries(d.metrics.map(m => [m.key || m.metric, m.lowerIsBetter]))
+  const num = v => v == null ? '–' : String(+(+v).toFixed(3))
+  const range = x => x ? ciText(x.lo, x.hi) : ''
+  const days = n => n == null ? '' : n < 1 ? '< 1 day' : `${Math.round(n)} day${Math.round(n) === 1 ? '' : 's'}`
+  const link = (u, label) => /^https?:\/\//.test(u) ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(label || u.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</a>` : esc(u)
+  const cellv = v => v == null ? '' : typeof v === 'number' ? (Number.isInteger(v) ? big(v) : String(+v.toFixed(4))) : String(v).slice(0, 60)
+  const field = (label, body) => body ? `<dt>${label}</dt><dd>${body}</dd>` : ''
+  const stat = (label, value, sub, cls = '', title = '') => `<div class="rstat ${cls}"${title ? ` title="${esc(title)}"` : ''}><small>${label}</small><b>${value}</b>${sub ? `<span>${sub}</span>` : ''}</div>`
+  // A 95% interval on a symmetric axis around zero, coloured by whether the change is good for this metric.
+  const ciBar = (diff, lo, hi, lb) => {
+    if (diff == null || lo == null) return ''
+    const span = Math.max(0.1, Math.abs(lo), Math.abs(hi), Math.abs(diff)) * 1.15, x = v => 50 + 50 * v / span
+    const good = lb === false ? lo > 0 : hi < 0, bad = lb === false ? hi < 0 : lo > 0
+    return `<div class="ci ${good ? 'good' : bad ? 'bad' : ''}" data-tip="${esc(`Change ${chg(diff)}\n95% interval ${ciText(lo, hi)}`)}"><i class="zero"></i><i class="band" style="left:${x(lo)}%;width:${Math.max(0.6, x(hi) - x(lo))}%"></i><i class="pt" style="left:${x(diff)}%"></i></div><div class="ci-axis"><span>${chg(-span)}</span><span>0</span><span>${chg(span)}</span></div>`
+  }
+  const card = r => {
+    const v = r.verdict_detail || {}, [cls, word] = VERDICT[r.verdict] || ['', r.verdict || '']
+    const isTrial = r.status === 'trial' || !!r.instruction
+    const btn = (st, label, kind = '', title = '') => `<button class="btn ${kind}" data-rec="${esc(r.id)}" data-st="${st}"${title ? ` title="${esc(title)}"` : ''}>${label}</button>`
+    const trialBtn = r.instruction ? btn('trial', 'Start A/B trial', 'primary', 'Adds the instruction to a random half of new sessions and compares them with the other half') : ''
+    const buttons = r.status === 'proposed' || r.status === 'accepted'
+      ? (trialBtn || btn('applied', 'Mark applied', 'primary')) + (r.status === 'proposed' ? btn('accepted', 'Accept') : '') + (trialBtn ? btn('applied', 'Mark applied') : '') + btn('dismissed', 'Dismiss', 'ghost')
+      : r.status === 'trial' ? btn('applied', 'Adopt', 'primary', 'Keep it on in 90% of sessions; 10% stay a holdout so the effect stays measured') + btn('dismissed', 'Stop trial', 'ghost')
+      : r.status === 'applied' ? btn('reverted', 'Reverted it', 'ghost') : btn('proposed', 'Reopen', 'ghost')
+    const copies = (['proposed', 'accepted'].includes(r.status) ? `<button class="btn ghost sm" data-copy="/analytics advise apply ${esc(r.id)}" title="Paste into Claude Code: it shows the change and asks before making it">Copy apply</button>` : '')
+      + `<button class="btn ghost sm" data-copy="/analytics advise reproduce ${esc(r.id)}" title="Re-runs the evidence queries and the verification and says whether they give the same numbers">Copy reproduce</button>`
+    const [gcls, gword] = GRADE[r.grade] || ['', '']
+    const scope = r.scope ? [...(r.scope.projects || []).map(p => `<span class="scope" title="${esc(p)}">${esc(p.split('/').filter(Boolean).pop() || p)}</span>`), ...(r.scope.profiles || []).map(p => `<span class="scope">profile ${esc(p)}</span>`)].join('') : ''
+    const pw = r.power || {}, imp = r.impact || {}
+    const need = isTrial ? pw.trial : pw.after, needDays = isTrial ? pw.trial_days : pw.after_days
+    const measuring = ['applied', 'trial'].includes(r.status)
+    const stats = [
+      r.expected_effect != null ? stat('Expected', chg(r.expected_effect), esc(labelOf[r.metric] || r.metric), '', r.expected || '') : '',
+      r.exposure != null ? stat('Reach', Math.round(100 * r.exposure) + '%', 'of the metric it touches') : '',
+      imp.usd_month != null ? stat(imp.usd_month >= 0 ? 'At stake' : 'Extra cost', usd(Math.abs(imp.usd_month)), 'per month, est.', imp.usd_month >= 0 ? '' : 'bad', 'exposure × expected effect × your spend') : '',
+      pw.effect != null && !measuring ? (need ? stat('Verdict in', `~${big(need)}`, `sessions${needDays != null ? ` · ${days(needDays)}` : ''}`, '', `Sessions for 80% power at a ${chg(Math.abs(pw.effect))} change${isTrial ? ', both arms together' : ' after applying'}`)
+        : stat('Verdict in', 'Not detectable', `smallest: ±${(100 * pw.mde).toFixed(0)}%`, 'warn')) : '',
+    ].filter(Boolean)
+    const ev = Array.isArray(r.evidence) ? r.evidence : null
+    const evHtml = ev ? `<details class="rdisc"><summary>Evidence <span class="count">${ev.length}</span><small>queries re-run when recorded</small></summary>${ev.map(c => `<div class="claim"><p>${esc(c.claim || '')}</p>${c.sql ? `<pre>${esc(c.sql)}</pre>` : '<p class="muted">No query: not checked against your data.</p>'}${c.error ? `<p class="errline">${esc(c.error)}</p>` : c.cols ? `<div class="minitbl"><table class="mini"><tr>${c.cols.map(h => `<th>${esc(h)}</th>`).join('')}</tr>${(c.rows || []).slice(0, 5).map(row => `<tr>${row.map(x => `<td>${esc(cellv(x))}</td>`).join('')}</tr>`).join('')}</table></div>` : ''}</div>`).join('')}</details>`
+      : r.evidence ? field('Evidence', esc(typeof r.evidence === 'string' ? r.evidence : JSON.stringify(r.evidence))) : ''
+    const segs = (v.segments || []).length > 1 ? `<details class="rdisc"><summary>Per project <span class="count">${v.segments.length}</span></summary><div class="minitbl"><table class="mini"><tr><th>Project</th><th class="num">Before</th><th class="num">After</th><th class="num">Change</th><th class="num">95% interval</th><th class="num">Sessions</th></tr>${v.segments.map(g => `<tr><td title="${esc(g.segment)}">${esc(g.segment.split('/').filter(Boolean).slice(-2).join('/'))}</td><td class="num">${num(g.before)}</td><td class="num">${num(g.after)}</td><td class="num ${g.sense === 'better' ? 'good' : g.sense === 'worse' ? 'bad' : ''}">${chg(g.diff)}</td><td class="num">${range(g)}</td><td class="num">${g.n_before} → ${g.n_after}</td></tr>`).join('')}</table></div></details>` : ''
+    const side = (v.side_effects || []).map(x => `${esc(x.label)} ${chg(x.diff)}`).join(', ')
+    const checks = [
+      v.placebo ? [`Placebo`, `${chg(v.placebo.diff)} <small>${range(v.placebo)}</small>${v.placebo.significant ? ' <span class="tagv warn">drift: trend-adjusted</span>' : ' <span class="tagv good">no drift</span>'}`, 'The same comparison one window earlier; it should show nothing'] : null,
+      v.control ? [`Control`, `${chg(v.control.diff)} <small>${range(v.control)}</small>`, 'The change in projects it did not touch'] : null,
+      side ? ['Side effects', `<span class="bad">${side}</span>`, 'Guard metrics that got worse'] : null,
+      (v.confounders || []).length ? ['Also changed', v.confounders.map(c => `${esc(c.day)} ${esc(c.what)}`).join('<br>'), 'Changes within 7 days of the start: they keep the grade below B'] : null,
+    ].filter(Boolean)
+    const result = r.verdict && r.verdict !== 'collecting' ? `<section class="rresult ${cls}">
+        <div class="rresult-head"><span class="verdict">${word}</span><span class="method">${esc(METHOD[v.method] || v.method || '')}</span></div>
+        <div class="rresult-main"><b>${chg(v.diff)}</b><div class="rresult-ci">${ciBar(v.diff, v.lo, v.hi, lowerBetter[r.metric])}</div></div>
+        <p class="rresult-sub">${esc(labelOf[r.metric] || r.metric)} ${num(v.before)} → ${num(v.after)} · ${v.method === 'randomized' ? `${big(v.n_after ?? 0)} with, ${big(v.n_before ?? 0)} without` : `${big(v.n_before ?? 0)} sessions before, ${big(v.n_after ?? 0)} after`}</p>
+        ${checks.length ? `<dl class="rchecks">${checks.map(([k, val, t]) => `<dt title="${esc(t)}">${k}</dt><dd>${val}</dd>`).join('')}</dl>` : ''}
+        ${(v.notes || []).map(x => `<p class="rresult-note">${esc(x)}</p>`).join('')}
+        ${segs}
+      </section>`
+      : r.verdict === 'collecting' ? `<section class="rresult pending"><div class="rresult-head"><span class="verdict">Measuring</span><span class="method">${esc(METHOD[v.method] || v.method || '')}</span></div><p class="rresult-sub">${esc(v.why || 'Collecting sessions since it started.')}</p>${need ? `<div class="progress" title="sessions so far vs needed"><i style="width:${Math.min(100, 100 * ((v.n_after || 0) + (v.method === 'randomized' ? v.n_before || 0 : 0)) / need)}%"></i></div>` : ''}</section>` : ''
+    const srcs = (r.sources || []).map(x => typeof x === 'string' ? { url: x } : x)
+    return `<article class="rec st-${esc(r.status)}">
+      <header class="rec-head"><div class="rec-tags"><span class="tagv st">${STATUS[r.status] || esc(r.status)}</span>${r.grade ? `<span class="tagv grade ${gcls}" title="Evidence grade ${esc(r.grade)}: ${esc(gword)}">Grade ${esc(r.grade)}</span>` : ''}</div><code class="rec-id">${esc(r.id)}</code></header>
+      <h4>${esc(r.title)}</h4>
+      <div class="rec-sub"><span>${esc(r.goal)}</span><span>${esc(labelOf[r.metric] || r.metric)}</span>${r.effort ? `<span>effort ${esc(r.effort)}</span>` : ''}${scope}</div>
+      ${stats.length ? `<div class="rstats">${stats.join('')}</div>` : ''}
+      ${result}
+      <dl class="rfields">
+        ${field('Hypothesis', r.hypothesis ? esc(r.hypothesis) : '')}
+        ${field('Change', r.action ? `<div class="act">${esc(r.action)}</div>` : '')}
+        ${field('Instruction', r.instruction ? `<blockquote class="instr">${esc(r.instruction)}</blockquote><small class="hint">Added to the system prompt in the trial's sessions</small>` : '')}
+        ${field('Expected', r.expected && r.expected_effect == null ? esc(r.expected) : '')}
+        ${field('Against', r.counter ? esc(r.counter) : '')}
+        ${field('Risk', r.risk ? esc(r.risk) : '')}
+        ${field('Note', r.note ? esc(r.note) : '')}
+        ${ev ? '' : evHtml}
+      </dl>
+      ${ev ? evHtml : ''}
+      ${(r.warnings || []).length ? `<div class="callout warn"><b>Check before relying on it</b><ul>${r.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>` : ''}
+      ${srcs.length ? `<div class="rsources">${srcs.map(x => `<span class="src ${x.kind === 'primary' ? 'primary' : ''}" title="${x.kind === 'primary' ? 'Primary source' : 'Secondary source'}${x.checked ? ` · checked ${esc(x.checked)}` : ''}">${link(x.url, x.title)}${x.kind === 'primary' ? '<em>primary</em>' : ''}</span>`).join('')}</div>` : ''}
+      <footer class="rec-foot"><div class="rec-actions">${buttons}</div><div class="rec-copy">${copies}</div></footer>
+    </article>`
+  }
+  view.insertAdjacentHTML('beforeend', live.length ? `<div class="recs">${live.map(card).join('')}</div>`
+    : `<div class="insights"><div class="insight"><span>No open recommendations. Run <code>/analytics advise</code> in Claude Code (or <code>/analytics advise bg</code> to research in the background).</span></div></div>`)
+
+  if (d.detectors.length) {
+    sect('Findings', 'computed from your data in this period, no model involved')
+    const sev = { high: 'bad', medium: 'warn', low: '' }
+    view.insertAdjacentHTML('beforeend', `<div class="insights">${d.detectors.map(x => `<div class="insight ${sev[x.severity] || ''}"><span><b>${esc(x.title)}</b>: ${esc(x.detail)}</span></div>`).join('')}</div>`)
+  }
+
+  const grid = document.createElement('div'); grid.className = 'grid'
+  sect('History'); view.appendChild(grid)
+  const add = (p, data) => fill(makePanel(p, grid), data)
+  const tbl = (rows, cols) => ({ cols, rows: rows.map(r => cols.map(c => r[c] ?? '')) })
+  if (done.length) add({ title: 'Closed recommendations', kind: 'table' }, tbl(done.map(r => ({ ...r, verdict: r.verdict ? (VERDICT[r.verdict] || [, r.verdict])[1] : '' })), ['id', 'status', 'title', 'verdict', 'status_at']))
+  if (tr.length) add({ title: 'Track record (what kind of advice works here)', note: 'success: helped among measured verdicts, Laplace-smoothed ((helped+1)/(measured+2)); randomized: verdicts from A/B trials', kind: 'table', wide: true }, { cols: ['bucket', 'proposed', 'applied', 'dismissed', 'improved', 'tradeoff', 'regressed', 'no_effect', 'randomized', 'success'], rows: Object.entries(d.trackRecord).map(([k, v]) => [k, v.proposed, v.applied, v.dismissed, v.improved, v.tradeoff, v.regressed, v.no_effect, v.randomized ?? 0, v.successRate == null ? '' : (100 * v.successRate).toFixed(0) + '%']) })
+  const seg = Array.isArray(d.segments) ? d.segments : d.segments?.project || []
+  if (seg.length) {
+    const sc = Object.keys(seg[0]).filter(k => !['project', 'segment'].includes(k))
+    add({ title: 'Where each metric stands, by project', note: 'the advisor scopes advice to the projects where a lever lives; what helps one project can hurt another', kind: 'table', wide: true }, { cols: ['project', ...sc], rows: seg.map(r => [r.project ?? r.segment, ...sc.map(k => k === 'spendShare' ? (100 * r[k]).toFixed(0) + '%' : r[k] == null ? '' : typeof r[k] === 'number' && !Number.isInteger(r[k]) ? +r[k].toFixed(2) : r[k])]) })
+  }
+  add({ title: 'Setting changes (from session starts)', note: 'the advisor reads these to tell your own changes from its advice', kind: 'table' }, tbl(d.changes, ['ts', 'profile', 'what', 'change']))
+  add({ title: 'Research runs', kind: 'table' }, tbl(d.runs, ['started', 'trigger_', 'model', 'status', 'recs', 'summary']))
+  if (d.notes.length) add({ title: 'Research notes', note: 'stale: checked more than 90 days ago; the next run re-checks it', kind: 'table', wide: true }, tbl(d.notes.map(x => ({ ...x, stale: x.stale ? 'stale' : '' })), ['ts', 'topic', 'finding', 'source', 'kind', 'published', 'checked', 'stale']))
+
+  view.querySelectorAll('[data-rec]').forEach(b => b.onclick = async () => {
+    let note = ''
+    if (b.dataset.st === 'dismissed' || b.dataset.st === 'reverted') note = prompt(b.dataset.st === 'dismissed' ? 'Why dismiss it? (the advisor learns from this)' : 'What happened?') ?? ''
+    b.disabled = true
+    const r = await fetch('/api/advisor/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: b.dataset.rec, status: b.dataset.st, note }) })
+    const j = await r.json()
+    if (!r.ok) { toast(j.error || 'failed'); b.disabled = false; return }
+    toast(b.dataset.st === 'trial' ? `${b.dataset.rec}: A/B trial on, from the next new session` : `${b.dataset.rec}: ${j.rec?.status || b.dataset.st}`)
+    renderAdvisor(view)
+  })
+  view.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard.writeText(b.dataset.copy).then(() => toast('Copied: ' + b.dataset.copy), () => toast(b.dataset.copy)))
+  status()
+}
+
 async function renderSavings(view) {
   view.innerHTML = '<p class="tabnote">From budget-guard’s session ledgers (all time, not filtered): estimated dollars each lever avoided.</p>'
   teardown()
   const grid = document.createElement('div'); grid.className = 'grid'; view.appendChild(grid)
   const s = await (await fetch('/api/savings')).json()
   const add = (p, d) => fill(makePanel(p, grid), d)
-  add({ title: 'Saved by lever', kind: 'hbar', x: 'lever', y: 'saved', money: true }, s.byLever)
-  add({ title: 'Levers', kind: 'table' }, s.byLever)
-  add({ title: 'Saved vs spent per day', kind: 'bar', x: 'day', y: ['spent', 'saved'], money: true, wide: true }, s.byDay)
+  add({ title: 'Saved by lever', kind: 'hbar', x: 'lever', y: 'saved', money: true, note: 'The table view (top right) has every column.' }, s.byLever)
   add({ title: 'By profile', kind: 'table' }, s.byProfile)
+  add({ title: 'Saved vs spent per day', kind: 'bar', x: 'day', y: ['spent', 'saved'], money: true, wide: true }, s.byDay)
   status()
 }
 
@@ -1098,6 +1443,37 @@ function applyTheme() {
   $('#theme').textContent = { system: 'Theme: auto', light: 'Theme: light', dark: 'Theme: dark' }[t]
 }
 let toastT
+// ---------- tooltips ----------
+const tipEl = Object.assign(document.createElement('div'), { id: 'tip', role: 'tooltip' }); document.body.appendChild(tipEl)
+const SFMT = { usd, usd4: v => '$' + (+v).toFixed(v < 10 ? 3 : 2), pct, big, sec: v => (+v).toFixed(1) + 's', num: v => v >= 100 ? big(Math.round(v)) : (+v).toFixed(2) }
+let tipSpark = null
+function showTip(text, x, y) {
+  tipEl.textContent = text; tipEl.classList.add('on')
+  const r = tipEl.getBoundingClientRect()
+  let l = x + 14, t = y - r.height - 12
+  if (l + r.width > innerWidth - 8) l = x - r.width - 14
+  if (t < 8) t = y + 18
+  tipEl.style.transform = `translate(${Math.max(8, l)}px, ${t}px)`
+}
+function hideTip() { tipEl.classList.remove('on'); if (tipSpark) { tipSpark.classList.remove('hot'); tipSpark = null } }
+document.addEventListener('pointermove', e => {
+  const s = e.target.closest?.('.sparkw')
+  if (s) {
+    const v = JSON.parse(s.dataset.v), ys = JSON.parse(s.dataset.y), l = JSON.parse(s.dataset.l || '[]'), r = s.getBoundingClientRect(), n = v.length
+    const i = Math.max(0, Math.min(n - 1, Math.round((e.clientX - r.left) / r.width * (n - 1)))), x = 100 * i / (n - 1)
+    if (tipSpark && tipSpark !== s) tipSpark.classList.remove('hot')
+    tipSpark = s; s.classList.add('hot')
+    s.querySelector('.sline').style.left = s.querySelector('.sdot').style.left = x + '%'
+    s.querySelector('.sdot').style.top = (ys[i] ?? 100) + '%'
+    s.querySelector('.sdot').style.opacity = v[i] == null ? 0 : 1
+    return showTip(`${l[i] || ''}${l[i] ? '\n' : ''}${v[i] == null ? 'no data' : (SFMT[s.dataset.f] || big)(v[i])}`, e.clientX, r.top)
+  }
+  const t = e.target.closest?.('[data-tip]')
+  if (t) return showTip(t.dataset.tip, e.clientX, e.clientY)
+  if (tipEl.classList.contains('on')) hideTip()
+}, { passive: true })
+addEventListener('scroll', hideTip, { passive: true })
+
 function toast(text) { const t = $('#toast'); t.textContent = text; t.classList.add('on'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('on'), 2200) }
 async function ingestNow() {
   $('#ingest').disabled = true; toast('Ingesting…')

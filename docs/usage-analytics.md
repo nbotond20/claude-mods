@@ -30,7 +30,13 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 | | |
 | --- | --- |
 | `/analytics setup` | the setup wizard |
-| `/dashboard [tab]` or `/analytics dashboard [tab]` | starts the dashboard in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, tools, agents, projects, prompts, health, engine, impact, savings, sql) |
+| `/dashboard [tab]` or `/analytics dashboard [tab]` | starts the dashboard in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, tools, agents, projects, prompts, health, engine, advisor, impact, savings, sql) |
+| `/analytics advise` | research how to use Claude cheaper, with fewer tokens, faster and more reliably, here in the conversation ([below](#the-advisor)) |
+| `/analytics advise bg` · `show` | the same research in the background · the trends, findings and recommendations in the terminal |
+| `/analytics advise apply <id>` | shows the exact change, asks before making it, and starts measuring it |
+| `/analytics advise trial <id>` | runs a recommendation that is a model instruction as an A/B trial: a random half of new sessions get it |
+| `/analytics advise applied\|accept\|dismiss\|revert <id> [note]` | record what you did with a recommendation (a dismissal's note teaches the next run) |
+| `/analytics advise reproduce <id>` | re-runs a recommendation's evidence queries and its verification, and says whether they give the same numbers |
 | `/analytics impact [--days N] [--profile P]` | are the mods saving money or costing more ([mod-impact.md](mod-impact.md)) |
 | `/analytics status` · `/analytics ingest` · `/analytics stop` | data and dashboard status · ingest now · stop the dashboard |
 | `/analytics [overview\|daily\|models\|projects\|tools\|bash\|files\|agents\|sessions\|context\|hours\|cache\|prompts\|all] [--days N] [--profile P] [--project x]` | terminal report (ingests first) |
@@ -40,6 +46,51 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 
 `claude-usage` lives at `usage-analytics/bin/claude-usage` (Python 3, stdlib only). An alias is handy:
 `alias claude-usage='python3 ~/Desktop/projects/claude-mods/usage-analytics/bin/claude-usage'`.
+
+## The advisor
+
+A loop that keeps looking for ways to spend less on Claude Code, and checks whether its advice worked:
+
+1. **Measure.** Fifteen metrics per session, grouped by goal. *Cost*: cost per prompt, premium-model share, spend inside subagents. *Tokens*: tokens per prompt, main-loop context, cache hit rate, tool output per prompt, whole-file reads, output per request, share of prompts not in English, prompt length. *Speed*: requests per prompt, turn time. *Reliability*: tool error rate, API errors, compactions. For each one you get eight weekly values and the last 7 days against the 28 before, with a bootstrap 95% interval.
+2. **Detect.** Deterministic findings, no model involved, each tied to the metric it moves: large contexts, a low cache hit rate, whole-file reads, heavy tool output, a failing tool, serial tool calls, premium models in subagents, non-English prompts, frequent compaction, API errors, and big always-loaded MCP schemas. It also diffs consecutive session starts to show your own setting changes (model, effort, plugins, version).
+3. **Research.** An agent (`usage-analytics:advisor`) reads all of the above. That includes every earlier recommendation with its measured verdict and evidence grade, a track record per goal and per kind of change, its earlier notes, each metric per project, profile and entrypoint, and a sample of prompts. It looks up current guidance on the web and records 3–6 recommendations, held to the rules below.
+4. **Apply or trial.** `/analytics advise apply <id>` shows the change and asks before making it. You can also make the change yourself and run `/analytics advise applied <id>`, or use the dashboard's buttons. A recommendation that is a model instruction (read ranges, batch calls, …) can instead run as an **A/B trial** (`/analytics advise trial <id>`, or *Start A/B trial*).
+5. **Verify.** Each applied or trialled recommendation is measured on its own metric and on the guard metrics (cost per prompt, round trips, tool errors, API errors, turn time) for side effects. Verdicts:
+   - **helped**
+   - **helped, with a cost**: a guard metric got worse by at least 10% and past a small absolute floor
+   - **made it worse**
+   - **no measurable effect**: the interval rules out half the expected effect, or there are already as many sessions as the power calculation asked for
+   - **measuring…**: until there are 8 sessions on each side
+
+   You get a toast when a verdict changes. The next research run reads the verdict: it builds on what helped, proposes reverting what backfired or did nothing, and does not repeat what you dismissed.
+
+### How it keeps the advice honest
+
+**Claims come from your data and can be re-run.** Every number in a recommendation is an `{claim, sql}` pair. The query is re-run when the recommendation is recorded, and the result is stored next to it. A failed query, a recommendation with no query, a recommendation without a primary source (Anthropic's docs, pricing, changelog, or the anthropics GitHub repos), or an expected effect too small to detect becomes a warning on the card. Research notes keep their source, published date and the day they were checked. Notes older than 90 days are flagged stale, and the next run re-checks them against the changelog.
+
+**Fitted to you.** Your data beats web advice. The brief shows each metric by project, profile and entrypoint (interactive vs automated). A recommendation can be scoped to the projects or profiles where its lever lives. Every scoped recommendation is measured only there, and its verdict is broken down per project, because what helps one project can hurt another. The track record (success rate per goal and kind of change, Laplace-smoothed) steers the next run away from advice that keeps failing for you.
+
+**Measured with the strongest design the data allows.** Each recommendation gets an evidence grade:
+
+| Design | When | Grade |
+| --- | --- | --- |
+| **randomized** | an instruction on trial: a random 50% of new sessions get it (FNV hash of rec and session id, logged as `advisor_arm` events); after adopting it, 10% stay a holdout so the effect stays measured | **A** |
+| **control group** | a scoped change with enough untouched sessions: the change in scope net of the change outside it (difference in differences) | **B** |
+| **before/after + placebo** | the 28 days before vs after, plus the same comparison one window earlier, which should show nothing. If that placebo finds a drift, the estimate is trend-adjusted. | **B** without confounders, else **C/D** |
+| evidence only | re-run queries plus a primary source, not yet measured | **C** |
+| anything weaker | | **D** |
+
+Confounders, meaning setting changes and other recommendations started within 7 days, are listed on the verdict and keep it out of grade B.
+
+**The statistics.** Metrics are ratios of per-session sums. Comparisons are directly standardized by project, so a change in which projects you worked on does not read as an effect. Intervals come from a stratified percentile bootstrap: 1000 resamples for a verdict, 400 for side effects. Before recording, a delta-method power calculation (80% power, 5% level) estimates how many sessions a verdict will need at your pace, and the advisor prefers metrics that can detect the effect. For example, a 20% drop in whole-file reads shows within days, while a 20% drop in cost per prompt can take months. Trends are a Theil–Sen slope with a Mann–Kendall p-value, and count only when they move at least 5% over the eight weeks.
+
+**Reproducible.** Seeds come from the recommendation id and the metric, and every verdict stores its method version, seed, resamples, windows, data version and a hash of the session ids. `/analytics advise reproduce <id>` re-runs everything and reports `identical` when nothing changed. `tests/test_advisor_stats.py` checks the statistics on synthetic sessions with a known truth: a real effect is found and covered by the interval, a null is rarely flagged, a change in the mix of work is ignored, the same input gives the same numbers, and power() matches simulation.
+
+**When it runs.** `/analytics advise` runs the research in the conversation, where you can watch and steer it. Every `advisorEveryDays` (default 7), an interactive session starts it in the background about three minutes in, on `advisorModel` (default Sonnet). A lock keeps it to one run per machine.
+
+The background agent can use only WebSearch, WebFetch and the mod's own four tools. The mod answers those four tools itself and never runs a shell for the agent. The agent runs with `dontAsk`, so anything else is refused instead of prompting, and it never edits files.
+
+**Where it lives.** Everything is stored in `<mods home>/usage-analytics/advisor.db`: runs, recommendations, verdict checks and research notes. Instructions on trial or adopted are in `advisor-trials.json`, which the mod reads at each new session. While one is active, it adds a short `usage-analytics:advisor` system-prompt section in that trial's 'on' sessions, and only there. `claude-usage advise show|brief|sql|set|…` reads and writes the same data from a shell.
 
 ## One server per machine, started for you
 
@@ -150,6 +201,9 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 | `captureOtel` | true | also log Claude Code's own telemetry events |
 | `dashboard` | true | keep the one dashboard server running (started at session start and by `/analytics`) |
 | `port` | 8787 | dashboard port (127.0.0.1 only) |
+| `advisorEveryDays` | 7 | days between background advisor runs (0: only on `/analytics advise`) |
+| `advisorModel` | `sonnet` | the background advisor's model |
+| `advisorNotify` | true | toast when an applied recommendation gets a verdict |
 | `profileDirs` | `[]` | config dirs to read transcripts from; empty = auto: `~/.claude*` plus every config dir a session registered under `profiles/` |
 
 ## Files
@@ -158,9 +212,10 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 - `usage-analytics/bin/claude-usage`: ingest, report, sql, export and serve.
 - `usage-analytics/bin/dashboard_api.py`: the dashboard server and its queries.
 - `usage-analytics/bin/impact.py`: the mod impact analysis.
+- `usage-analytics/bin/advisor.py`: the advisor's metrics, findings, verdicts and store (`advisor.db`).
 - `usage-analytics/dashboard/index.html`: the page.
 - `usage-analytics/tests/usage-analytics.test.ts`: event paths, ordering, facets, and a check that no secret leaks.
-- Data lives in `<mods home>/usage-analytics/` (or `$CLAUDE_USAGE_DIR`): `usage.db`, `events/`, `pricing.json`, `config.json`, `profiles/<profile>.json` (registered config dirs), `dashboard.log`, `dashboard.lock`, `ingest.lock`, `live/<profile>.json` (activity pulses).
+- Data lives in `<mods home>/usage-analytics/` (or `$CLAUDE_USAGE_DIR`): `usage.db`, `events/`, `pricing.json`, `config.json`, `profiles/<profile>.json` (registered config dirs), `advisor.db`, `advisor-runs/` (each research run's raw result), `dashboard.log`, `dashboard.lock`, `ingest.lock`, `live/<profile>.json` (activity pulses).
 
 ## Secrets
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { setupPrompt } from '../hooks/register'
+import { inScope, projectOf, setupPrompt, trialArm } from '../hooks/register'
 
-function engine(on: any, env: Record<string, string>, runs: string[][] = [], toasts: string[] = []) {
+function engine(on: any, env: Record<string, string>, runs: string[][] = [], toasts: string[] = [], out: (argv: string[]) => string | undefined = () => undefined, agents: any[] = []) {
   const files = new Map<string, string>()
   let now = 1_760_000_000_000
   on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
@@ -15,7 +15,7 @@ function engine(on: any, env: Record<string, string>, runs: string[][] = [], toa
   on('session.model', () => ({ value: 'claude-opus-5-5' }))
   on('session.usage', () => ({ value: { startedAt: 1 } }))
   on('settings.read', () => ({ value: { model: 'claude-opus-5-5', enabledPlugins: { 'a@b': true, 'c@d': false } } }))
-  on('process.run', ($: any, e: any) => (runs.push([...e.argv, `env:${JSON.stringify(e.init?.env ?? {})}`]), { value: { exitCode: 0, stdout: 'ok', stderr: '' } }))
+  on('process.run', ($: any, e: any) => (runs.push([...e.argv, `env:${JSON.stringify(e.init?.env ?? {})}`]), { value: { exitCode: 0, stdout: out(e.argv) ?? 'ok', stderr: '' } }))
   on('fs.exists', ($: any, e: any) => ({ value: [...files.keys()].some(f => f === e.path || f.startsWith(`${e.path}/`)) }))
   on('ui.toast', ($: any, e: any) => (toasts.push(e.text), { value: undefined }))
   on('prompt.submit', ($: any, e: any) => ({ text: e.text }))
@@ -24,6 +24,8 @@ function engine(on: any, env: Record<string, string>, runs: string[][] = [], toa
   on('fs.read', ($: any, e: any) => (files.has(e.path) ? { value: files.get(e.path) } : { deny: 'ENOENT' }))
   on('session.end', ($: any, e: any) => ({ sessionId: e.sessionId }))
   on('tool.call', () => ({ result: 'a\nb\nc', text: 'a\nb\nc' }) as any)
+  on('tool.register', ($: any, e: any) => ({ value: { tool: `mcp__usage-analytics__${e.name}` } }))
+  on('agent.register', ($: any, e: any) => (agents.push(e), { value: { agent: `usage-analytics:${e.name}` } }))
   return files
 }
 
@@ -92,7 +94,7 @@ describe('usage-analytics', () => {
     engine(on, ENV, runs)
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     const cmd = (command: string, args: string) => $.command.run({ command, args, origin: { kind: 'user' }, presentation: 'text' } as any)
-    const tail = () => runs[runs.length - 1].slice(2, -1)
+    const tail = () => runs[runs.length - 1]!.slice(2, -1)
     await cmd('dashboard', 'impact')
     expect(tail()).toEqual(['serve', '--daemon', '--open', '--tab', 'impact'])
     const bad = await cmd('dashboard', 'nope')
@@ -119,5 +121,91 @@ describe('usage-analytics', () => {
     expect(text).toContain('[REDACTED]')
     expect(text).toContain('curl -H')
     for (const line of text.trim().split('\n')) JSON.parse(line)
+  })
+
+  test('the advisor: own tools without a prompt, a hidden background agent, and verdicts on /analytics advise', async ($, on) => {
+    const runs: string[][] = []
+    const toasts: string[] = []
+    const spawns: any[] = []
+    const agents: any[] = []
+    engine(on, ENV, runs, toasts, argv => (argv.includes('due') ? '{"runId":"run-1"}' : undefined), agents)
+    on('agent.spawn', ($: any, e: any) => (spawns.push(e), { model: 'sonnet', agentId: 'ag-1' }))
+    on('turn.complete', () => ({ text: '' }))
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const args = () => runs[runs.length - 1]!.slice(2, -1)
+
+    // The agent may only use the web and the mod's own tools, and is refused anything else instead of prompting.
+    expect(agents[0]).toMatchObject({ name: 'advisor', permissionMode: 'dontAsk' })
+    expect(agents[0].tools).toEqual(['WebSearch', 'WebFetch', 'ToolSearch', 'mcp__usage-analytics__advisor_brief', 'mcp__usage-analytics__advisor_sql', 'mcp__usage-analytics__advisor_record', 'mcp__usage-analytics__advisor_set'])
+    expect(await $.agent.offer({ agent: 'usage-analytics:advisor', description: '', source: 'plugin' } as any)).toEqual({ isOffered: false })
+
+    // Its tools are answered by the mod: the CLI on the shared data folder.
+    // Due on schedule: a claimed run and the hidden agent, started a while after the session starts.
+    for (let i = 0; i < 200; i++) await Promise.resolve()
+    expect(runs.some(x => x.slice(2, -1).join(' ') === 'advise due --every 7 --claim --trigger schedule --model sonnet')).toBe(true)
+    expect(spawns[0]).toMatchObject({ subagent_type: 'usage-analytics:advisor', run_in_background: true })
+    expect(spawns[0].prompt).toContain('run-1')
+
+    // Its tools are answered by the mod: the CLI on the shared data folder.
+    const r = await $.tool.call({ tool: 'mcp__usage-analytics__advisor_sql', tool_use_id: 'q1', agentId: 'ag-1', query: 'select 1' } as any)
+    expect((r as any).result).toBe('ok')
+    expect(args()).toEqual(['advise', 'sql', '--', 'select 1'])
+
+    // It ended without recording: the run is marked failed and the person told.
+    await $.turn.complete({ agentId: 'ag-1', isAborted: false, answer: 'gave up', reason: 'end' } as any)
+    expect(args().slice(0, 3)).toEqual(['advise', 'fail', 'run-1'])
+    expect(toasts.some(t => /without recommendations/.test(t))).toBe(true)
+
+    const cmd = (a: string) => $.command.run({ command: 'analytics', args: a, origin: { kind: 'user' }, presentation: 'text' } as any)
+    await cmd('advise dismiss r3 too noisy')
+    expect(args()).toEqual(['advise', 'set', 'r3', 'dismissed', '--note', 'too noisy'])
+    await cmd('advise applied r2')
+    expect(args()).toEqual(['advise', 'set', 'r2', 'applied'])
+    const bg = await cmd('advise bg')
+    expect(String((bg as any).text)).toMatch(/background/)
+    expect(runs.some(x => x.slice(2, -1).join(' ') === 'advise due --every 0 --claim --trigger manual --model session')).toBe(true)
+    expect(spawns.length).toBe(2)
+    await cmd('advise trial r4')
+    expect(args()).toEqual(['advise', 'set', 'r4', 'trial'])
+    await cmd('advise reproduce r2')
+    expect(args()).toEqual(['advise', 'reproduce', 'r2'])
+  })
+
+  test('advisor trials: a random arm per session, logged, the instruction only in the on arm and in scope', async ($, on) => {
+    const files = engine(on, ENV)
+    on('prompt.compose', () => ({ sections: [{ id: 'base', text: 'base', scope: 'session' }] }))
+    files.set('/h/.claude-mods/usage-analytics/advisor-trials.json', JSON.stringify({ trials: [
+      { id: 'on1', instruction: 'Read ranges.', share: 1, scope: { projects: ['~/work'] } },
+      { id: 'off1', instruction: 'Never shown.', share: 0 },
+      { id: 'elsewhere', instruction: 'Other project.', share: 1, scope: { projects: ['~/other'] } },
+    ] }))
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/h/work/app/.claude/worktrees/x' } as any)
+    const compose = () => $.prompt.compose({ model: 'claude-opus-5-5', promptModel: 'claude-opus-5-5', surfaces: ['terminal'], tools: [], traits: [], outputStyle: null } as any) as any
+    const r = await compose()
+    const added = r.sections.filter((x: any) => x.id === 'usage-analytics:advisor')
+    expect(added.length).toBe(1)
+    expect(added[0].text).toBe('Read ranges.')
+    // The same session keeps its arms and logs them once.
+    await compose()
+    await $.session.end({ reason: 'exit', sessionId: 'sess-1' } as any)
+    const evs = [...files.entries()].filter(([p]) => p.includes('/events/')).flatMap(([, t]) => t.trim().split('\n').map(l => JSON.parse(l)))
+    expect(evs.filter(e => e.ev === 'advisor_arm').map(e => [e.rec, e.arm])).toEqual([['on1', 'on'], ['off1', 'holdout']])
+    // An analysis call (a classifier, a summary) never gets it.
+    const a = (await $.prompt.compose({ model: 'm', promptModel: 'm', surfaces: ['terminal'], tools: [], traits: ['analysis'], outputStyle: null } as any)) as any
+    expect(a.sections.some((x: any) => x.id === 'usage-analytics:advisor')).toBe(false)
+  })
+
+  test('advisor trials: arms are stable and balanced, scope matches the database\'s project names', () => {
+    expect(trialArm('r1', 's1', 0.5)).toBe(trialArm('r1', 's1', 0.5))
+    let n = 0
+    for (let i = 0; i < 4000; i++) n += trialArm('abc123', `${i.toString(16).padStart(8, '0')}-sess`, 0.5) === 'on' ? 1 : 0
+    expect(n).toBeGreaterThan(1880)
+    expect(n).toBeLessThan(2120)
+    expect(projectOf('/h/code/app-worktrees/feat', '/h')).toBe('~/code/app')
+    expect(projectOf('/opt/x', '/h')).toBe('/opt/x')
+    const t = { id: 'x', instruction: 'i', share: 0.5, scope: { projects: ['~/code/app'], profiles: ['claude-work'] } }
+    expect(inScope(t, '~/code/app/sub', 'claude-work')).toBe(true)
+    expect(inScope(t, '~/code/application', 'claude-work')).toBe(false)
+    expect(inScope(t, '~/code/app', 'claude')).toBe(false)
   })
 })

@@ -20,6 +20,8 @@ Commands:
   serve   [--port N] [--daemon] [--open]      the web dashboard (127.0.0.1 only; port from config, default 8787)
   setup   [--json]                    what was detected (profiles, history, python, dashboard) for the setup wizard
   autostart on|off|status             also keep the dashboard running from login (launchd on macOS, systemd on Linux)
+  advise  [show|brief|record FILE|-|set ID STATUS|get ID|reproduce ID|due|notify|sql Q] [--json]
+                                      the self-improving advisor: metrics, findings, recommendations and their verdicts
   path                                print the data directory
 Only the Python standard library is used.
 """
@@ -1075,6 +1077,85 @@ def cmd_impact(args):
     return 0
 
 
+def cmd_advise(args):
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import advisor
+    if args.ingest:
+        cmd_ingest(argparse.Namespace(quiet=True, full=False))
+    con = connect()
+    a = advisor.adb(DATA)
+    profiles = args.profile.split(',') if args.profile else None
+    out = lambda d: print(json.dumps(d, default=str, indent=1))
+    act, rest = args.action, args.rest
+    if act == 'show':
+        d = advisor.dashboard(con, a, profiles, args.days)
+        out(d) if args.json else print(advisor.fmt_text(d))
+    elif act == 'brief':
+        out(advisor.brief(con, a, profiles, args.days))
+    elif act == 'record':
+        src = rest[0] if rest else '-'
+        payload = json.load(sys.stdin if src == '-' else open(src))
+        rid, added, skipped, warnings = advisor.record(con, a, payload, trigger=args.trigger, model=args.model, run_id=args.run)
+        print(f'run {rid}: {len(added)} recommendation(s) recorded ({", ".join(added) or "none"})'
+              + (f'; skipped as already open: {"; ".join(skipped)}' if skipped else ''))
+        for r in advisor.recs(a):
+            if r['id'] in added:
+                pw, imp = r['power'] or {}, r['impact'] or {}
+                print(f"  {r['id']} [grade {r['grade']}] {r['title']}"
+                      + (f"; worth ~${imp['usd_month']:.0f}/month" if imp.get('usd_month') else '')
+                      + (f"; a verdict needs ~{pw['after']} sessions after (~{pw['after_days']} days)" if pw.get('after') else '')
+                      + (f"; an A/B trial ~{pw['trial']} sessions" if r['instruction'] and pw.get('trial') else ''))
+                for w in warnings.get(r['id'], []):
+                    print(f'    ! {w}')
+    elif act == 'set':
+        if len(rest) < 2:
+            print('usage: advise set ID proposed|accepted|trial|applied|dismissed|reverted [--note TEXT] [--at ISO]', file=sys.stderr)
+            return 2
+        try:
+            r = advisor.set_status(con, a, rest[0], rest[1], note=args.note, at=args.at)
+        except ValueError as ex:
+            print(ex, file=sys.stderr)
+            return 1
+        if r['status'] == 'trial':
+            print(f"{r['id']} is on trial: {r['title']}. From the next session on, a random half of sessions get the instruction; "
+                  f"the two halves are compared on {advisor.M[r['metric']][1]} and the guard metrics.")
+        else:
+            print(f"{r['id']} is {r['status']}: {r['title']}" + (f" (baseline {advisor.fmt_value(r['metric'], r['baseline'])} {advisor.M[r['metric']][1]}; "
+                  f"verdict after {advisor.MIN_AFTER}+ sessions)" if r['status'] == 'applied' and r['metric'] in advisor.M else '')
+                  + (f"; {round(100 * advisor.HOLDOUT)}% of sessions stay without it, so its effect keeps being measured" if r['status'] == 'applied' and r['instruction'] else ''))
+    elif act == 'due':
+        out(advisor.due(a, args.every, claim=args.claim, trigger=args.trigger, model=args.model, data_dir=DATA))
+    elif act == 'fail':
+        a.execute("UPDATE runs SET status = 'failed', finished = ?, summary = ? WHERE id = ?", (advisor.now_iso(), ' '.join(rest[1:])[:500] or None, rest[0] if rest else ''))
+        a.commit()
+    elif act == 'notify':
+        out(advisor.notify(con, a))
+    elif act == 'reproduce':
+        try:
+            out(advisor.reproduce(con, a, rest[0] if rest else ''))
+        except ValueError as ex:
+            print(ex, file=sys.stderr)
+            return 1
+    elif act == 'get':
+        r = [x for x in advisor.recs(a) if x['id'] == (rest[0] if rest else '')]
+        if not r:
+            print(f'no recommendation {rest[0] if rest else ""}', file=sys.stderr)
+            return 1
+        out(r[0])
+    elif act == 'sql':
+        # Read-only, for the advisor agent: its own connection cannot write.
+        ro = sqlite3.connect(f'file:{DB}?mode=ro', uri=True, timeout=30)
+        ro.execute('PRAGMA query_only = 1')
+        try:
+            cur = ro.execute(' '.join(rest))
+            rows = cur.fetchmany(args.limit)
+        except sqlite3.Error as ex:
+            out({'error': str(ex)})
+            return 1
+        out({'cols': [c[0] for c in cur.description or []], 'rows': rows, 'truncated': len(rows) == args.limit})
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog='claude-usage', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest='cmd')
@@ -1110,6 +1191,15 @@ def main(argv=None):
     au = sub.add_parser('autostart', help='keep the dashboard running from login too')
     au.add_argument('state', choices=['on', 'off', 'status']); au.set_defaults(fn=cmd_autostart)
     sub.add_parser('path').set_defaults(fn=lambda a: print(DATA) or 0)
+    ad = sub.add_parser('advise', help='the self-improving advisor (show, brief, record, set, due, notify)')
+    ad.add_argument('action', nargs='?', default='show', choices=['show', 'brief', 'record', 'set', 'get', 'due', 'fail', 'notify', 'sql', 'reproduce'])
+    ad.add_argument('--limit', type=int, default=200, help='sql: most rows returned')
+    ad.add_argument('rest', nargs='*')
+    ad.add_argument('--days', type=int, default=30); ad.add_argument('--profile'); ad.add_argument('--json', action='store_true')
+    ad.add_argument('--ingest', action='store_true'); ad.add_argument('--note'); ad.add_argument('--at', help='when it was applied (ISO time)')
+    ad.add_argument('--every', type=float, default=7, help='due: days between research runs'); ad.add_argument('--claim', action='store_true')
+    ad.add_argument('--trigger', default='manual'); ad.add_argument('--model'); ad.add_argument('--run', help='record: the run id from `due --claim`')
+    ad.set_defaults(fn=cmd_advise)
     args = ap.parse_args(argv)
     if not getattr(args, 'fn', None):
         ap.print_help()

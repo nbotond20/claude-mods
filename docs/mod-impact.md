@@ -1,6 +1,6 @@
 # Mod impact: are the mods saving money?
 
-Every mod that changes what the model sees or does (budget-guard, lean-tools, lsp-first) is measured. usage-analytics only observes: it adds nothing to prompts and makes no model calls, so it costs no tokens.
+Every mod that changes what the model sees or does (budget-guard, lean-tools, lsp-first) is measured. usage-analytics observes. It adds nothing to prompts, except while you trial or adopt an advisor instruction: that instruction goes into the trial's 'on' sessions only, and the advisor measures it against the rest. It makes no model calls, except the advisor runs you start or schedule.
 
 ```
 /analytics impact [--days N] [--profile P]     terminal report
