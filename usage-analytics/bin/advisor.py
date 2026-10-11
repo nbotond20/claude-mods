@@ -698,14 +698,32 @@ def _norm(t):
     return ' '.join(sorted(set(w for w in WORD.findall((t or '').lower()) if w not in EN_STOP)))
 
 
+# PRAGMAs that only describe the schema; every other one (query_only, writable_schema, …) is refused.
+SAFE_PRAGMAS = {'table_info', 'table_xinfo', 'table_list', 'index_list', 'index_info', 'index_xinfo', 'foreign_key_list', 'database_list'}
+
+
+def _guard(action, arg1, *_):
+    # ATTACH would open any other SQLite file on disk (a browser's cookies, another app's data) through this connection.
+    if action in (sqlite3.SQLITE_ATTACH, sqlite3.SQLITE_DETACH):
+        return sqlite3.SQLITE_DENY
+    if action == sqlite3.SQLITE_PRAGMA and (arg1 or '').lower() not in SAFE_PRAGMAS:
+        return sqlite3.SQLITE_DENY
+    return sqlite3.SQLITE_OK
+
+
+def readonly(path, timeout=30):
+    """A connection for SQL that did not come from this code (the research agent, the dashboard's SQL tab): it
+    cannot write, attach another database file or change pragmas."""
+    ro = sqlite3.connect(f'file:{path}?mode=ro', uri=True, timeout=timeout)
+    ro.execute('PRAGMA query_only = 1')
+    ro.set_authorizer(_guard)
+    return ro
+
+
 def _ro(con):
     """A read-only connection to the usage database, for SQL that came from the research agent."""
     path = _path(con)
-    if not path:
-        return con
-    ro = sqlite3.connect(f'file:{path}?mode=ro', uri=True, timeout=30)
-    ro.execute('PRAGMA query_only = 1')
-    return ro
+    return readonly(path) if path else con
 
 
 def run_query(ro, sql, limit=20, seconds=15):

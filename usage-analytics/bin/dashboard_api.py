@@ -406,9 +406,8 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
     advice = {}   # (live version, days, profiles) -> the advisor's page; it takes seconds to compute
 
     def ro():
-        con = sqlite3.connect(f'file:{db}?mode=ro', uri=True, timeout=30)
-        con.execute('PRAGMA query_only = 1')
-        return con
+        import advisor
+        return advisor.readonly(db)
 
     class H(BaseHTTPRequestHandler):
         def log_message(self, *a):

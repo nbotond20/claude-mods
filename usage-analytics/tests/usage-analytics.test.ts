@@ -136,7 +136,7 @@ describe('usage-analytics', () => {
 
     // The agent may only use the web and the mod's own tools, and is refused anything else instead of prompting.
     expect(agents[0]).toMatchObject({ name: 'advisor', permissionMode: 'dontAsk' })
-    expect(agents[0].tools).toEqual(['WebSearch', 'WebFetch', 'ToolSearch', 'mcp__usage-analytics__advisor_brief', 'mcp__usage-analytics__advisor_sql', 'mcp__usage-analytics__advisor_record', 'mcp__usage-analytics__advisor_set'])
+    expect(agents[0].tools).toEqual(['WebSearch', 'WebFetch', 'ToolSearch', 'mcp__usage-analytics__advisor_brief', 'mcp__usage-analytics__advisor_sql', 'mcp__usage-analytics__advisor_record'])
     expect(await $.agent.offer({ agent: 'usage-analytics:advisor', description: '', source: 'plugin' } as any)).toEqual({ isOffered: false })
 
     // Its tools are answered by the mod: the CLI on the shared data folder.
@@ -149,6 +149,12 @@ describe('usage-analytics', () => {
     // Its tools are answered by the mod: the CLI on the shared data folder.
     const r = await $.tool.call({ tool: 'mcp__usage-analytics__advisor_sql', tool_use_id: 'q1', agentId: 'ag-1', query: 'select 1' } as any)
     expect((r as any).result).toBe('ok')
+    expect(args()).toEqual(['advise', 'sql', '--', 'select 1'])
+
+    // A model never starts a trial: that puts advisor-written text into later sessions' system prompts.
+    const set = await $.tool.call({ tool: 'mcp__usage-analytics__advisor_set', tool_use_id: 's1', id: 'r3', status: 'trial' } as any)
+    expect((set as any).isError).toBe(true)
+    expect((set as any).result).toContain('/analytics advise trial r3')
     expect(args()).toEqual(['advise', 'sql', '--', 'select 1'])
 
     // It ended without recording: the run is marked failed and the person told.

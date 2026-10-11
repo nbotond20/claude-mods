@@ -1144,8 +1144,7 @@ def cmd_advise(args):
         out(r[0])
     elif act == 'sql':
         # Read-only, for the advisor agent: its own connection cannot write.
-        ro = sqlite3.connect(f'file:{DB}?mode=ro', uri=True, timeout=30)
-        ro.execute('PRAGMA query_only = 1')
+        ro = advisor.readonly(DB)
         try:
             cur = ro.execute(' '.join(rest))
             rows = cur.fetchmany(args.limit)
