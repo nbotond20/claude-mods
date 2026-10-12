@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.3
+- `timesheet serve` checks what already holds the port: a running server of this version (or newer) is reused and just opened, an older one is stopped cleanly and replaced, anything else is reported instead of crashing. `--restart` always replaces it. New `GET /api/version`.
+
 ## 0.3.2
 - Personal toggle in the timesheet: real hours spent in personal folders, shown next to work in the totals, under the NetSuite export grid (on screen only, never copied) and on each day. Never booked, rounded or targeted.
 

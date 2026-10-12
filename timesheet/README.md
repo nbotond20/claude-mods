@@ -49,7 +49,7 @@ timesheet month 2026-09 --format lines
 timesheet week --no-header --copy  # grid rows only, for pasting straight into cells
 timesheet week --target 7.5        # normalize to a different target
 timesheet week --real              # book real (rounded) hours instead
-timesheet serve --open             # web app at http://127.0.0.1:4280
+timesheet serve --open             # web app at http://127.0.0.1:4280 (reuses a running server of this version, replaces an older one; --restart always replaces)
 ```
 
 Adjustments survive recomputes:

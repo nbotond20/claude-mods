@@ -28,6 +28,7 @@ import { capture, INSPECT_DIR } from '../core/submit/inspect.ts';
 import { buildPlan, describeTarget } from '../core/submit/plan.ts';
 import { isSystem, listCaptures, startUrl, SubmitSession } from '../core/submit/session.ts';
 import { Abort } from '../core/submit/adapter.ts';
+import { APP_VERSION, compareVersions, probe, stopServer } from './port.ts';
 import { Busy, SubmitRunner } from '../core/submit/run.ts';
 import { SYSTEMS, type SubmitRule, type SystemId } from '../core/submit/types.ts';
 
@@ -366,6 +367,8 @@ export function createApp(opts: AppOptions) {
       const q = req.method === 'GET' ? Object.fromEntries(url.searchParams) : await body(req);
 
       switch (`${req.method} ${pathname}`) {
+        case 'GET /api/version':
+          return json(res, 200, { app: 'timesheet', version: APP_VERSION, pid: process.pid });
         case 'GET /api/meta':
           return json(res, 200, meta());
         case 'GET /api/report':
@@ -575,8 +578,26 @@ export function createApp(opts: AppOptions) {
   });
 }
 
-export function serve(opts: AppOptions, port: number, open = false): Promise<void> {
-  return new Promise((resolve) => {
+const openUrl = (url: string) => execFile(process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open', [url], () => {});
+
+/**
+ * Starts the web app. A timesheet server already on the port is reused when it is this version or newer,
+ * and replaced when it is older (or `restart` is set); anything else on the port is an error.
+ */
+export async function serve(opts: AppOptions, port: number, open = false, restart = false): Promise<void> {
+  const url = `http://127.0.0.1:${port}`;
+  const holder = await probe(port);
+  if (holder.kind === 'foreign') throw new Error(`port ${port} is in use by something else; pick another with --port`);
+  if (holder.kind === 'timesheet') {
+    if (!restart && holder.version && compareVersions(holder.version, APP_VERSION) >= 0) {
+      console.log(`Timesheet ${holder.version} already running: ${url}`);
+      if (open) openUrl(url);
+      return;
+    }
+    console.log(`Replacing timesheet ${holder.version ?? '(older)'} on ${url} with ${APP_VERSION}`);
+    await stopServer(port, holder);
+  }
+  return new Promise((resolve, reject) => {
     const app = createApp(opts);
     const server = createServer(app);
     // Closing mid-computation keeps the job: it is marked interrupted and resumes on the next start.
@@ -586,10 +607,12 @@ export function serve(opts: AppOptions, port: number, open = false): Promise<voi
     };
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
+    server.on('error', (e: NodeJS.ErrnoException) =>
+      reject(e.code === 'EADDRINUSE' ? new Error(`port ${port} was taken while starting; run serve again`) : e),
+    );
     server.listen(port, '127.0.0.1', () => {
-      const url = `http://127.0.0.1:${port}`;
-      console.log(`Timesheet: ${url}  (Ctrl+C to stop)`);
-      if (open) execFile(process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open', [url], () => {});
+      console.log(`Timesheet ${APP_VERSION}: ${url}  (Ctrl+C to stop)`);
+      if (open) openUrl(url);
     });
     server.on('close', resolve);
   });

@@ -66,6 +66,7 @@ Usage:
   timesheet submit plan [week]                  what would be entered in Redmine and NetSuite (read-only, --json)
   timesheet submit week [week] --system redmine  compare with the site, confirm, then enter the week (interactive)
   timesheet serve [--port 4280] [--open] local web app: timesheet, calendar, settings
+                                         reuses a running server of this version, replaces an older one (--restart: always)
   timesheet install-skill                install the /timesheet Claude Code skill
   timesheet doctor                       check sources, credentials storage and setup
 
@@ -96,6 +97,7 @@ const OPTIONS = {
     forget: { type: 'boolean' },
     'client-file': { type: 'string' },
     open: { type: 'boolean' },
+    restart: { type: 'boolean' },
     web: { type: 'boolean' },
     system: { type: 'string' },
     from: { type: 'string' },
@@ -1144,7 +1146,7 @@ async function main() {
     }
     case 'serve': {
       const { serve } = await import('./web/server.ts');
-      return serve({ engine: engine(), rebuild: (config) => engine(config) }, Number(flags.port ?? 4280), flags.open);
+      return serve({ engine: engine(), rebuild: (config) => engine(config) }, Number(flags.port ?? 4280), flags.open, flags.restart);
     }
     case 'install-skill':
       return installSkill();
