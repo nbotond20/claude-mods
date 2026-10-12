@@ -1,10 +1,28 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { HOME } from './config.ts';
 import type { Override } from './hours.ts';
 import type { SystemId } from './submit/types.ts';
-import type { StoredDay } from './types.ts';
+import type { RawEvent, StoredDay } from './types.ts';
+
+/** A per-day mark: locked = never recomputed (submitted, or by hand); confirmed = a low-activity day accepted as it is. */
+export type DayMark = 'locked' | 'confirmed';
+
+/** One change made by hand, kept so it can be listed and undone. */
+export interface Edit {
+  id: number;
+  at: string;
+  date: string;
+  kind: 'hours' | 'block' | 'confirm';
+  /** hours: "project\tcategory"; block: the block id; confirm: "" */
+  key: string;
+  /** Value before and after; null = not set */
+  before: string | number | null;
+  after: string | number | null;
+  undone: boolean;
+}
 
 export type JobStatus = 'queued' | 'running' | 'paused' | 'interrupted' | 'done' | 'failed' | 'cancelled';
 
@@ -102,6 +120,28 @@ export class Store {
         category TEXT NOT NULL,
         PRIMARY KEY (date, block_id)
       );
+      CREATE TABLE IF NOT EXISTS day_marks (
+        date TEXT NOT NULL,
+        mark TEXT NOT NULL,
+        at TEXT NOT NULL,
+        reason TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (date, mark)
+      );
+      CREATE TABLE IF NOT EXISTS evidence (
+        date TEXT PRIMARY KEY,
+        events BLOB NOT NULL,
+        saved_at TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS edits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        at TEXT NOT NULL,
+        date TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        key TEXT NOT NULL,
+        before TEXT,
+        after TEXT,
+        undone INTEGER NOT NULL DEFAULT 0
+      );
       CREATE TABLE IF NOT EXISTS submit_catalog (
         system TEXT PRIMARY KEY,
         data TEXT NOT NULL,
@@ -183,6 +223,96 @@ export class Store {
   setBlockOverride(date: string, blockId: number, category: string | null): void {
     if (category === null) this.db.prepare('DELETE FROM block_overrides WHERE date = ? AND block_id = ?').run(date, blockId);
     else this.db.prepare('INSERT OR REPLACE INTO block_overrides VALUES (?, ?, ?)').run(date, blockId, category);
+  }
+
+  /** Sets an hour override and records it for undo. */
+  editHours(date: string, project: string, category: string, hours: number | null): void {
+    const before = this.overrides(date).find((o) => o.project === project && o.category === category)?.hours ?? null;
+    this.setOverride(date, project, category, hours);
+    this.logEdit(date, 'hours', `${project}\t${category}`, before, hours);
+  }
+
+  /** Sets a block's category and records it for undo. */
+  editBlock(date: string, blockId: number, category: string | null): void {
+    const before = this.blockOverrides(date).get(blockId) ?? null;
+    this.setBlockOverride(date, blockId, category);
+    this.logEdit(date, 'block', String(blockId), before, category);
+  }
+
+  /** Confirms (or un-confirms) a low-activity day, recorded for undo. */
+  editConfirm(date: string, confirmed: boolean): void {
+    const before = this.hasMark(date, 'confirmed');
+    this.setMark(date, 'confirmed', confirmed);
+    this.logEdit(date, 'confirm', '', before ? 1 : null, confirmed ? 1 : null);
+  }
+
+  private logEdit(date: string, kind: Edit['kind'], key: string, before: string | number | null, after: string | number | null): void {
+    if (before === after) return;
+    this.db.prepare('INSERT INTO edits (at, date, kind, key, before, after) VALUES (?, ?, ?, ?, ?, ?)').run(new Date().toISOString(), date, kind, key, JSON.stringify(before), JSON.stringify(after));
+  }
+
+  /** Hand edits, newest first (undone ones included, flagged). */
+  edits(date?: string, limit = 50): Edit[] {
+    const rows = this.db.prepare('SELECT * FROM edits WHERE (? IS NULL OR date = ?) ORDER BY id DESC LIMIT ?').all(date ?? null, date ?? null, limit) as any[];
+    return rows.map((r) => ({ id: Number(r.id), at: r.at, date: r.date, kind: r.kind, key: r.key, before: JSON.parse(r.before), after: JSON.parse(r.after), undone: !!r.undone }));
+  }
+
+  /**
+   * Reverts the newest edit not undone yet (optionally of one day), restoring its previous value.
+   * Returns it, or null when there is nothing to undo. Locked days are skipped by the caller's check.
+   */
+  undo(date?: string): Edit | null {
+    const e = this.edits(date, 500).find((x) => !x.undone);
+    if (!e) return null;
+    if (e.kind === 'hours') {
+      const [project, category] = e.key.split('\t');
+      this.setOverride(e.date, project, category, e.before as number | null);
+    } else if (e.kind === 'block') this.setBlockOverride(e.date, Number(e.key), e.before as string | null);
+    else this.setMark(e.date, 'confirmed', e.before !== null);
+    this.db.prepare('UPDATE edits SET undone = 1 WHERE id = ?').run(e.id);
+    return e;
+  }
+
+  hasMark(date: string, mark: DayMark): boolean {
+    return !!this.db.prepare('SELECT 1 FROM day_marks WHERE date = ? AND mark = ?').get(date, mark);
+  }
+
+  setMark(date: string, mark: DayMark, on: boolean, reason = ''): void {
+    if (!on) this.db.prepare('DELETE FROM day_marks WHERE date = ? AND mark = ?').run(date, mark);
+    else this.db.prepare('INSERT OR REPLACE INTO day_marks VALUES (?, ?, ?, ?)').run(date, mark, new Date().toISOString(), reason);
+  }
+
+  /** Dates carrying a mark, with when and why it was set. */
+  marks(mark: DayMark): Map<string, { at: string; reason: string }> {
+    const rows = this.db.prepare('SELECT date, at, reason FROM day_marks WHERE mark = ? ORDER BY date').all(mark) as any[];
+    return new Map(rows.map((r) => [r.date, { at: r.at, reason: r.reason }]));
+  }
+
+  isLocked(date: string): boolean {
+    return this.hasMark(date, 'locked');
+  }
+
+  /**
+   * The AI-session activity a day was computed from, kept compressed so the day can still be
+   * recomputed after Claude Code deletes old transcripts.
+   */
+  saveEvidence(date: string, events: RawEvent[]): void {
+    if (!events.length) this.db.prepare('DELETE FROM evidence WHERE date = ?').run(date);
+    else this.db.prepare('INSERT OR REPLACE INTO evidence VALUES (?, ?, ?)').run(date, gzipSync(JSON.stringify(events)), new Date().toISOString());
+  }
+
+  evidence(date: string): RawEvent[] {
+    const row = this.db.prepare('SELECT events FROM evidence WHERE date = ?').get(date) as any;
+    if (!row) return [];
+    try {
+      return JSON.parse(gunzipSync(row.events).toString('utf8'));
+    } catch {
+      return [];
+    }
+  }
+
+  evidenceDates(): string[] {
+    return (this.db.prepare('SELECT date FROM evidence ORDER BY date').all() as any[]).map((r) => r.date);
   }
 
   saveJob(j: JobRow): void {

@@ -15,12 +15,15 @@ All logic lives in the `timesheet` CLI. Never compute hours yourself; call the C
 
 Useful flags: `--target <h>` (normalize to other than the configured daily target), `--real` (book real rounded hours), `--refresh` (recompute cached days), `--format grid|lines|daily|internal`, `--no-header`, `--copy`.
 
-The JSON has `paste` (the NetSuite text for the chosen format), `internal` (human-readable detail) and `days[]`, each with `entries` (project, category, capex, real, hours), `blocks` (time blocks with allocations and activity texts), `summary`, `warnings`, `status` (final | partial | today).
+The JSON has `paste` (the NetSuite text for the chosen format), `internal` (human-readable detail) and `days[]`, each with `entries` (project, category, capex, real, hours), `blocks` (time blocks with allocations and activity texts), `summary`, `warnings`, `flags` (problems that need the user, some blocking submission), `status` (final | partial | today), and `locked`, `holiday`, `lowActivity`, `confirmed` when set.
+
+- Before a week is submitted, or when asked whether it is ready: `timesheet review [week] --json`. Relay each flag and each system's blocking reasons.
+- "Why is X so high/low?": `timesheet why <date> "<Category>"` lists the blocks behind it.
 
 When presenting:
 - Show the `paste` text in a code block so the user can copy it; mention they can also add `--copy`.
 - Report booked vs real totals and CAPEX/OPEX split.
-- Surface every warning, especially unclassified paths (fix with `timesheet scope add work|personal <glob>`) and partial days.
+- Surface every flag and warning, especially unclassified paths (fix with `timesheet scope add work|personal <glob>`), partial days and low-activity days.
 - For a daily summary request, show `summary` per day.
 
 Long ranges run as a resumable job: if a run is interrupted (Ctrl+C, closed terminal, crash), running the same command continues where it stopped. If another timesheet process (e.g. the web app) is already computing those days, the CLI waits for it.
@@ -30,13 +33,17 @@ Long ranges run as a resumable job: if a run is interrupted (Ctrl+C, closed term
 - Rebook a category's hours for a day: `timesheet edit <date> "<Category>" <hours> [--project P]`, or `clear`.
 - Recategorize a time block (ids from `days[].blocks[].id`): `timesheet block <date> <id> "<Category>"`, or `clear`.
 - Mark paths as work or personal: `timesheet scope add work "<glob>" [project]` / `timesheet scope add personal "<glob>"`.
+- A low-activity day (flagged): ask the user whether it is right. If yes, `timesheet confirm <date>`; if they were off, add the date to `holidays`; otherwise set the hours with `timesheet edit`.
+- Undo a mistaken edit: `timesheet undo [date]`; list edits: `timesheet history [date]`.
+- Locked days (submitted, or locked by the user) refuse edits. Do not unlock a submitted day on your own: ask first, since the site already holds its hours (`timesheet unlock <date>`).
 
-Category names must match the configured list exactly (see `timesheet day --json` entries or the config at `~/.timesheet/config.json`). After an adjustment, re-run the report and show the updated paste text.
+Category names must match the configured list exactly (see `timesheet day --json` entries or the config at `~/.timesheet/config.json`). Hours must be a multiple of the rounding step. After an adjustment, re-run the report and show the updated paste text.
 
 ## Settings
 
 - Read any option: `timesheet config get <key.path>` (e.g. `target`, `scope.work`, `classifier.notes`); all: `timesheet config show`.
-- Change one: `timesheet config set <key.path> <json-or-string>`; it is validated and rejected with reasons if invalid.
+- Change one: `timesheet config set <key.path> <json-or-string>`; it is validated and rejected with reasons if invalid. It reports how many cached days will recompute; when the user wants past days kept as they are, add `--from <date>`.
+- Days off: `timesheet config set holidays '["2026-12-24","2026-12-25"]'` (the full list).
 - Never print or ask for Google client secrets or tokens; they live in the OS keychain.
 
 ## Setup problems

@@ -141,9 +141,52 @@ export function subtract(start: number, end: number, taken: [number, number][]):
 }
 
 /**
+ * The time each work draft keeps, after meetings and without double counting: where drafts of
+ * different projects overlap, the stretch is split between them by their recorded minutes in it
+ * (whoever held the time just before goes first, so pieces stay contiguous). With nothing
+ * recorded there, the one that started first keeps it. `work` must be sorted by start.
+ */
+function splitOverlaps(work: Draft[], meetings: [number, number][]): [number, number][][] {
+  const spans = work.map((w) => subtract(w.start, w.end, meetings));
+  const cuts = [...new Set(spans.flat(2))].sort((a, b) => a - b);
+  const owned: [number, number][][] = work.map(() => []);
+  let last = -1;
+  const give = (k: number, s: number, e: number) => {
+    const list = owned[k];
+    if (list.length && list[list.length - 1][1] === s) list[list.length - 1][1] = e;
+    else list.push([s, e]);
+    last = k;
+  };
+  for (let i = 0; i + 1 < cuts.length; i++) {
+    const [a, b] = [cuts[i], cuts[i + 1]];
+    const covering = spans.flatMap((ps, k) => (ps.some(([s, e]) => s <= a && e >= b) ? [k] : []));
+    if (!covering.length) continue;
+    if (covering.length === 1) {
+      give(covering[0], a, b);
+      continue;
+    }
+    const weights = covering.map((k) => measuredMinutes(work[k].events, a, b));
+    const sum = weights.reduce((x, y) => x + y, 0);
+    if (sum <= 0) {
+      give(covering.includes(last) ? last : covering[0], a, b);
+      continue;
+    }
+    const order = covering.map((k, j) => ({ k, w: weights[j] })).filter((x) => x.w > 0).sort((x, y) => (y.k === last ? 1 : 0) - (x.k === last ? 1 : 0));
+    let t = a;
+    order.forEach(({ k, w }, j) => {
+      const e = j === order.length - 1 ? b : t + ((b - a) * w) / sum;
+      give(k, t, e);
+      t = e;
+    });
+  }
+  return owned;
+}
+
+/**
  * Builds the day's time blocks. Work activity is merged per project when gaps are at most
  * gapMinutes; short blocks are padded to minBlockMinutes; meetings take precedence over
- * overlapping work, and overlapping work from different projects is counted once.
+ * overlapping work, and overlapping work from different projects is counted once, split by
+ * recorded minutes.
  */
 export function buildBlocks(events: WorkEvent[], config: Config, dayStart: number, dayEnd: number): Omit<Block, 'hint' | 'allocations' | 'summary'>[] {
   const gap = config.gapMinutes * 60_000;
@@ -169,13 +212,9 @@ export function buildBlocks(events: WorkEvent[], config: Config, dayStart: numbe
     })
     .sort((a, b) => a.start - b.start);
 
-  const taken: [number, number][] = meetings.map((m) => [m.start, m.end]);
   const pieces: Draft[] = [];
-  for (const w of work) {
-    for (const [s, e] of subtract(w.start, w.end, taken)) {
-      if (e - s >= 60_000) pieces.push({ ...w, start: s, end: e });
-    }
-    taken.push([w.start, w.end]);
+  for (const [k, spans] of splitOverlaps(work, meetings.map((m): [number, number] => [m.start, m.end])).entries()) {
+    for (const [s, e] of spans) if (e - s >= 60_000) pieces.push({ ...work[k], start: s, end: e });
   }
 
   return [...meetings, ...pieces]

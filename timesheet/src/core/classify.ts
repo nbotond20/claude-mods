@@ -1,7 +1,7 @@
 import { basename } from 'node:path';
 import { CLASSIFIER_CWD } from './config.ts';
 import { describeChanges, describeWork } from './changes.ts';
-import { MIN_FRACTION, enforce, inheritEmpty } from './guards.ts';
+import { MIN_FRACTION, enforce, inheritEmpty, isEmpty } from './guards.ts';
 import { runClaude } from './claude-runner.ts';
 import type { Category, Config } from './config.ts';
 import { fmtTime } from './dates.ts';
@@ -21,6 +21,8 @@ export interface ClassifyOutput {
   blockSummaries?: Record<number, string>;
   /** One line per block item id (`3.1`) */
   itemSummaries?: Record<string, string>;
+  /** Set by sanitize: blocks the answer left out (or gave no usable category), booked under their default */
+  missing?: number[];
 }
 
 export type Classifier = (input: ClassifyInput, opts?: { signal?: AbortSignal }) => Promise<ClassifyOutput>;
@@ -37,7 +39,9 @@ export function defaultCategory(kind: Block['kind'], categories: Category[]): st
 export function sanitize(output: ClassifyOutput, blocks: Block[], categories: Category[]): ClassifyOutput {
   const valid = new Set(categories.map((c) => c.name));
   const allocations: Record<number, Allocation[]> = {};
+  const missing: number[] = [];
   for (const b of blocks) {
+    if (!isEmpty(b) && !(output.allocations[b.id] ?? []).some((a) => valid.has(a.category) && a.fraction > 0)) missing.push(b.id);
     let raw = (output.allocations[b.id] ?? []).filter((a) => valid.has(a.category) && a.fraction > 0);
     // Fold slivers (< MIN_FRACTION) into the rest so a block never books tiny fragments.
     if (raw.some((a) => a.fraction >= MIN_FRACTION)) raw = raw.filter((a) => a.fraction >= MIN_FRACTION);
@@ -51,7 +55,7 @@ export function sanitize(output: ClassifyOutput, blocks: Block[], categories: Ca
     blockSummaries[b.id] = output.blockSummaries?.[b.id]?.trim() || blockFallback(b);
     for (const it of b.items ?? []) itemSummaries[it.id] = output.itemSummaries?.[it.id]?.trim() || itemFallback(it);
   }
-  return { allocations, summary: output.summary?.trim() || fallbackSummary(blocks), blockSummaries, itemSummaries };
+  return { allocations, summary: output.summary?.trim() || fallbackSummary(blocks), blockSummaries, itemSummaries, ...(missing.length ? { missing } : {}) };
 }
 
 const repoName = (p?: string) => (p ? basename(p) : 'unknown folder');

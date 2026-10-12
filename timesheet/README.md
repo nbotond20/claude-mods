@@ -55,11 +55,28 @@ timesheet serve --open             # web app at http://127.0.0.1:4280
 Adjustments survive recomputes:
 
 ```sh
-timesheet edit 2026-09-15 "Testing" 2          # override booked hours (or `clear`)
-timesheet block 2026-09-15 3 "Team Meeting"     # recategorize time block #3
+timesheet edit 2026-09-15 "Testing" 2          # override booked hours (or `clear`); the rest of the day fills up to the target
+timesheet block 2026-09-15 3 "Team Meeting"     # recategorize time block #3; it follows the block through recomputes
+timesheet history 2026-09-15                    # every hand edit, newest first
+timesheet undo                                  # revert the last one (or `undo <date>`)
 timesheet scope add work "~/work/**" "Client A"
 timesheet scope review                          # classify repos seen in sessions
 ```
+
+Hours must be a multiple of `rounding` and between 0 and 24; the project and category must exist.
+
+### Before submitting
+
+```sh
+timesheet review last                 # each day: booked vs target, flags, warnings, locks; whether Redmine/NetSuite plans are ready
+timesheet why 2026-09-15 Development  # the blocks (and edits) behind a category's hours
+timesheet confirm 2026-09-15          # accept a low-activity day as it is (--clear takes it back)
+timesheet lock week last              # keep days exactly as they are; `unlock` reverses it
+```
+
+A workday whose recorded work is below `lowActivityRatio` of its target (default half) is flagged: normalizing 1h of activity to 8h is usually a sign that something was not captured. It blocks submission until you confirm the day or set its hours.
+
+When a week is saved to Redmine or NetSuite, its past days lock: settings changes, `--refresh` and deleted transcripts can no longer change what was entered. Unlock a day to change it, then submit again.
 
 ### Long runs: pause, resume, crashes
 
@@ -70,7 +87,9 @@ Computing days (collecting activity and one Claude call per day) runs as a backg
 - **Close or crash:** a job left running by a process that is gone is picked up on the next `timesheet serve` (or by the running web app within a second), and continues with the days not yet stored.
 - Settings changes restart the running job with the new settings.
 
-Past days that are complete are never recomputed. Today is refreshed at most every 15 minutes, and a day where something failed (a source or the classifier) is retried after 5 minutes. A day flagged only for unclassified folders waits until you change the work scope.
+Past days that are complete are recomputed once, a day after they ended (to pick up commits pushed or calendars synced late), then kept. Today is refreshed at most every 15 minutes, and a day where something failed (a source or the classifier) is retried after 5 minutes. A day flagged only for unclassified folders waits until you change the work scope. Locked days are never recomputed. When a recompute changes booked hours, the CLI prints the difference.
+
+Claude Code deletes transcripts after `cleanupPeriodDays` (30 by default). Each computed day keeps a compressed copy of its AI-session activity in the database, so recomputing an old day still uses real timings; `timesheet doctor` shows the archive and warns about a short cleanup period.
 
 In the web app's **Calendar** tab, drag a block onto another category in the Resources view (or open it and change its resource) to recategorize it.
 
@@ -96,6 +115,13 @@ Every option is editable three ways, all validated before saving:
 | `calendar` | off | calendars, project; which replies count (`includeTentative` on, `includeUnanswered` on, `includeDeclined` off); solo events; `maxMeetingHours` (4) ignores longer meetings |
 | `classifier` | `claude`, `sonnet` | `notes` adds team guidance to the prompt |
 | `categories` | September 2026 task list | CAPEX flag, validity dates, classifier opt-out, color |
+| `holidays` | `[]` | dates (`YYYY-MM-DD`) off work: no target, real hours only |
+| `lowActivityRatio` | 0.5 | flag workdays with recorded work below this share of the target; 0 = off |
+| `timezone` | machine's | IANA zone (e.g. `Europe/Budapest`) days are cut in |
+
+Changing a setting that shapes days recomputes cached days the next time they are shown (locked days excepted). To apply it only from a date on, keeping earlier days as they were: `timesheet config set gapMinutes 45 --from 2026-10-01`.
+
+Out-of-office calendar events covering the day's target make it a day off; shorter ones (a doctor's appointment) lower that day's target by their length.
 
 ## Activity sources
 

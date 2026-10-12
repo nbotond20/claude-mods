@@ -16,6 +16,8 @@ Needs Node 22.18 or newer (it uses `node:sqlite` and runs TypeScript directly).
 | `/timesheet <anything else>` | handed to the skill as a request |
 | `/timesheet install [--force]` | (re)installs the `timesheet` launcher |
 
+Once a week, about half a minute into a session, a toast says when last week still needs something: days not computed, days flagged for a look, or (with submission set up) workdays not entered yet. It reads only days already computed and never starts the classifier.
+
 ## The launcher
 
 Plugins live in a per-version cache, so their folder changes on every update. At session start the mod writes the current plugin folder to `<mods home>/timesheet/entry` and installs `~/.local/bin/timesheet`, a small script that reads that file (or `$TIMESHEET_ENTRY`). An existing `~/.local/bin/timesheet` that is not ours is left alone; `/timesheet install --force` replaces it. If `~/.local/bin` is not on `PATH`, the status says so.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { nodeOk, setupPrompt } from '../hooks/register.ts'
+import { nodeOk, reminderText, setupPrompt } from '../hooks/register.ts'
 
 const ENTRY = '/h/.claude-mods/timesheet/entry'
 
@@ -102,6 +102,15 @@ describe('timesheet', () => {
     expect(p).toMatch(/Never ask me for, print or store a client secret or token/)
     expect(p).toMatch(/Never run `timesheet submit week`/)
     expect(p).toMatch(/`! timesheet init`/)
+  })
+
+  test('the weekly reminder speaks only when last week needs something', () => {
+    const day = (date: string, extra: object = {}) => ({ date, locked: false, flags: [], status: 'final', target: 8, total: 8, ...extra })
+    const done = { week: '2026-10-05', days: [day('2026-10-05', { locked: true })], systems: [{ system: 'redmine', ok: true }] }
+    expect(reminderText(done)).toBe('')
+    expect(reminderText({ ...done, systems: [], days: [day('2026-10-05')] })).toBe('')
+    const open = { week: '2026-10-05', missing: ['2026-10-09'], days: [day('2026-10-05', { flags: ['Only 1h'] }), day('2026-10-06')], systems: [{ system: 'redmine', ok: false }] }
+    expect(reminderText(open)).toBe('timesheet: week of 2026-10-05: 1 day(s) not computed, 1 day(s) to check, 2 workday(s) not submitted. /timesheet review last week')
   })
 
   test('a launcher that is not ours is left alone', async ($, on) => {

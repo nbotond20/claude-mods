@@ -5,11 +5,12 @@ import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { Writable } from 'node:stream';
 import { parseArgs } from 'node:util';
-import { CONFIG_PATH, configExists, contractHome, expandDirs, expandHome, loadConfig, saveConfig, validateConfig } from './core/config.ts';
+import { applyTimezone, CONFIG_PATH, computeKey, configExists, contractHome, expandDirs, expandHome, loadConfig, saveConfig, targetFor, validateConfig } from './core/config.ts';
+import { applySettingsChange, blockEditProblem, hoursEditProblem } from './core/edits.ts';
 import { describeBackend } from './core/secrets.ts';
 import { packageRoot } from './core/paths.ts';
 import { listClaudeCommands, resolveInvocation } from './core/claude-runner.ts';
-import { JobRunner } from './core/jobs.ts';
+import { alive, JobRunner } from './core/jobs.ts';
 import { openCodeAvailable } from './core/collectors/opencode.ts';
 import type { Config } from './core/config.ts';
 import { collectClaude } from './core/collectors/claude.ts';
@@ -18,10 +19,11 @@ import { repoRoot } from './core/collectors/git.ts';
 import { authorize, disconnect, importClientFile, isConnected, listCalendars, loadClient, saveClient } from './core/collectors/gcal.ts';
 import { GithubApi, activeTokens, addToken, removeToken, storedTokens } from './core/collectors/github.ts';
 import { githubTokenHelp, githubTokenUrl } from './core/github-token.ts';
-import { addDays, dayBounds, monthRange, resolveDate, resolveMonth, resolveWeek, today } from './core/dates.ts';
+import { addDays, dayBounds, daysBetween, fmtTime, monthRange, resolveDate, resolveMonth, resolveWeek, today } from './core/dates.ts';
 import { Engine } from './core/engine.ts';
 import { FORMATS, render } from './core/format.ts';
 import type { Format } from './core/format.ts';
+import type { DayReport } from './core/types.ts';
 import { Scope } from './core/scope.ts';
 import { Store } from './core/store.ts';
 import { chromeAvailable, PROFILE_DIR } from './core/submit/browser.ts';
@@ -41,11 +43,19 @@ Usage:
   timesheet scope [list|review]          show or classify work / personal paths
   timesheet scope add work <glob> [project]
   timesheet scope add personal <glob>
+  timesheet review [week] [--cached]     what needs a look before submitting: flags, warnings, locks, readiness
+                                         (--cached: only days already computed, nothing is collected or classified)
+  timesheet why <date> <category>        which blocks (and edits) make up a category's hours on a day
   timesheet edit <date> <category> <hours|clear> [--project P]   override booked hours
   timesheet block <date> <blockId> <category|clear>               recategorize a time block
+  timesheet confirm <date> [--clear]     accept a low-activity day as it is (or take that back)
+  timesheet lock|unlock <date|week> [when]   keep days exactly as they are (submitted weeks lock themselves)
+  timesheet undo [date]                  revert the last hand edit (of a day)
+  timesheet history [date]               hand edits, newest first
   timesheet auth [--client-file F]       connect Google Calendar (client + token go to the OS keychain)
   timesheet auth --logout | --forget     remove the token | token and OAuth client
   timesheet config [path|show|get K|set K V|edit|reset]   view or edit every option
+  timesheet config set K V --from DATE   apply a change only from DATE on; earlier days keep their hours
   timesheet calendars                    choose which calendars count
   timesheet github [status]              GitHub tokens and what is tracked (issues, reviews, releases, approvals)
   timesheet github token [owner] [--open] which permissions a token needs, with a pre-filled link to create it
@@ -65,7 +75,7 @@ Report options:
   --real                                 book real rounded hours instead of normalized ones
   --copy                                 copy the NetSuite output to the clipboard
   --no-header                            omit header rows (paste straight into grid cells)
-  --refresh                              recompute cached days
+  --refresh                              recompute cached days (locked days are kept)
   --no-llm                               skip the Claude classification call (hints only)
   --json                                 machine-readable output`;
 
@@ -88,6 +98,9 @@ const OPTIONS = {
     open: { type: 'boolean' },
     web: { type: 'boolean' },
     system: { type: 'string' },
+    from: { type: 'string' },
+    clear: { type: 'boolean' },
+    cached: { type: 'boolean' },
     help: { type: 'boolean', short: 'h' },
 } as const;
 
@@ -114,12 +127,25 @@ function fail(msg: string): never {
   process.exit(1);
 }
 
+/** Copies to the system clipboard; says so when no clipboard tool worked. */
 function copy(text: string) {
-  spawnSync('pbcopy', { input: text });
-  console.error('(copied to clipboard)');
+  const tools: [string, string[]][] =
+    process.platform === 'darwin' ? [['pbcopy', []]]
+    : process.platform === 'win32' ? [['clip', []]]
+    : [['wl-copy', []], ['xclip', ['-selection', 'clipboard']], ['xsel', ['--clipboard', '--input']]];
+  for (const [cmd, a] of tools) {
+    const r = spawnSync(cmd, a, { input: text });
+    if (!r.error && r.status === 0) {
+      console.error('(copied to clipboard)');
+      return;
+    }
+  }
+  console.error(`(not copied: none of ${tools.map(([c]) => c).join(', ')} worked; the output is above)`);
+  process.exitCode = 1;
 }
 
 function engine(config = loadConfig()): Engine {
+  applyTimezone(config);
   return new Engine({
     config,
     store: new Store(),
@@ -139,8 +165,16 @@ async function computeResumable(e: Engine, from: string, to: string, refresh: bo
   if (!job) return;
   if (job.elsewhere) {
     console.error('Another timesheet process (e.g. the web app) is computing these days; waiting for it…');
-    while (runner.get(job.id)?.status === 'running') await new Promise((r) => setTimeout(r, 2000));
-    return;
+    for (;;) {
+      const v = runner.get(job.id);
+      if (v?.status !== 'running') return;
+      // The other process died without marking the job: take it over instead of waiting forever.
+      if (v.pid && !alive(v.pid)) {
+        console.error('The other process stopped; continuing here.');
+        return computeResumable(e, from, to, refresh);
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
   }
   else if (job.done.length) console.error(`Continuing: ${job.done.length}/${job.dates.length} days already done.`);
   const onInt = () => {
@@ -179,8 +213,10 @@ async function report(cmd: 'day' | 'week' | 'month') {
   if (format && !FORMATS.includes(format)) fail(`--format must be one of ${FORMATS.join(', ')}`);
 
   const e = engine();
+  const before = bookedBefore(e, from, to, !!flags.refresh, target);
   await computeResumable(e, from, to, !!flags.refresh);
   const reports = await e.days(from, to, { target });
+  if (!flags.json) printChanges(before, reports);
   const opts = { header: !flags['no-header'], real: flags.real };
   const pasteFormat: Format = format && format !== 'internal' ? format : cmd === 'day' ? 'daily' : 'grid';
   const paste = render(pasteFormat, reports, e.config, opts);
@@ -202,6 +238,181 @@ async function report(cmd: 'day' | 'week' | 'month') {
     for (const w of warnings) console.error(`⚠ ${w}`);
   }
   if (flags.copy) copy(paste);
+}
+
+type Booked = Map<string, number>;
+
+const bookedKey = (project: string, category: string) => `${project} / ${category}`;
+
+function booked(r: DayReport): Booked {
+  const m: Booked = new Map();
+  for (const en of r.entries) if (en.hours) m.set(bookedKey(en.project, en.category), (m.get(bookedKey(en.project, en.category)) ?? 0) + en.hours);
+  return m;
+}
+
+/** What the days about to be recomputed book now, to show what the recompute changed. */
+function bookedBefore(e: Engine, from: string, to: string, refresh: boolean, target?: number): Map<string, Booked> {
+  const out = new Map<string, Booked>();
+  for (const d of e.pending(from, to, refresh)) {
+    const s = e.store.getDay(d);
+    if (s && s.status !== 'today') out.set(d, booked(e.report(s, target)));
+  }
+  return out;
+}
+
+function printChanges(before: Map<string, Booked>, reports: DayReport[]) {
+  const lines: string[] = [];
+  for (const r of reports) {
+    const old = before.get(r.date);
+    if (!old) continue;
+    const now = booked(r);
+    for (const k of [...new Set([...old.keys(), ...now.keys()])].sort()) {
+      const a = old.get(k) ?? 0;
+      const b = now.get(k) ?? 0;
+      if (Math.abs(a - b) > 1e-6) lines.push(`  ${r.date}  ${k}: ${a}h → ${b}h`);
+    }
+  }
+  if (lines.length) console.error(`Recomputed days changed:\n${lines.join('\n')}\n`);
+}
+
+// ---------- review and hand edits ----------
+
+/** Dates for a `<date|week> [when]` argument: `week last`, `week 2026-10-05`, or a single date. */
+function datesArg(a: string | undefined, b: string | undefined): string[] {
+  if (a === 'week') {
+    const monday = resolveWeek(b);
+    return daysBetween(monday, addDays(monday, 6)).filter((d) => d <= today());
+  }
+  return [resolveDate(a)];
+}
+
+async function reviewCmd() {
+  const monday = resolveWeek(args[0]);
+  if (monday > today()) fail(`${monday} is in the future`);
+  const sunday = addDays(monday, 6);
+  const e = engine();
+  const before = flags.cached ? new Map<string, Booked>() : bookedBefore(e, monday, sunday, false);
+  let reports: DayReport[];
+  let missing: string[] = [];
+  if (flags.cached) {
+    const dates = daysBetween(monday, sunday).filter((d) => d < today());
+    reports = dates.flatMap((d) => {
+      const s = e.store.getDay(d);
+      return s ? [e.report(s)] : [];
+    });
+    missing = dates.filter((d) => !reports.some((r) => r.date === d) && !!targetFor(e.config, d));
+  } else {
+    await computeResumable(e, monday, sunday, false);
+    reports = await e.days(monday, sunday);
+  }
+  const plans = SYSTEMS.filter((s) => e.config.submit[s].url).map((system) => ({
+    system,
+    ...buildPlan({ system, week: monday, reports, today: today(), rules: e.config.submit[system].rules as SubmitRule<object>[] }),
+  }));
+  if (flags.json) {
+    console.log(JSON.stringify({ week: monday, missing, days: reports.map(({ date, status, total, realTotal, target, locked, holiday, lowActivity, confirmed, flags: f, warnings, outOfOffice }) => ({ date, status, total, realTotal, target, locked: !!locked, holiday: !!holiday, outOfOffice, lowActivity: !!lowActivity, confirmed: !!confirmed, flags: f ?? [], warnings })), systems: plans.map((p) => ({ system: p.system, ok: p.ok, reasons: p.ok ? [] : p.reasons })) }, null, 2));
+    return;
+  }
+  printChanges(before, reports);
+  console.log(`Week of ${monday}:`);
+  if (missing.length) console.log(`  not computed yet: ${missing.join(', ')} (run without --cached)`);
+  let attention = 0;
+  for (const r of reports) {
+    const tags = [r.status !== 'final' ? r.status : '', r.locked ? 'locked' : '', r.holiday ? 'holiday' : '', r.outOfOffice ? 'out of office' : '', r.confirmed ? 'confirmed' : ''].filter(Boolean);
+    const target = r.target === null ? '—' : `${r.target}h`;
+    console.log(`  ${r.date}  ${String(r.total).padStart(5)}h booked / ${target.padStart(5)} target · ${r.realTotal.toFixed(1)}h recorded${tags.length ? `  [${tags.join(', ')}]` : ''}`);
+    for (const f of r.flags ?? []) console.log(`      ✗ ${f}`);
+    attention += r.flags?.length ?? 0;
+    for (const w of r.warnings) console.log(`      ⚠ ${w}`);
+  }
+  for (const p of plans) {
+    if (p.ok) console.log(`${p.system}: ready (${p.plan.cells.length} cell(s)) → timesheet submit week ${monday} --system ${p.system}`);
+    else {
+      console.log(`${p.system}: not ready`);
+      for (const r of p.reasons) console.log(`  ✗ ${r}`);
+    }
+  }
+  if (!plans.length) console.log(attention ? `${attention} thing(s) to look at.` : 'Nothing flagged.');
+}
+
+async function whyCmd() {
+  const [dateArg, category] = args;
+  if (!dateArg || !category) fail('usage: timesheet why <date> <category>');
+  const date = resolveDate(dateArg);
+  const e = engine();
+  await computeResumable(e, date, date, false);
+  const [r] = await e.days(date, date);
+  const entries = r.entries.filter((en) => en.category === category);
+  if (!entries.length) fail(`nothing is booked as "${category}" on ${date} (booked: ${r.entries.map((en) => en.category).join(', ') || 'nothing'})`);
+  const blockCats = e.store.blockOverrides(date);
+  for (const en of entries) {
+    console.log(`${en.project} / ${en.category}: ${en.hours}h booked, ${en.real.toFixed(2)}h recorded${en.overridden ? ' (hours set by hand)' : ''}`);
+    for (const b of r.blocks) {
+      const share = b.allocations.find((a) => a.category === category);
+      if (!share || b.project !== en.project) continue;
+      const hours = ((b.end - b.start) / 3_600_000) * share.fraction;
+      const how = blockCats.has(b.id) ? 'set by hand' : share.fraction < 1 ? `${Math.round(share.fraction * 100)}% of it` : 'classified';
+      console.log(`  block ${b.id}  ${fmtTime(b.start)}–${fmtTime(b.end)}  ${hours.toFixed(2)}h  (${b.kind}, ${how})  ${b.summary ?? b.texts[0] ?? b.hint}`);
+    }
+  }
+  if (r.target !== null && r.realTotal > 0 && !entries.every((en) => en.overridden)) console.log(`\nRecorded time is scaled to the ${r.target}h target (${r.realTotal.toFixed(2)}h recorded in total) and rounded to ${e.config.rounding}h steps.`);
+  const edits = e.store.edits(date).filter((x) => !x.undone && (x.kind !== 'hours' || x.key.endsWith(`\t${category}`)));
+  if (edits.length) console.log(`Hand edits on ${date}: ${edits.length} (timesheet history ${date})`);
+}
+
+function describeEdit(x: { kind: string; key: string; before: unknown; after: unknown }): string {
+  const v = (a: unknown) => (a === null ? '—' : String(a));
+  if (x.kind === 'hours') return `hours ${x.key.replace('\t', ' / ')}: ${v(x.before)} → ${v(x.after)}`;
+  if (x.kind === 'block') return `block ${x.key}: ${v(x.before)} → ${v(x.after)}`;
+  return x.after !== null ? 'confirmed the day' : 'took back the confirmation';
+}
+
+async function confirmCmd() {
+  if (!args[0]) fail('usage: timesheet confirm <date> [--clear]');
+  const date = resolveDate(args[0]);
+  const store = new Store();
+  if (store.isLocked(date)) fail(`${date} is locked; unlock it first: timesheet unlock ${date}`);
+  if (!store.getDay(date)) fail(`${date} is not computed yet: timesheet day ${date}`);
+  store.editConfirm(date, !flags.clear);
+  console.log(flags.clear ? `${date}: confirmation taken back.` : `${date}: confirmed as it is; it can be submitted.`);
+}
+
+async function lockCmd(on: boolean) {
+  if (!args[0]) fail(`usage: timesheet ${on ? 'lock' : 'unlock'} <date|week> [when]`);
+  const dates = datesArg(args[0], args[1]);
+  const store = new Store();
+  const changed: string[] = [];
+  for (const d of dates) {
+    if (on && !store.getDay(d)) {
+      console.error(`${d}: not computed yet; skipped`);
+      continue;
+    }
+    if (store.isLocked(d) === on) continue;
+    store.setMark(d, 'locked', on, on ? 'locked by hand' : '');
+    changed.push(d);
+  }
+  console.log(changed.length ? `${on ? 'Locked' : 'Unlocked'}: ${changed.join(', ')}${on ? '' : '. They are recomputed when stale.'}` : `Nothing to ${on ? 'lock' : 'unlock'}.`);
+}
+
+async function undoCmd() {
+  const date = args[0] ? resolveDate(args[0]) : undefined;
+  const store = new Store();
+  const next = store.edits(date, 500).find((x) => !x.undone);
+  if (!next) fail(`no edit to undo${date ? ` on ${date}` : ''}`);
+  if (store.isLocked(next.date)) fail(`the last edit is on ${next.date}, which is locked; unlock it first: timesheet unlock ${next.date}`);
+  const done = store.undo(date)!;
+  console.log(`Undid on ${done.date}: ${describeEdit(done)}`);
+}
+
+async function historyCmd() {
+  const date = args[0] ? resolveDate(args[0]) : undefined;
+  const edits = new Store().edits(date);
+  if (flags.json) {
+    console.log(JSON.stringify(edits, null, 2));
+    return;
+  }
+  if (!edits.length) console.log(`No hand edits${date ? ` on ${date}` : ''}.`);
+  for (const x of edits) console.log(`${x.at.slice(0, 16).replace('T', ' ')}  ${x.date}  ${describeEdit(x)}${x.undone ? '  (undone)' : ''}`);
 }
 
 // ---------- submission ----------
@@ -601,22 +812,30 @@ async function scopeCmd() {
 }
 
 async function editCmd() {
-  const [date, category, hours] = args;
-  if (!date || !category || hours === undefined) fail('usage: timesheet edit <date> <category> <hours|clear> [--project P]');
+  const [dateArg, category, hoursArg] = args;
+  if (!dateArg || !category || hoursArg === undefined) fail('usage: timesheet edit <date> <category> <hours|clear> [--project P]');
   const config = loadConfig();
-  if (!config.categories.some((c) => c.name === category)) fail(`unknown category "${category}"`);
   const store = new Store();
-  store.setOverride(resolveDate(date), flags.project ?? config.defaultProject, category, hours === 'clear' ? null : Number(hours));
-  console.log('Saved.');
+  const date = resolveDate(dateArg);
+  const project = flags.project ?? config.defaultProject;
+  const hours = hoursArg === 'clear' ? null : hoursArg.trim() === '' ? NaN : Number(hoursArg.replace(',', '.'));
+  const problem = hoursEditProblem(config, store, date, project, category, hours);
+  if (problem) fail(problem);
+  store.editHours(date, project, category, hours);
+  console.log(`Saved. Undo with \`timesheet undo ${date}\`.`);
 }
 
 async function blockCmd() {
-  const [date, id, category] = args;
-  if (!date || !id || !category) fail('usage: timesheet block <date> <blockId> <category|clear>');
+  const [dateArg, id, categoryArg] = args;
+  if (!dateArg || !id || !categoryArg) fail('usage: timesheet block <date> <blockId> <category|clear>');
   const config = loadConfig();
-  if (category !== 'clear' && !config.categories.some((c) => c.name === category)) fail(`unknown category "${category}"`);
-  new Store().setBlockOverride(resolveDate(date), Number(id), category === 'clear' ? null : category);
-  console.log('Saved.');
+  const store = new Store();
+  const date = resolveDate(dateArg);
+  const category = categoryArg === 'clear' ? null : categoryArg;
+  const problem = blockEditProblem(config, store, date, Number(id), category);
+  if (problem) fail(problem);
+  store.editBlock(date, Number(id), category);
+  console.log(`Saved. Undo with \`timesheet undo ${date}\`.`);
 }
 
 async function authCmd() {
@@ -720,6 +939,18 @@ function saveValidated(config: Config) {
   saveConfig(config);
 }
 
+/**
+ * After a settings change: with --from, cached days before that date that matched the old settings
+ * are re-stamped so they keep their hours; then says how many days will recompute.
+ */
+function reportRecompute(oldKey: string, config: Config) {
+  const from = typeof flags.from === 'string' ? resolveDate(flags.from) : undefined;
+  const { kept, recompute, locked } = applySettingsChange(new Store(), oldKey, computeKey(config), from);
+  const parts = [kept ? `${kept} day(s) before ${from} keep their hours` : '', recompute ? `${recompute} cached day(s) are recomputed when next shown` : '', locked ? `${locked} locked day(s) are kept as they are` : ''].filter(Boolean);
+  if (parts.length) console.log(`${parts.join('; ')}.`);
+  if (!from && recompute) console.log('To apply the change only from a date on: add --from YYYY-MM-DD.');
+}
+
 async function configCmd() {
   const [sub, key, ...rest] = args;
   const config = loadConfig();
@@ -746,9 +977,11 @@ async function configCmd() {
     } catch {
       value = raw;
     }
+    const oldKey = computeKey(config);
     setPath(config, key, value);
     saveValidated(config);
     console.log(`Set ${key}.`);
+    reportRecompute(oldKey, config);
     return;
   }
   if (sub === 'edit') {
@@ -816,7 +1049,28 @@ function doctor() {
   }
   line(chromeAvailable(), `Google Chrome${chromeAvailable() ? '' : ' not found (needed for submission)'}`);
   line(existsSync(PROFILE_DIR), `browser profile ${contractHome(PROFILE_DIR)}${existsSync(PROFILE_DIR) ? '' : ' (created by `timesheet submit login`)'}`);
+  console.log('Keeping history:');
+  for (const d of new Set(profiles.map((p) => dirname(p)))) {
+    const days = cleanupDays(d);
+    line(days >= 90, `${contractHome(d)}: transcripts kept ${days} days${days < 90 ? ` (set "cleanupPeriodDays": 365 in ${contractHome(join(d, 'settings.json'))}; older days are rebuilt from the archive below)` : ''}`);
+  }
+  const store = new Store();
+  const archived = store.evidenceDates();
+  line(archived.length > 0, `archive: AI session activity kept for ${archived.length} day(s)${archived.length ? ` (${archived[0]} → ${archived.at(-1)})` : ' (filled as days are computed)'}`);
+  const locked = store.marks('locked');
+  console.log(`  · ${locked.size} locked day(s)`);
+  if (config.timezone) console.log(`  · days are cut in ${config.timezone}`);
   if (problems.length) process.exitCode = 1;
+}
+
+/** Claude Code deletes transcripts older than cleanupPeriodDays (default 30). */
+function cleanupDays(profile: string): number {
+  try {
+    const v = JSON.parse(readFileSync(join(profile, 'settings.json'), 'utf8')).cleanupPeriodDays;
+    return typeof v === 'number' ? v : 30;
+  } catch {
+    return 30;
+  }
 }
 
 function installSkill() {
@@ -828,6 +1082,12 @@ function installSkill() {
 }
 
 async function main() {
+  // Days are cut in the configured time zone, also for commands that never build an engine.
+  try {
+    if (configExists()) applyTimezone(loadConfig());
+  } catch {
+    // An unreadable config is reported by the command itself.
+  }
   if (flags.help || !command) {
     console.log(USAGE);
     return;
@@ -845,6 +1105,19 @@ async function main() {
       return init();
     case 'scope':
       return scopeCmd();
+    case 'review':
+      return reviewCmd();
+    case 'why':
+      return whyCmd();
+    case 'confirm':
+      return confirmCmd();
+    case 'lock':
+    case 'unlock':
+      return lockCmd(command === 'lock');
+    case 'undo':
+      return undoCmd();
+    case 'history':
+      return historyCmd();
     case 'edit':
       return editCmd();
     case 'block':

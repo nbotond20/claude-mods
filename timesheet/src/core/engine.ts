@@ -1,4 +1,5 @@
-import { categoriesFor, computeKey, contractHome, targetFor } from './config.ts';
+import { dirname } from 'node:path';
+import { categoriesFor, computeKey, contractHome, expandDirs, isHoliday, targetFor } from './config.ts';
 import type { Category, Config } from './config.ts';
 import { createHash } from 'node:crypto';
 import { PROMPT_VERSION, blockFallback, claudeClassifier, itemFallback, defaultCategory, fallbackSummary, sanitize } from './classify.ts';
@@ -10,11 +11,11 @@ import { collectOpenCode } from './collectors/opencode.ts';
 import { collectGit, discoverRepos, repoRoot } from './collectors/git.ts';
 import { githubCollector } from './collectors/github.ts';
 import type { GithubResult } from './collectors/github.ts';
-import { dayBounds, daysBetween, today } from './dates.ts';
+import { dayBounds, daysBetween, fmtTime, today } from './dates.ts';
 import { buildEntries } from './hours.ts';
 import { Scope, resolutionKey } from './scope.ts';
 import type { Store } from './store.ts';
-import { buildBlocks } from './timeline.ts';
+import { buildBlocks, measuredMinutes } from './timeline.ts';
 import type { WorkEvent } from './timeline.ts';
 import type { Block, DayReport, OtherBlock, RawEvent, StoredDay } from './types.ts';
 
@@ -53,12 +54,24 @@ export interface ComputeOptions {
   reclassify?: boolean;
 }
 
+/** On a day without a target, out-of-office time this long makes the whole day off. */
 const OOO_MIN_HOURS = 4;
+const H = 3_600_000;
 const OTHER_GAP_MINUTES = 60;
 /** Today is recomputed at most this often unless refreshed explicitly. */
 const TODAY_TTL_MS = 15 * 60_000;
 /** A day that failed partway (source down, classifier error) is retried after this long. */
 const RETRY_AFTER_MS = 5 * 60_000;
+/**
+ * A day computed before this long after its end is computed once more after it: transcripts,
+ * pushes from another machine and calendar edits often land late.
+ */
+const SETTLE_MS = 24 * H;
+/** A carried-over block category needs this much of the old block to still be in the new one. */
+const CARRY_MIN_OVERLAP = 0.5;
+
+const isAI = (e: RawEvent) => e.source === 'claude' || e.source === 'opencode';
+const sessionKey = (e: RawEvent) => (e.session ? `${e.session.source}:${e.session.id}` : null);
 
 async function pool<T>(items: T[], size: number, fn: (item: T) => Promise<void>, signal?: AbortSignal): Promise<void> {
   const queue = [...items];
@@ -113,24 +126,28 @@ export class Engine {
   /**
    * A cached day must be recomputed when the settings that shaped it changed, a path it saw
    * now resolves differently, it was computed as "today" (and is now past, or older than
-   * TODAY_TTL), or it failed partway and RETRY_AFTER has passed. A day that is partial only
-   * because of unclassified paths waits for a scope change instead of re-running Claude.
+   * TODAY_TTL), it failed partway and RETRY_AFTER has passed, or it was computed before it
+   * settled (SETTLE_MS after its end). A day that is partial only because of unclassified paths
+   * waits for a scope change instead of re-running Claude. A locked day is never stale.
    */
   isStale(day: StoredDay, now = Date.now()): boolean {
+    if (this.store.isLocked(day.date)) return false;
     if (day.computeKey !== this.key) return true;
     if (Object.entries(day.paths).some(([p, key]) => resolutionKey(this.scope.resolve(p)) !== key)) return true;
     const age = now - Date.parse(day.computedAt);
     if (day.status === 'today') return day.date < this.today() || age > TODAY_TTL_MS;
     if (day.status === 'partial') return day.retry !== false && age > RETRY_AFTER_MS;
-    return false;
+    const settled = dayBounds(day.date)[1] + SETTLE_MS;
+    return Date.parse(day.computedAt) < settled && now >= settled;
   }
 
   /** Dates in [from, to] up to today that are missing or stale (all of them with refresh). */
   pending(from: string, to: string, refresh = false): string[] {
     return daysBetween(from, to).filter((d) => {
       if (d > this.today()) return false;
-      if (refresh) return true;
       const s = this.store.getDay(d);
+      if (s && this.store.isLocked(d)) return false;
+      if (refresh) return true;
       return !s || this.isStale(s);
     });
   }
@@ -141,7 +158,7 @@ export class Engine {
     const stored = new Map<string, StoredDay>();
     const missing: string[] = [];
     for (const d of dates) {
-      const s = opts.refresh ? null : this.store.getDay(d);
+      const s = opts.refresh && !this.store.isLocked(d) ? null : this.store.getDay(d);
       if (s && !this.isStale(s)) stored.set(d, s);
       else missing.push(d);
     }
@@ -157,23 +174,86 @@ export class Engine {
       return blockOverrides.has(b.id) ? { ...b, texts, allocations: [{ category: blockOverrides.get(b.id)!, fraction: 1 }] } : { ...b, texts };
     });
     if (day.summary && day.summary === fallbackSummary(day.blocks)) day = { ...day, summary: fallbackSummary(blocks) };
-    const target = day.outOfOffice ? null : targetFor(this.config, day.date, targetOverride);
-    const entries = buildEntries(blocks, this.config.categories, target, this.config.rounding, this.store.overrides(day.date));
+    let target = day.outOfOffice ? null : targetFor(this.config, day.date, targetOverride);
+    // Part of the day out of office: only the rest is expected.
+    if (target !== null && targetOverride === undefined && day.oooHours) target = Math.max(0, Math.round((target - day.oooHours) * 100) / 100);
+    const overrides = this.store.overrides(day.date);
+    const entries = buildEntries(blocks, this.config.categories, target, this.config.rounding, overrides);
     const measured = blocks.every((b) => b.measured !== undefined);
+    const realTotal = entries.reduce((s, e) => s + e.real, 0);
+    const total = Math.round(entries.reduce((s, e) => s + e.hours, 0) * 100) / 100;
+    const locked = this.store.isLocked(day.date);
+    const holiday = isHoliday(this.config, day.date);
+    const ratio = this.config.lowActivityRatio ?? 0;
+    const lowActivity = day.status !== 'today' && target !== null && target > 0 && ratio > 0 && !overrides.length && realTotal < ratio * target;
+    const confirmed = lowActivity && this.store.hasMark(day.date, 'confirmed');
+    const flags: string[] = [];
+    if (lowActivity && !confirmed)
+      flags.push(
+        realTotal > 0
+          ? `Only ${Math.round(realTotal * 10) / 10}h of recorded work, booked as ${total}h: confirm it (\`timesheet confirm ${day.date}\`) or set the hours (\`timesheet edit\`)`
+          : `No work recorded on a workday: add it to holidays if you were off, confirm it (\`timesheet confirm ${day.date}\`), or set the hours (\`timesheet edit\`)`,
+      );
+    if (target !== null && overrides.length && Math.abs(total - target) > 1e-6) flags.push(`Booked ${total}h against a ${target}h target after your edits`);
     return {
       ...day,
       blocks,
       target,
       entries,
-      realTotal: entries.reduce((s, e) => s + e.real, 0),
-      total: entries.reduce((s, e) => s + e.hours, 0),
+      realTotal,
+      total,
       ...(measured ? { measuredTotal: blocks.reduce((s, b) => s + b.measured!, 0) } : {}),
+      ...(locked ? { locked } : {}),
+      ...(holiday ? { holiday } : {}),
+      ...(lowActivity ? { lowActivity } : {}),
+      ...(confirmed ? { confirmed } : {}),
+      ...(flags.length ? { flags } : {}),
     };
+  }
+
+  /** Claude Code profiles currently configured; archived sessions from removed ones are not brought back. */
+  private profiles(): Set<string> {
+    return new Set(expandDirs(this.config.claudeDirs).map((d) => dirname(d)));
+  }
+
+  /**
+   * AI sessions archived for `dates` whose transcripts are gone from the live sources: they come
+   * back from the archive (with their real timing) in place of the history-only guess.
+   */
+  private restoreArchived(dates: string[], live: RawEvent[]): { restored: RawEvent[]; replaced: Set<RawEvent> } {
+    const liveSessions = new Set(live.filter((e) => !e.fromHistory).map(sessionKey).filter((k): k is string => !!k));
+    const profiles = this.profiles();
+    const restored = new Map<string, RawEvent>();
+    const replaced = new Set<RawEvent>();
+    for (const date of dates) {
+      const [start, end] = dayBounds(date);
+      const back = new Set<string>();
+      for (const e of this.store.evidence(date)) {
+        const key = sessionKey(e);
+        if (!key || liveSessions.has(key)) continue;
+        if (e.source === 'claude' && e.session?.profile && !profiles.has(e.session.profile)) continue;
+        if (e.source === 'opencode' && !this.config.opencodeDirs.length) continue;
+        back.add(key);
+        restored.set(`${key}|${e.start}|${e.end}`, e);
+      }
+      for (const e of live) if (e.fromHistory && back.has(sessionKey(e)!) && e.end >= start && e.start < end) replaced.add(e);
+    }
+    return { restored: [...restored.values()], replaced };
   }
 
   /** Collects all sources once for the span of `dates`, then builds, classifies and stores each day. */
   async compute(dates: string[], opts: ComputeOptions = {}): Promise<StoredDay[]> {
-    const sorted = [...dates].sort();
+    const results: StoredDay[] = [];
+    // Locked days keep what they have; a job asking for them is told they are done.
+    for (const d of dates) {
+      const kept = this.store.isLocked(d) ? this.store.getDay(d) : null;
+      if (!kept) continue;
+      opts.onStart?.(d);
+      results.push(kept);
+      opts.onDone?.(kept);
+    }
+    const sorted = dates.filter((d) => !results.some((r) => r.date === d)).sort();
+    if (!sorted.length) return results;
     const from = dayBounds(sorted[0])[0];
     const to = dayBounds(sorted[sorted.length - 1])[1];
     const failures: string[] = [];
@@ -187,7 +267,10 @@ export class Engine {
       failures.push(`OpenCode sessions: ${e.message}`);
       return [] as RawEvent[];
     });
-    const claude = [...claudeEvents, ...opencodeEvents];
+    const liveAI = [...claudeEvents, ...opencodeEvents];
+    const { restored, replaced } = this.restoreArchived(sorted, liveAI);
+    if (restored.length) this.log(`Restored ${new Set(restored.map(sessionKey)).size} archived session(s) whose transcripts are gone`);
+    const claude = [...liveAI.filter((e) => !replaced.has(e)), ...restored];
     const workPaths = [...new Set(claude.filter((e) => this.scope.resolve(e.path).kind === 'work').map((e) => e.path!))];
     let git: RawEvent[] = [];
     try {
@@ -217,7 +300,6 @@ export class Engine {
       });
     }
 
-    const results: StoredDay[] = [];
     await pool(
       sorted,
       this.config.classifier.concurrency,
@@ -226,6 +308,7 @@ export class Engine {
         try {
           const day = await this.computeDay(date, [...claude, ...git, ...github], calendar, failures, notes, opts.signal, opts.reclassify);
           this.store.saveDay(day);
+          this.archive(date, claude);
           results.push(day);
           opts.onDone?.(day);
         } catch (e) {
@@ -235,6 +318,48 @@ export class Engine {
       opts.signal,
     );
     return results;
+  }
+
+  /** Keeps the day's AI-session activity (with real timing, not history guesses) for later recomputes. */
+  private archive(date: string, events: RawEvent[]): void {
+    const [start, end] = dayBounds(date);
+    this.store.saveEvidence(date, events.filter((e) => isAI(e) && !e.fromHistory && e.end >= start && e.start < end));
+  }
+
+  /**
+   * Block categories set by hand follow their block when a recompute changes the blocks: each goes to
+   * the new block that holds most of the old one. Returns warnings for the ones that could not follow.
+   */
+  private carryBlockOverrides(date: string, before: Block[], after: Block[]): string[] {
+    const set = this.store.blockOverrides(date);
+    if (!set.size) return [];
+    const same = JSON.stringify(before.map((b) => [b.id, b.start, b.end])) === JSON.stringify(after.map((b) => [b.id, b.start, b.end]));
+    if (same) return [];
+    const warnings: string[] = [];
+    const next = new Map<number, string>();
+    const lost = (old: Block | undefined, category: string, why: string) =>
+      warnings.push(`Your category "${category}"${old ? ` for ${fmtTime(old.start)}–${fmtTime(old.end)}` : ''} was dropped: ${why}; check the day`);
+    for (const [id, category] of set) {
+      const old = before.find((b) => b.id === id);
+      if (!old) {
+        lost(old, category, 'its block no longer exists');
+        continue;
+      }
+      const overlap = (b: Block) => Math.max(0, Math.min(b.end, old.end) - Math.max(b.start, old.start));
+      const best = after.filter((b) => b.kind === old.kind).sort((x, y) => overlap(y) - overlap(x))[0];
+      if (!best || overlap(best) < CARRY_MIN_OVERLAP * Math.min(old.end - old.start, best.end - best.start)) {
+        lost(old, category, 'the activity there changed');
+        continue;
+      }
+      if (next.has(best.id) && next.get(best.id) !== category) {
+        lost(old, category, `it merged into a block you set to "${next.get(best.id)}"`);
+        continue;
+      }
+      next.set(best.id, category);
+    }
+    for (const id of set.keys()) if (!next.has(id)) this.store.setBlockOverride(date, id, null);
+    for (const [id, category] of next) this.store.setBlockOverride(date, id, category);
+    return warnings;
   }
 
   private async computeDay(date: string, activity: RawEvent[], calendar: RawEvent[], failures: string[], notes: string[], signal?: AbortSignal, reclassify = false): Promise<StoredDay> {
@@ -271,16 +396,26 @@ export class Engine {
     }
 
     let outOfOffice = false;
+    let oooHours = 0;
+    const away: [number, number][] = [];
     // Out of office is judged on the whole day; meetings count only up to now.
     for (const e of calendar.filter((e) => e.end >= start && e.start < dayEnd)) {
-      if (e.outOfOffice) {
-        const covered = Math.min(e.end, dayEnd) - Math.max(e.start, start);
-        if (covered >= OOO_MIN_HOURS * 3_600_000) outOfOffice = true;
+      if (e.outOfOffice) away.push([Math.max(e.start, start), Math.min(e.end, dayEnd)]);
+      else if (e.skipped) {
+        if (e.start >= start) warnings.push(e.skipped);
       } else if (overlaps(e)) {
         work.push({ ...e, start: Math.max(e.start, start), end: Math.min(e.end, end), project: e.project ?? this.config.defaultProject });
       }
     }
+    if (away.length) {
+      const covered = measuredMinutes(away.map(([s, e]) => ({ source: 'calendar', start: s, end: e, texts: [] })), start, dayEnd) / 60;
+      const target = targetFor(this.config, date);
+      // Away for (at least) the day's target: a day off. Less: the target shrinks by the time away.
+      if (target === null ? covered >= OOO_MIN_HOURS : covered >= target - 1e-9) outOfOffice = true;
+      else if (target !== null && covered > 0) oooHours = Math.round(covered * 100) / 100;
+    }
     if (outOfOffice) warnings.push('Out of office; hours are not normalized to the target');
+    else if (oooHours) warnings.push(`Out of office for ${oooHours}h; the target is lowered by that`);
 
     const categories = categoriesFor(this.config, date);
     const blocks: Block[] = buildBlocks(work, this.config, start, end).map((b) => {
@@ -323,6 +458,10 @@ export class Engine {
           for (const it of b.items ?? []) it.summary = out.itemSummaries?.[it.id] ?? it.summary;
         }
         summary = out.summary;
+        if (out.missing?.length) {
+          const when = out.missing.map((id) => blocks.find((b) => b.id === id)!).map((b) => `${fmtTime(b.start)}–${fmtTime(b.end)}`);
+          warnings.push(`The classifier left out ${when.length} block(s) (${when.join(', ')}); they are booked as their default category: check them or recompute with --refresh`);
+        }
       } catch (e) {
         if (isAbort(e) || signal?.aborted) throw e;
         classifyFailed = true;
@@ -334,9 +473,7 @@ export class Engine {
     // Skipping the LLM for one run (--no-llm) must not freeze default categories into the cache.
     const unclassified = blocks.length > 0 && !this.classifier && this.config.classifier.enabled;
     const status = date >= this.today() ? 'today' : failures.length || unknown.size || classifyFailed || unclassified ? 'partial' : 'final';
-    if (previous && JSON.stringify(previous.blocks.map((b) => [b.start, b.end])) !== JSON.stringify(blocks.map((b) => [b.start, b.end]))) {
-      for (const id of this.store.blockOverrides(date).keys()) this.store.setBlockOverride(date, id, null);
-    }
+    if (previous) warnings.push(...this.carryBlockOverrides(date, previous.blocks, blocks));
     const retry = failures.length > 0 || classifyFailed || unclassified;
     const counts = {
       prompts: work.filter((e) => e.source === 'claude' || e.source === 'opencode').reduce((n, e) => n + e.texts.length, 0),
@@ -359,6 +496,7 @@ export class Engine {
       activity: counts,
       other,
       ...(classifyKey && !classifyFailed ? { classifyKey } : {}),
+      ...(oooHours ? { oooHours } : {}),
     };
   }
 

@@ -3,7 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from 'playwright-core';
 import type { Config } from '../config.ts';
-import { weekStart } from '../dates.ts';
+import { addDays, daysBetween, weekStart } from '../dates.ts';
 import type { Store, SubmitRun, SubmitRunStatus } from '../store.ts';
 import type { DayReport } from '../types.ts';
 import { alive } from '../jobs.ts';
@@ -211,6 +211,16 @@ export class SubmitRunner {
     }
   }
 
+  /**
+   * After the site holds the week's hours, its past days are locked: a later settings change or
+   * recompute can no longer move hours away from what was entered. `timesheet unlock` undoes it.
+   */
+  private lockWeek(system: SystemId, week: string): void {
+    for (const d of daysBetween(week, addDays(week, 6))) {
+      if (d < this.deps.today() && this.deps.store.getDay(d) && !this.deps.store.isLocked(d)) this.deps.store.setMark(d, 'locked', true, `entered in ${system}`);
+    }
+  }
+
   private record(r: Omit<SubmitRun, 'createdAt' | 'updatedAt'> & { createdAt?: string }): void {
     const now = new Date(this.now()).toISOString();
     this.deps.store.saveSubmitRun({ ...r, createdAt: r.createdAt ?? now, updatedAt: now });
@@ -315,7 +325,10 @@ export class SubmitRunner {
       const status: SubmitRunStatus = d.kind === 'write' ? 'ready' : d.kind;
       if (record) this.record({ id: randomUUID(), ...runBase, status, fingerprint: fp, plan: p, before: snapshot, ...(d.kind === 'conflict' ? { error: d.reasons.join('\n') } : {}) });
       if (d.kind === 'conflict') return { ...base, state: 'conflict', reasons: d.reasons, ...shown };
-      if (d.kind === 'noop') return { ...base, state: 'noop', ...shown };
+      if (d.kind === 'noop') {
+        if (record) this.lockWeek(system, week);
+        return { ...base, state: 'noop', ...shown };
+      }
       return { ...base, state: 'ready', ...shown, write: label(d.cells), unchanged: d.unchanged, fingerprint: fp, fillOnly: cfg.fillOnly };
     } catch (e) {
       if (!(e instanceof Abort)) throw e;
@@ -403,6 +416,7 @@ export class SubmitRunner {
       }
       this.checkProtection();
       progress.status = 'saved';
+      this.lockWeek(system, week);
       progress.message = fillOnly ? 'Saved by you and verified' : 'Saved and verified';
     } catch (e) {
       const failed = e instanceof Failed || (applying && !(e instanceof Abort));

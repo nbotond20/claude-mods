@@ -202,10 +202,14 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       ]);
       assert.equal(t.fx.rec.posts.length, 0, 'prepare never posts');
 
+      // Days that were computed lock once the week is saved; today stays open.
+      for (const r of WEEK_REPORTS) t.store.saveDay(r);
       t.runner.execute('redmine', WEEK, prep.fingerprint);
       const done = await t.runner.wait();
       assert.equal(done?.status, 'saved', done?.error ?? "");
       assert.deepEqual(done?.units.map((u) => [u.unit, u.state]), [['2026-09-28', 'saved'], ['2026-09-29', 'saved'], ['2026-09-30', 'saved'], ['2026-10-01', 'saved']]);
+      assert.deepEqual([...t.store.marks('locked').keys()], ['2026-09-28', '2026-09-29', '2026-09-30']);
+      assert.equal(t.store.marks('locked').get('2026-09-28')?.reason, 'entered in redmine');
 
       assert.equal(t.fx.rec.posts.length, 4);
       for (const post of t.fx.rec.posts) {

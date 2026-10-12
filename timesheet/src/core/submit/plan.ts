@@ -90,6 +90,10 @@ export function buildPlan<T extends object>(input: PlanInput<T>): PlanResult<T> 
       reasons.push(`${date}: day is partial (${report.warnings[0] ?? 'a source or the classifier failed'}); fix or recompute it first`);
       continue;
     }
+    if (report.lowActivity && !report.confirmed) {
+      reasons.push(`${date}: ${report.flags?.[0] ?? 'little recorded work for the target; confirm the day or set its hours'}`);
+      continue;
+    }
     if (report.status === 'today') notes.push(`${date} is today: its hours may still change`);
     let total = 0;
     for (const e of report.entries) {

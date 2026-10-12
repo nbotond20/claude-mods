@@ -44,6 +44,12 @@ export interface Config {
   /** Target hours for normalized output. weekdayTargets overrides per weekday (0=Sun..6=Sat); null = keep real hours. */
   target: number;
   weekdayTargets: Record<string, number | null>;
+  /** Public holidays and other days off (YYYY-MM-DD): no target, so any work there is booked as real rounded hours */
+  holidays: string[];
+  /** A workday with recorded work below this share of its target is flagged and needs confirming before submission; 0 = off */
+  lowActivityRatio: number;
+  /** IANA time zone the days are cut in (e.g. Europe/Budapest); empty = the system's */
+  timezone: string;
   gapMinutes: number;
   /** Assistant work more than this long after your last prompt ran unattended and is not counted; recorded time also stops at quiet gaps longer than this */
   idleMinutes: number;
@@ -131,6 +137,9 @@ export function defaultConfig(): Config {
     scope: { work: [], personal: [] },
     target: 8,
     weekdayTargets: { '0': null, '6': null },
+    holidays: [],
+    lowActivityRatio: 0.5,
+    timezone: '',
     gapMinutes: 30,
     idleMinutes: 10,
     commitLeadMinutes: 15,
@@ -216,6 +225,8 @@ export function computeKey(c: Config, schema = SCHEMA): string {
     classifier: c.classifier.enabled ? [c.classifier.model, c.classifier.notes ?? ''] : null,
     // Only present when on, so days computed before GitHub existed keep their key.
     ...(c.github.enabled ? { github: [c.github.repos, c.github.leadMinutes] } : {}),
+    // Day bounds move with the time zone; only present when set, so existing keys hold.
+    ...(c.timezone ? { timezone: c.timezone } : {}),
   };
   return createHash('sha256').update(JSON.stringify(relevant)).digest('hex').slice(0, 16);
 }
@@ -244,6 +255,9 @@ export function validateConfig(c: Config): string[] {
     if (!/^[0-6]$/.test(k)) errors.push(`weekdayTargets key "${k}" must be 0 (Sun) … 6 (Sat)`);
     if (v !== null && !isNum(v)) errors.push(`weekdayTargets.${k} must be a number ≥ 0 or null`);
   }
+  if (!Array.isArray(c.holidays) || c.holidays.some((d) => typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d))) errors.push('holidays must be a list of dates (YYYY-MM-DD)');
+  if (!isNum(c.lowActivityRatio) || c.lowActivityRatio > 1) errors.push('lowActivityRatio must be between 0 and 1');
+  if (typeof c.timezone !== 'string' || (c.timezone && !validTimezone(c.timezone))) errors.push(`timezone "${c.timezone}" is not a known time zone (e.g. Europe/Budapest), or leave it empty`);
   for (const k of ['gapMinutes', 'idleMinutes', 'commitLeadMinutes', 'promptLeadMinutes', 'minBlockMinutes', 'historyTailMinutes'] as const) if (!isNum(c[k])) errors.push(`${k} must be a number ≥ 0`);
   if (!isNum(c.calendar?.maxMeetingHours)) errors.push('calendar.maxMeetingHours must be a number ≥ 0');
   if (!isNum(c.rounding) || c.rounding <= 0 || c.rounding > 8) errors.push('rounding must be between 0 and 8 hours');
@@ -347,8 +361,27 @@ export function categoriesFor(config: Config, date: string): Category[] {
   );
 }
 
+export function validTimezone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Cuts days in the configured time zone (process-wide: every date helper uses local time). */
+export function applyTimezone(config: Config): void {
+  if (config.timezone && validTimezone(config.timezone)) process.env.TZ = config.timezone;
+}
+
+export function isHoliday(config: Config, date: string): boolean {
+  return (config.holidays ?? []).includes(date);
+}
+
 export function targetFor(config: Config, date: string, override?: number): number | null {
   if (override !== undefined) return override;
+  if (isHoliday(config, date)) return null;
   const wd = String(new Date(`${date}T12:00:00`).getDay());
   return wd in config.weekdayTargets ? config.weekdayTargets[wd] : config.target;
 }

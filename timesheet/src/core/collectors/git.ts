@@ -110,7 +110,11 @@ export function collectGit(config: Config, repos: string[], from: number, to: nu
       if (!hash || seen.has(hash)) continue;
       const t = Number(at) * 1000;
       if (t < from || t >= to) continue;
+      // A rebased or cherry-picked commit keeps its author time and subject under a new hash; count it once.
+      const same = `${at}\u0000${subject}`;
+      if (seen.has(same)) continue;
       seen.add(hash);
+      seen.add(same);
       const branch = (source ?? '').replace(/^refs\/(heads|remotes\/[^/]+|tags)\//, '');
       out.push({ source: 'git', start: Math.max(from, t - lead), end: t, measured: [], path: repo, branch, texts: [subject ?? ''], commit: hash, change: parseStat(rest) });
     }

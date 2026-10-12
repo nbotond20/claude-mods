@@ -28,6 +28,10 @@ export interface RawEvent {
    * Absent = the whole span is recorded (calendar events); empty = none of it (commits, GitHub actions).
    */
   measured?: [number, number][];
+  /** Rebuilt from history.jsonl: the transcript is gone, so reply timing is assumed (AI session events) */
+  fromHistory?: boolean;
+  /** Seen but not counted, with the reason shown as a warning (calendar events) */
+  skipped?: string;
 }
 
 export type GithubActionKind = 'issue' | 'pull' | 'review' | 'comment' | 'release' | 'tag' | 'workflow' | 'approval';
@@ -188,10 +192,22 @@ export interface StoredDay {
   other?: OtherBlock[];
   /** Fingerprint of what the classifier saw; set only when it succeeded, so a recompute with the same input reuses its result */
   classifyKey?: string;
+  /** Hours of out-of-office time on a day that is otherwise worked; subtracted from the target */
+  oooHours?: number;
 }
 
 export interface DayReport extends StoredDay {
   target: number | null;
+  /** Kept as it is: never recomputed (submitted, or locked by hand) */
+  locked?: boolean;
+  /** A holiday from config.holidays: no target */
+  holiday?: boolean;
+  /** Little recorded work compared to the target; must be confirmed (or hours set) before it is submitted */
+  lowActivity?: boolean;
+  /** The low-activity day was confirmed as it is */
+  confirmed?: boolean;
+  /** Reasons the day needs a look, shown with the day and blocking submission where noted */
+  flags?: string[];
   entries: Entry[];
   realTotal: number;
   total: number;

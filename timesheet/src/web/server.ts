@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { basename, extname, join, normalize } from 'node:path';
-import { CONFIG_PATH, categoryTone, configExists, contractHome, defaultConfig, expandDirs, saveConfig, validateConfig } from '../core/config.ts';
+import { CONFIG_PATH, categoryTone, computeKey, configExists, contractHome, defaultConfig, expandDirs, saveConfig, validateConfig } from '../core/config.ts';
 import { execFileSync } from 'node:child_process';
 import { openCodeAvailable } from '../core/collectors/opencode.ts';
 import { repoRoot, repoWebUrl } from '../core/collectors/git.ts';
@@ -19,6 +19,7 @@ import { listClaudeCommandsAsync, runClaude } from '../core/claude-runner.ts';
 import { JobRunner } from '../core/jobs.ts';
 import { categoryHues } from '../core/palette.ts';
 import type { Store } from '../core/store.ts';
+import { applySettingsChange, blockEditProblem, hoursEditProblem } from '../core/edits.ts';
 import type { DayReport } from '../core/types.ts';
 import { daysBetween } from '../core/dates.ts';
 import { CLASSIFIER_CWD } from '../core/config.ts';
@@ -370,12 +371,51 @@ export function createApp(opts: AppOptions) {
         case 'GET /api/report':
         case 'POST /api/report':
           return json(res, 200, await reportPayload(q));
-        case 'POST /api/override':
-          engine.store.setOverride(q.date, q.project, q.category, q.hours === null || q.hours === '' ? null : Number(q.hours));
+        case 'POST /api/override': {
+          const date = String(q.date ?? '');
+          const hours = q.hours === null || q.hours === '' || q.hours === undefined ? null : Number(q.hours);
+          const problem = hoursEditProblem(engine.config, engine.store, date, String(q.project ?? ''), String(q.category ?? ''), hours);
+          if (problem) return json(res, engine.store.isLocked(date) ? 409 : 400, { error: problem });
+          engine.store.editHours(date, String(q.project), String(q.category), hours);
           return json(res, 200, { ok: true });
-        case 'POST /api/block':
-          engine.store.setBlockOverride(q.date, Number(q.blockId), q.category || null);
+        }
+        case 'POST /api/block': {
+          const date = String(q.date ?? '');
+          const category = q.category ? String(q.category) : null;
+          const problem = blockEditProblem(engine.config, engine.store, date, Number(q.blockId), category);
+          if (problem) return json(res, engine.store.isLocked(date) ? 409 : 400, { error: problem });
+          engine.store.editBlock(date, Number(q.blockId), category);
           return json(res, 200, { ok: true });
+        }
+        case 'POST /api/confirm': {
+          const date = String(q.date ?? '');
+          if (!engine.store.getDay(date)) return json(res, 400, { error: `${date} is not computed yet` });
+          if (engine.store.isLocked(date)) return json(res, 409, { error: `${date} is locked; unlock it first` });
+          engine.store.editConfirm(date, q.confirmed !== false);
+          return json(res, 200, { ok: true });
+        }
+        case 'POST /api/lock':
+        case 'POST /api/unlock': {
+          const on = pathname === '/api/lock';
+          const dates: unknown[] = Array.isArray(q.dates) ? q.dates : [q.date];
+          if (!dates.length || dates.some((d) => typeof d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(d))) return json(res, 400, { error: 'expected date or dates (YYYY-MM-DD)' });
+          const changed: string[] = [];
+          for (const d of dates as string[]) {
+            if ((on && !engine.store.getDay(d)) || engine.store.isLocked(d) === on) continue;
+            engine.store.setMark(d, 'locked', on, on ? 'locked by hand' : '');
+            changed.push(d);
+          }
+          return json(res, 200, { ok: true, changed });
+        }
+        case 'POST /api/undo': {
+          const date = typeof q.date === 'string' && q.date ? q.date : undefined;
+          const next = engine.store.edits(date, 500).find((x) => !x.undone);
+          if (!next) return json(res, 404, { error: 'nothing to undo' });
+          if (engine.store.isLocked(next.date)) return json(res, 409, { error: `the last edit is on ${next.date}, which is locked` });
+          return json(res, 200, { ok: true, edit: engine.store.undo(date) });
+        }
+        case 'GET /api/history':
+          return json(res, 200, { edits: engine.store.edits(q.date || undefined) });
 
         case 'GET /api/config':
           return json(res, 200, { config: engine.config, defaults: defaultConfig(), path: contractHome(CONFIG_PATH), exists: configExists() });
@@ -395,13 +435,29 @@ export function createApp(opts: AppOptions) {
           const next = q.config as Config;
           const errors = validateConfig(next);
           if (errors.length) return json(res, 400, { errors });
+          const from = typeof q.from === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(q.from) ? q.from : undefined;
+          if (q.from && !from) return json(res, 400, { errors: ['from must be a date (YYYY-MM-DD)'] });
+          const oldKey = engine.key;
           save(next);
           engine = opts.rebuild ? opts.rebuild(next) : engine;
+          const impact = applySettingsChange(engine.store, oldKey, computeKey(next), from);
           runner.restart();
-          return json(res, 200, { ok: true, config: next });
+          return json(res, 200, { ok: true, config: next, impact });
         }
-        case 'POST /api/config/validate':
-          return json(res, 200, { errors: validateConfig(q.config) });
+        case 'POST /api/config/validate': {
+          const errors = validateConfig(q.config);
+          // What saving would do: count without changing anything.
+          let recompute = 0;
+          let locked = 0;
+          if (!errors.length) {
+            const key = computeKey(q.config);
+            for (const d of engine.store.cachedDates()) {
+              if (engine.store.isLocked(d)) locked++;
+              else if (key !== engine.key && engine.store.getDay(d)?.computeKey !== key) recompute++;
+            }
+          }
+          return json(res, 200, { errors, recompute, locked });
+        }
         case 'POST /api/classifier/test': {
           const c = { ...engine.config.classifier, ...(q.classifier ?? {}) };
           const started = Date.now();
@@ -533,7 +589,7 @@ export function serve(opts: AppOptions, port: number, open = false): Promise<voi
     server.listen(port, '127.0.0.1', () => {
       const url = `http://127.0.0.1:${port}`;
       console.log(`Timesheet: ${url}  (Ctrl+C to stop)`);
-      if (open) execFile('open', [url], () => {});
+      if (open) execFile(process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open', [url], () => {});
     });
     server.on('close', resolve);
   });

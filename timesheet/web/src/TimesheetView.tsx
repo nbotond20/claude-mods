@@ -165,6 +165,15 @@ export function TimesheetView({ meta }: { meta: Meta }) {
     }
   };
 
+  const dayAction = async (date: string, action: 'confirm' | 'lock' | 'unlock') => {
+    try {
+      await api(`/api/${action}`, { body: { date } });
+      await reload();
+    } catch (e) {
+      toast({ title: action === 'confirm' ? 'Could not confirm the day' : `Could not ${action} the day`, description: (e as Error).message, severity: 'error' });
+    }
+  };
+
   const recompute = async () => {
     setRecomputing(true);
     await reload({ refresh: true });
@@ -345,7 +354,7 @@ export function TimesheetView({ meta }: { meta: Meta }) {
               <p className="text-13 text-ink-3">This range is in the future.</p>
             ) : (
               days.map((d) =>
-                'placeholder' in d ? <DaySkeleton key={d.date} date={d.date} /> : <DayCard key={d.date} day={d} meta={meta} repos={report?.repos ?? {}} pending={pending.has(d.date)} showOther={showOther} showRecorded={showRecorded} onOverride={override} onOpenBlock={openBlock} />,
+                'placeholder' in d ? <DaySkeleton key={d.date} date={d.date} /> : <DayCard key={d.date} day={d} meta={meta} repos={report?.repos ?? {}} pending={pending.has(d.date)} showOther={showOther} showRecorded={showRecorded} onOverride={override} onDayAction={dayAction} onOpenBlock={openBlock} />,
               )
             )}
           </section>
@@ -606,7 +615,7 @@ function BlockRow({ block: b, repos, hues, showRecorded, onOpen }: { block: Bloc
   );
 }
 
-function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverride, onOpenBlock }: { day: ReportDay; meta: Meta; repos: Record<string, RepoInfo>; pending: boolean; showOther: boolean; showRecorded: boolean; onOpenBlock: (ref: BlockRef) => void; onOverride: (date: string, project: string, category: string, hours: string | null) => void }) {
+function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverride, onDayAction, onOpenBlock }: { day: ReportDay; meta: Meta; repos: Record<string, RepoInfo>; pending: boolean; showOther: boolean; showRecorded: boolean; onOpenBlock: (ref: BlockRef) => void; onOverride: (date: string, project: string, category: string, hours: string | null) => void; onDayAction: (date: string, action: 'confirm' | 'lock' | 'unlock') => void }) {
   const [blocksOpen, setBlocksOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const other = showOther ? day.other ?? [] : [];
@@ -617,7 +626,7 @@ function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverrid
   const hues = useMemo(() => new Map(meta.categories.map((c) => [c.name, c.hue])), [meta]);
   const cols = showRecorded ? 'grid-cols-[1fr_6.5rem_4.5rem_5.5rem_2rem]' : 'grid-cols-[1fr_4.5rem_5.5rem_2rem]';
 
-  if (empty && !day.warnings.length) {
+  if (empty && !day.warnings.length && !day.flags?.length) {
     return (
       <div id={`day-${day.date}`} className="flex scroll-mt-24 items-center gap-3 rounded-lg border border-dashed border-line px-5 py-3 text-13">
         <span className="font-medium text-ink-2">{dayTitle(day.date)}</span>
@@ -636,6 +645,14 @@ function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverrid
           <span className="flex items-center gap-3">
             <h3 className="text-14 font-semibold">{dayTitle(day.date)}</h3>
             <StatusLabel day={day} pending={pending} />
+            {day.locked && (
+              <Tooltip content="Kept exactly as it is: never recomputed or edited. Submitted weeks lock themselves.">
+                <span className="flex items-center gap-1 text-12 font-medium text-ink-3">
+                  <Icon name="lock" size={14} /> Locked
+                </span>
+              </Tooltip>
+            )}
+            {day.holiday && <span className="text-12 font-medium text-ink-3">Holiday</span>}
           </span>
           {day.activity && (
             <span className="text-12 text-ink-3">
@@ -666,6 +683,24 @@ function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverrid
           </span>
         </div>
       </div>
+
+      {(day.flags?.length ?? 0) > 0 && (
+        <div className="px-5 pt-3">
+          <div role="alert" className="flex gap-2.5 rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-13 text-danger-on-soft">
+            <Icon name="alert-circle" size={16} className="mt-0.5 shrink-0" />
+            <ul className="flex min-w-0 flex-1 flex-col gap-0.5">
+              {day.flags!.map((f) => (
+                <li key={f} className="break-words">{f.replace(/ \(`[^`]+`\)/g, '').replace(/`([^`]+)`/g, '$1')}</li>
+              ))}
+            </ul>
+            {day.lowActivity && !day.confirmed && !day.locked && (
+              <Button variant="outline" size="xs" className="shrink-0 self-start" onClick={() => onDayAction(day.date, 'confirm')}>
+                Confirm day
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
 
       {day.warnings.length > 0 && (
         <div className="px-5 pt-3">
@@ -711,6 +746,7 @@ function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverrid
                 min={0}
                 step={meta.rounding}
                 defaultValue={e.hours}
+                disabled={day.locked}
                 key={`${e.hours}-${e.overridden}`}
                 className={`text-right tabular-nums ${e.overridden ? 'font-semibold text-accent-strong' : ''}`}
                 aria-label={`Booked hours for ${e.category}`}
@@ -718,7 +754,7 @@ function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverrid
                 onBlur={(ev) => ev.target.value !== String(e.hours) && onOverride(day.date, e.project, e.category, ev.target.value)}
               />
               <span className="flex justify-end">
-                {e.overridden && (
+                {e.overridden && !day.locked && (
                   <Tooltip content="Reset to computed hours">
                     <Button variant="ghost" size="xs" iconOnly leadingIcon="undo" aria-label={`Reset ${e.category}`} onClick={() => onOverride(day.date, e.project, e.category, null)} />
                   </Tooltip>
@@ -748,6 +784,11 @@ function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverrid
             {summaryOpen ? 'Shorter summary' : 'Full summary'}
           </Button>
         ) : null}
+        {day.status !== 'today' && day.entries.length > 0 && (
+          <Button variant="ghost" size="xs" leadingIcon="lock" onClick={() => onDayAction(day.date, day.locked ? 'unlock' : 'lock')}>
+            {day.locked ? 'Unlock' : 'Lock'}
+          </Button>
+        )}
         {day.blocks.length + other.length > 0 && (
           <Button variant="ghost" size="xs" trailingIcon={blocksOpen ? 'chevron-up' : 'chevron-down'} onClick={() => setBlocksOpen(!blocksOpen)}>
             {[day.blocks.length && plural(day.blocks.length, 'time block'), other.length && `${fmt(otherHours)} h other`].filter(Boolean).join(' · ')}

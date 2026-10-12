@@ -176,7 +176,8 @@ describe('engine', () => {
     store.setBlockOverride(D, 1, 'Development');
     store.setOverride(D, 'Default', 'Team Meeting', 1);
     const [day] = await engine.days(D, D);
-    assert.deepEqual(day.entries.map((e) => [e.category, e.hours]), [['Development', 6], ['Team Meeting', 1]]);
+    // The block not overridden takes what the 1h override leaves of the 8h target.
+    assert.deepEqual(day.entries.map((e) => [e.category, e.hours]), [['Development', 7], ['Team Meeting', 1]]);
   });
 
   it('skips future days in a range', async () => {

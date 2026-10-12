@@ -206,12 +206,14 @@ export function toRawEvent(ev: any, config: Config): RawEvent | null {
   if (response === 'needsAction' && !config.calendar.includeUnanswered) return null;
   if (config.calendar.skipWithoutAttendees && attendees.length <= 1) return null;
   const max = config.calendar.maxMeetingHours;
-  if (max > 0 && end - start > max * 3_600_000) return null;
+  const title = ev.summary ?? '(no title)';
+  if (max > 0 && end - start > max * 3_600_000)
+    return { source: 'calendar', start, end, texts: [title], skipped: `Meeting "${title}" (${Math.round(((end - start) / 3_600_000) * 10) / 10}h) was left out: longer than calendar.maxMeetingHours (${max}h)` };
   return {
     source: 'calendar',
     start,
     end,
-    texts: [ev.summary ?? '(no title)'],
+    texts: [title],
     project: config.calendar.project ?? config.defaultProject,
   };
 }

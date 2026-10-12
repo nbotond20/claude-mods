@@ -101,7 +101,7 @@ export async function parseHistory(file: string, skipSessions: Set<string>, from
     list.push({ t, end: t + tail, endAssumed: true, cwd: e.project, prompt: cleanPrompt(e.display) ?? '(prompt)' });
     bySession.set(session, list);
   }
-  return [...bySession].flatMap(([id, points]) => spansFromPoints(points, 'claude', from, to, config, { id, source: 'claude', profile }));
+  return [...bySession].flatMap(([id, points]) => spansFromPoints(points, 'claude', from, to, config, { id, source: 'claude', profile }).map((e) => ({ ...e, fromHistory: true })));
 }
 
 export async function collectClaude(config: Config, from: number, to: number): Promise<RawEvent[]> {

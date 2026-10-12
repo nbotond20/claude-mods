@@ -83,7 +83,7 @@ describe('hours', () => {
     assert.deepEqual(real.map((e) => e.hours), [3, 1]);
   });
 
-  it('applies overrides without rebalancing', () => {
+  it('applies overrides as given when they fill the target', () => {
     const e = buildEntries([block('09:00', '17:00', 'Development')], [], 8, 0.25, [
       { project: 'Default', category: 'Development', hours: 6 },
       { project: 'Default', category: 'Training', hours: 2 },
@@ -279,9 +279,9 @@ describe('calendar mapping', () => {
     assert.ok(toRawEvent(reply('declined'), { ...cfg, calendar: { ...cfg.calendar, includeDeclined: true } }));
   });
 
-  it('ignores meetings longer than maxMeetingHours', () => {
+  it('leaves out meetings longer than maxMeetingHours, saying why', () => {
     const long = { ...timed, end: { dateTime: `${D}T14:30:00Z` }, attendees: [me, other] };
-    assert.equal(toRawEvent(long, cfg), null);
+    assert.match(toRawEvent(long, cfg)?.skipped ?? '', /longer than calendar.maxMeetingHours \(4h\)/);
     assert.ok(toRawEvent({ ...long, end: { dateTime: `${D}T14:00:00Z` } }, cfg));
     assert.ok(toRawEvent(long, { ...cfg, calendar: { ...cfg.calendar, maxMeetingHours: 0 } }));
   });

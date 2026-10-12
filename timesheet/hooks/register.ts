@@ -624,6 +624,47 @@ async function openWeb($: EngineInterface) {
     : `Could not start the web app: ${r.stderr.trim() || 'unknown error'}. Try \`timesheet serve --open\` in a terminal.`
 }
 
+type Review = {
+  week: string
+  missing?: string[]
+  days: { date: string; locked: boolean; flags: string[]; status: string; target: number | null; total: number }[]
+  systems: { system: string; ok: boolean }[]
+}
+
+/**
+ * The weekly nudge for last week, or '' when it needs nothing: days not computed or flagged, or
+ * (when a submission system is set up) workdays not entered yet. Submitted days lock themselves.
+ */
+export function reminderText(r: Review) {
+  const flagged = r.days.filter(d => d.flags.length && !d.locked).length
+  const open = r.days.filter(d => !d.locked && d.target).length
+  const parts = [
+    r.missing?.length ? `${r.missing.length} day(s) not computed` : '',
+    flagged ? `${flagged} day(s) to check` : '',
+    r.systems.length && open ? `${open} workday(s) not submitted` : '',
+  ].filter(Boolean)
+  return parts.length ? `timesheet: week of ${r.week}: ${parts.join(', ')}. /timesheet review last week` : ''
+}
+
+/** Once a week, a toast when last week still needs something; reads cached days only, never classifies. */
+async function remind($: EngineInterface) {
+  if (!(await tsConfig($))) return
+  const r = await cli($, ['review', 'last', '--cached', '--json'], 20_000)
+  if (r.exitCode !== 0) return
+  let review: Review
+  try {
+    review = JSON.parse(r.stdout)
+  } catch {
+    return
+  }
+  const key = `timesheet:reminded:${review.week}`
+  if (await $.store.get(key)) return
+  const text = reminderText(review)
+  if (!text) return
+  await $.store.set(key, true)
+  $.ui.toast(text, { timeoutMs: 15_000 })
+}
+
 export const USAGE = 'Usage: /timesheet [status | setup | doctor | open | install | day|week|month [when] | <anything to ask about your hours>]'
 
 export const register: Register = on => {
@@ -653,6 +694,7 @@ export const register: Register = on => {
     })
     try {
       $.clock.after(60_000, () => void ensureDeps($).catch(() => {}))
+      if (node.ok) $.clock.after(30_000, () => void remind($).catch(() => {}))
     } catch {
       // no timers (tests)
     }

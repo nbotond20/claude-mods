@@ -70,6 +70,7 @@ export class JobRunner {
   isDone(job: JobRow, date: string): boolean {
     const engine = this.engine();
     const day = this.store.getDay(date);
+    if (day && this.store.isLocked(date)) return true;
     if (!day || day.computeKey !== engine.key) return false;
     return day.computedAt >= job.createdAt || (!job.refresh && !engine.isStale(day));
   }

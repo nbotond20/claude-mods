@@ -68,7 +68,8 @@ export function realByCategory(blocks: Block[]): Map<string, { project: string; 
 /**
  * Entries to book. With a target the day is scaled to exactly `target` hours; with a null
  * target real hours are only rounded. Days without activity stay at 0. Overrides replace the
- * computed hours of their entry (or add one) without rebalancing the rest.
+ * computed hours of their entry (or add one); with a target, the entries not overridden share
+ * what the overrides leave of it, so the day still adds up to the target where it can.
  */
 export function buildEntries(
   blocks: Block[],
@@ -79,9 +80,14 @@ export function buildEntries(
 ): Entry[] {
   const capex = new Map(categories.map((c) => [c.name, c.capex]));
   const rows = [...realByCategory(blocks).values()].sort((a, b) => b.real - a.real);
+  const isOverridden = (r: { project: string; category: string }) => overrides.some((o) => o.project === r.project && o.category === r.category);
+  const free = rows.filter((r) => !isOverridden(r));
   // Without a target each entry is its real time rounded up; with one, the day adds up to it.
-  const hours = target === null ? rows.map((r) => roundUp(r.real, step)) : distribute(rows.map((r) => r.real), target, step);
-  const entries: Entry[] = rows.map((r, i) => ({ ...r, capex: capex.get(r.category) ?? false, hours: hours[i] }));
+  const left = target === null ? null : Math.max(0, target - overrides.reduce((s, o) => s + o.hours, 0));
+  const hours = new Map<object, number>();
+  if (left === null) for (const r of rows) hours.set(r, roundUp(r.real, step));
+  else distribute(free.map((r) => r.real), left, step).forEach((h, i) => hours.set(free[i], h));
+  const entries: Entry[] = rows.map((r) => ({ ...r, capex: capex.get(r.category) ?? false, hours: hours.get(r) ?? 0 }));
 
   for (const o of overrides) {
     const e = entries.find((x) => x.project === o.project && x.category === o.category);

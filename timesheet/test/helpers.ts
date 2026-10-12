@@ -15,6 +15,8 @@ export function testConfig(overrides: Partial<Config> = {}): Config {
     opencodeDirs: [],
     // Span expectations are written against a 5-minute prompt lead-in.
     promptLeadMinutes: 5,
+    // Fixture days are sparse; the low-activity check has its own tests.
+    lowActivityRatio: 0,
     scope: { work: [{ path: '/work/**', project: 'Default' }], personal: ['/home/**'] },
     ...overrides,
   };
