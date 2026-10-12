@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.1
+- Block details are quieter: one line per piece of work (summary, repo, branch, counts, duration) that opens on click to its commits, GitHub actions, sessions and prompts. Repositories and branches sit in a collapsed Context row; time ranges and recorded minutes show on hover.
+- Redmine: issue discovery reads every issue a day page lists, even on days with private or odd rows; error banners are detected more reliably; a day where two categories map to one issue says how to fix it.
+- The Redmine mapping lists every current category of every project, not only recently booked ones.
+- Google Calendar authorization no longer keeps the process alive after the browser tab closes.
+
 ## 0.3.0
 Reliability: hours that were entered stay put, and a day that looks wrong says so before it is submitted.
 - Locked days: a week saved to Redmine or NetSuite locks its past days, so later settings changes, recomputes and cleaned-up transcripts cannot move them. `timesheet lock|unlock <date|week> [when]`, and a lock button in the web app.
