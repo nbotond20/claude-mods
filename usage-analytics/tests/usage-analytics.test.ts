@@ -150,10 +150,16 @@ describe('usage-analytics', () => {
     expect(agents[0].tools).toEqual(['WebSearch', 'WebFetch', 'ToolSearch', 'mcp__usage-analytics__advisor_brief', 'mcp__usage-analytics__advisor_sql', 'mcp__usage-analytics__advisor_record'])
     expect(await $.agent.offer({ agent: 'usage-analytics:advisor', description: '', source: 'plugin' } as any)).toEqual({ isOffered: false })
 
-    // Its tools are answered by the mod: the CLI on the shared data folder.
-    // Due on schedule: a claimed run and the hidden agent, started a while after the session starts.
+    // It never starts by itself: nothing is claimed or spawned after the session starts.
     for (let i = 0; i < 200; i++) await Promise.resolve()
-    expect(runs.some(x => x.slice(2, -1).join(' ') === 'advise due --every 7 --claim --trigger schedule --model sonnet')).toBe(true)
+    expect(runs.some(x => x.includes('due'))).toBe(false)
+    expect(spawns.length).toBe(0)
+
+    // /analytics advise bg claims a run and starts the hidden agent.
+    const cmd = (a: string) => $.command.run({ command: 'analytics', args: a, origin: { kind: 'user' }, presentation: 'text' } as any)
+    const bg = await cmd('advise bg')
+    expect(String((bg as any).text)).toMatch(/background/)
+    expect(runs.some(x => x.slice(2, -1).join(' ') === 'advise due --every 0 --claim --trigger manual --model sonnet')).toBe(true)
     expect(spawns[0]).toMatchObject({ subagent_type: 'usage-analytics:advisor', run_in_background: true })
     expect(spawns[0].prompt).toContain('run-1')
 
@@ -173,15 +179,11 @@ describe('usage-analytics', () => {
     expect(args().slice(0, 3)).toEqual(['advise', 'fail', 'run-1'])
     expect(toasts.some(t => /without recommendations/.test(t))).toBe(true)
 
-    const cmd = (a: string) => $.command.run({ command: 'analytics', args: a, origin: { kind: 'user' }, presentation: 'text' } as any)
     await cmd('advise dismiss r3 too noisy')
     expect(args()).toEqual(['advise', 'set', 'r3', 'dismissed', '--note', 'too noisy'])
     await cmd('advise applied r2')
     expect(args()).toEqual(['advise', 'set', 'r2', 'applied'])
-    const bg = await cmd('advise bg')
-    expect(String((bg as any).text)).toMatch(/background/)
-    expect(runs.some(x => x.slice(2, -1).join(' ') === 'advise due --every 0 --claim --trigger manual --model session')).toBe(true)
-    expect(spawns.length).toBe(2)
+    expect(spawns.length).toBe(1)
     await cmd('advise trial r4')
     expect(args()).toEqual(['advise', 'set', 'r4', 'trial'])
     await cmd('advise reproduce r2')
