@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.8.1
+- The advisor's tools are answered after the mod reloads mid-session; before, its run failed with "no tool.call hook answered this call".
+
 ## 0.8.0
 - A weekly digest toast: last week's spend against the week before, the top project and new advisor suggestions (`weeklyDigest` in config.json turns it off; `/analytics digest` any time).
 - Shareable summaries: `/analytics summary [--days N] [--format html] [--no-projects]`, and a Share summary button in the dashboard.

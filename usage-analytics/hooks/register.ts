@@ -855,6 +855,17 @@ const ADVISOR_TOOLS = [
 let advisorAgent = ''
 /** The advisor tools' full names (as registered) to their short names. */
 const advisorTools = new Map<string, string>()
+const ADVISOR_NAME = /^mcp__usage-analytics__(advisor_[a-z]+)$/
+/**
+ * The advisor tool a call is for. The map empties when the module reloads mid-session while the engine keeps
+ * the tools registered, so a call that misses it is still recognised by its registered name.
+ */
+function advisorToolName(tool: string) {
+  const known = advisorTools.get(tool)
+  if (known) return known
+  const short = ADVISOR_NAME.exec(tool)?.[1]
+  return short && ADVISOR_TOOLS.some(t => t.name === short) ? short : undefined
+}
 /** The research run the main loop or the background agent is filling (its id from `advise due --claim`). */
 let advisorRun = ''
 /** The background advisor agent and its run, until its turn completes. */
@@ -1380,7 +1391,7 @@ export const register: Register = on => {
   // Every tool call: what it was, how long it ran, how much it put into the context.
   on('tool.call', async ($, e, next) => {
     const t0 = await $.clock.now()
-    const advisor = advisorTools.get(e.tool)
+    const advisor = advisorToolName(e.tool)
     // The advisor's own tools are answered here: no permission prompt, the mod serves them itself.
     const r = advisor ? await serveAdvisorTool($, advisor, e) : await next(e)
     const ms = (await $.clock.now()) - t0

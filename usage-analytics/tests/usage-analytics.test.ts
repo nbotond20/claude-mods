@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 import { adviceData, inScope, projectOf, setupPrompt, trialArm } from '../hooks/register'
 
-function engine(on: any, env: Record<string, string>, runs: string[][] = [], toasts: string[] = [], out: (argv: string[]) => string | undefined = () => undefined, agents: any[] = []) {
+function engine(on: any, env: Record<string, string>, runs: string[][] = [], toasts: string[] = [], out: (argv: string[]) => string | undefined = () => undefined, agents: any[] = [], registered = true) {
   const files = new Map<string, string>()
   let now = 1_760_000_000_000
   on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
@@ -32,7 +32,7 @@ function engine(on: any, env: Record<string, string>, runs: string[][] = [], toa
   })
   on('session.end', ($: any, e: any) => ({ sessionId: e.sessionId }))
   on('tool.call', () => ({ result: 'a\nb\nc', text: 'a\nb\nc' }) as any)
-  on('tool.register', ($: any, e: any) => ({ value: { tool: `mcp__usage-analytics__${e.name}` } }))
+  on('tool.register', ($: any, e: any) => (registered ? { value: { tool: `mcp__usage-analytics__${e.name}` } } : { deny: 'already registered' }))
   on('agent.register', ($: any, e: any) => (agents.push(e), { value: { agent: `usage-analytics:${e.name}` } }))
   return files
 }
@@ -186,6 +186,18 @@ describe('usage-analytics', () => {
     expect(args()).toEqual(['advise', 'set', 'r4', 'trial'])
     await cmd('advise reproduce r2')
     expect(args()).toEqual(['advise', 'reproduce', 'r2'])
+  })
+
+  test('the advisor\'s tools are still answered after a reload empties the registered-name map', async ($, on) => {
+    const runs: string[][] = []
+    // Registration fails, as when the module reloads after the engine already holds the tools.
+    engine(on, ENV, runs, [], undefined, [], false)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const r = await $.tool.call({ tool: 'mcp__usage-analytics__advisor_sql', tool_use_id: 'q1', agentId: 'ag-1', query: 'select 1' } as any)
+    expect((r as any).result).toBe('ok')
+    expect(runs.some(x => x.slice(2, -1).join(' ') === 'advise sql -- select 1')).toBe(true)
+    const other = await $.tool.call({ tool: 'mcp__usage-analytics__advisor_nope', tool_use_id: 'q2' } as any)
+    expect((other as any).result).toBe('a\nb\nc')
   })
 
   test('advisor trials: a random arm per session, logged, the instruction only in the on arm and in scope', async ($, on) => {
