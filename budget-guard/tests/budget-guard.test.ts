@@ -90,6 +90,41 @@ describe('budget-guard', () => {
     expect(String(out.text)).toMatch(/saved this session ~\$0\.0[1-9]/)
   })
 
+  test('a quick session that turns to implementation moves to Opus without a classifier call; questions and pins stay', async ($, on) => {
+    const files = engine(on, { classify: QUICK, holdout: 0 })
+    on('session.end', ($: any, e: any) => ({ sessionId: e.sessionId }))
+    let sent: any
+    on('turn.step', async function* ($: any, e: any) {
+      sent = e
+      return { turnId: e.turnId, index: e.index, answer: 'ok', toolUses: [], stopReason: 'end_turn', usage: { ...usage, model: e.model } }
+    })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const say = (text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } } as any)
+    await say('why does the login page flash on load?')
+    await step($, { model: 'claude-opus-5-5', effort: 'high' })
+    expect(sent.model).toBe('claude-sonnet-5-5')
+    await measure($, 30_000)
+
+    await say('how would you fix it?')
+    await step($, { model: 'claude-opus-5-5', effort: 'high' })
+    expect(sent.model).toBe('claude-sonnet-5-5')
+
+    await say('ok, implement that')
+    await step($, { model: 'claude-opus-5-5', effort: 'high' })
+    expect(sent.model).toBe('claude-opus-5-5')
+    expect(sent.effort).toBe('medium')
+
+    await $.command.run({ command: 'budget', args: 'route sonnet' } as any)
+    await say('now add a test for it')
+    await step($, { model: 'claude-opus-5-5', effort: 'high' })
+    expect(sent.model).toBe('claude-sonnet-5-5')
+
+    await $.session.end({ sessionId: 's1', reason: 'exit' } as any)
+    const ev = [...files.entries()].filter(([f]) => f.includes('/usage-analytics/events/')).flatMap(([, t]) => t.trim().split('\n').map(l => JSON.parse(l)))
+    expect(ev.filter(x => x.kind === 'classify')).toHaveLength(1)
+    expect(ev.find(x => x.kind === 'reroute')).toMatchObject({ from: 'claude-sonnet-5-5', model: 'claude-opus-5-5' })
+  })
+
   test('Opus never runs above medium effort, on the main loop or in subagents', async ($, on) => {
     engine(on, { agents: [{ id: 'a2', type: 'fork', description: 'x', status: 'running' }] })
     const sent: any[] = []

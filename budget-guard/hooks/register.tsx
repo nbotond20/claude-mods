@@ -1057,6 +1057,55 @@ async function classifyFirstPrompt($: EngineInterface, text: string, engineModel
   return r
 }
 
+/** A later prompt that asks for code to change: a local check, no model call. */
+const BUILD_VERBS = [
+  // writing code
+  'implement', 'build', 'code', 'write', 'rewrite', 'create', 'add', 'generate', 'scaffold', 'prototype', 'draft',
+  // changing it
+  'fix', 'patch', 'repair', 'resolve', 'solve', 'debug', 'change', 'update', 'edit', 'modify', 'adjust', 'tweak', 'amend',
+  'refactor', 'restructure', 'reorganize', 'reorganise', 'rework', 'redesign', 'clean up', 'cleanup', 'simplify', 'optimize', 'optimise',
+  'improve', 'extend', 'enhance', 'harden', 'rename', 'move', 'extract', 'inline', 'split', 'merge', 'combine', 'consolidate',
+  'replace', 'swap', 'convert', 'translate', 'port', 'migrate', 'upgrade', 'downgrade', 'bump', 'remove', 'delete', 'drop', 'strip',
+  'deprecate', 'revert', 'rollback', 'roll back', 'undo', 'disable', 'enable', 'toggle', 'expose', 'validate',
+  // wiring and setup
+  'wire', 'hook up', 'hook in', 'plug in', 'integrate', 'connect', 'install', 'configure', 'set up', 'setup',
+  'deploy', 'publish', 'automate', 'parallelize', 'memoize', 'paginate', 'localize',
+  // tests
+  'test', 'mock', 'stub',
+]
+/** The go-ahead after an investigation: "ok do it", "sounds good, proceed", "lgtm". */
+const GO_AHEAD = [
+  'do it', 'do that', 'do this', 'do both', 'do all', 'go ahead', 'go for it', 'proceed', 'continue with', 'carry on', 'get started', 'start on',
+  "let'?s do", "let'?s go", "let'?s build", "let'?s implement", "let'?s fix", "let'?s change", 'make it', 'make that', 'make this', 'make the',
+  'make (a|an|some|these|those|them)', 'apply', 'execute', 'carry out', 'action (it|this|that)', 'put (it|that|this) in', 'use (it|that|this) approach',
+  'sounds good', 'looks good', 'lgtm', 'approved', 'ship it', 'yes,? please', 'yep,? do', 'option [a-d1-9]\\b', 'the (first|second|third) one',
+  'plan (looks|is) (good|fine|ok)', 'follow the plan', 'execute the plan', 'implement the plan', 'with your (suggestion|plan|fix|approach)',
+  // Hungarian: the person sometimes writes in it
+  'csináld', 'csinálj', 'javítsd', 'javíts', 'írd meg', 'írj', 'implementáld', 'módosítsd', 'változtasd', 'add hozzá', 'töröld', 'mehet', 'csináljuk',
+]
+/** "create" also matches creates, created, creating; "fix" fixes, fixed, fixing; "set up" set  up. */
+const inflect = (v: string) => (v.endsWith('e') ? `${v.slice(0, -1)}(e|es|ed|ing)` : `${v}(s|es|ed|ing)?`).replace(/ /g, '\\s+')
+const BUILD_INTENT = new RegExp(`(^|[^\\p{L}])(${BUILD_VERBS.map(inflect).join('|')}|${GO_AHEAD.join('|')})(?![\\p{L}])`, 'iu')
+/** A question about the work, not a request for it ("can you fix it?" is still a request). */
+const QUESTION = /^(how|what|why|where|when|which|who|is|are|was|were|does|did|do (you|we|i)|should|shall|whats|what's|hogyan|miért|mi|mit)\b[^\n]*\?\s*$/iu
+/** Prompts this long can ask for work without the usual verbs: Haiku decides those. */
+const REROUTE_CLASSIFY_CHARS = 200
+
+/**
+ * A session routed to Sonnet as "quick" (often an investigation) that now asks for implementation goes to
+ * Opus for the rest of the session. Never downgrades: a model switch throws the prompt cache away once, and
+ * flip-flopping would do it every time. A verb match costs nothing; only a long prompt with no match pays
+ * for one Haiku call.
+ */
+async function upgradeTier($: EngineInterface, r: Route, text: string): Promise<Route | null> {
+  if (r.tier !== 'quick' || r.pinned) return null
+  const t = text.trim()
+  if (BUILD_INTENT.test(t) && !QUESTION.test(t)) return { ...r, tier: 'normal', model: TIERS.normal.model, effort: TIERS.normal.effort }
+  if (t.length < REROUTE_CLASSIFY_CHARS) return null
+  const c = await classifyFirstPrompt($, t, r.engineModel)
+  return c.tier === 'quick' ? null : c
+}
+
 async function looksLikeNewTask($: EngineInterface, previous: string[], text: string) {
   const sample = `EARLIER REQUESTS IN THIS SESSION:\n${previous.map(p => `- ${p.slice(0, 600)}`).join('\n')}\n\nNEW REQUEST:\n${text.slice(0, 1500)}`
   await logClassify($, 'new_task', sample.length)
@@ -1274,6 +1323,14 @@ export const register: Register = on => {
         await update($, route, () => r)
         await trackLog($, 'route', { tier: r.tier, model: r.model, effort: r.effort })
       }
+    } else if (l.route) {
+      const r = await read($, route)
+      const up = r && (await upgradeTier($, r, e.text))
+      if (up) {
+        await update($, route, () => up)
+        await trackLog($, 'reroute', { from: r!.model, tier: up.tier, model: up.model, effort: up.effort })
+        $.ui.toast(`budget-guard: implementation work, switching to ${short(up.model)} (/budget route sonnet keeps ${short(r!.model)})`, { timeoutMs: TOAST_MS })
+      }
     }
 
     const previous = await read($, prompts)
@@ -1459,8 +1516,8 @@ export const register: Register = on => {
       else if (val === 'opus' || val === 'sonnet') {
         const r = await read($, route)
         const pick: Route = val === 'opus'
-          ? { tier: 'hard', model: OPUS, effort: opusMax(), engineModel: r?.engineModel ?? '' }
-          : { tier: 'quick', model: SONNET, effort: 'low', engineModel: r?.engineModel ?? '' }
+          ? { tier: 'hard', model: OPUS, effort: opusMax(), engineModel: r?.engineModel ?? '', pinned: true }
+          : { tier: 'quick', model: SONNET, effort: 'low', engineModel: r?.engineModel ?? '', pinned: true }
         await update($, route, () => pick)
         await set({ route: true })
       }

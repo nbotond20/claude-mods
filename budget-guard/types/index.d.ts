@@ -32,6 +32,8 @@ export type Route = {
   effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   /** the model the engine named when the route was taken; a different one means the user switched */
   engineModel: string
+  /** set by /budget route opus|sonnet: later prompts never move it */
+  pinned?: boolean
 }
 
 /** A prompt held because it looks like a new task over a big context. */
