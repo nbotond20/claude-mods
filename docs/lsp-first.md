@@ -16,6 +16,8 @@ Source: `lsp-first/hooks/register.ts`. Tests: `lsp-first/tests/`.
    grep stays the tool for strings, comments, config and files that are not TS/JS.
 3. **Nudges.** When a Bash `grep`/`rg`/`git grep`/`ag` (or a Grep tool, on builds that have one) searches TS/JS for a bare identifier, the result carries a one-line hint naming the LSP operation to use. This happens at most once every 10 minutes.
 
+`/lsp-first off 1h` (or `30m`, `1d`, `session`) steps aside for that long; `/lsp-first on` resumes. `/mods pause` pauses it with the other mods.
+
 ## The TypeScript language server
 
 lsp-first needs a language server plugin; without one it does nothing. For TypeScript/JavaScript:

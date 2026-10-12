@@ -19,9 +19,9 @@ One central store for everything about how every profile spends tokens, with a t
 
 ## Setup, backfill and the server
 
-Nothing is required: on first start the mod writes its config with defaults, registers the profile's config dir, starts the dashboard server and toasts once that `/analytics setup` can tailor it. **`/analytics setup`** runs `claude-usage setup --json` (detected profiles with history, what is already imported, the port) and asks which profiles to track, whether to keep prompt text, and when the dashboard runs.
+Nothing is required: on first start the mod writes its config with defaults, registers the profile's config dir, starts the dashboard server and joins the one `/mods` toast of the session. **`/analytics setup`** first checks for python3 (and says how to install it when it is missing), then runs `claude-usage setup --json` (detected profiles with history, what is already imported, the port) and asks which profiles to track, whether to keep prompt text, and when the dashboard runs.
 
-**Backfill.** When the server starts it imports every transcript already on disk in the background, so the dashboard has your full history from day one. The page shows a progress bar (files, requests, %) and redraws as data arrives; an empty database shows a first-run screen instead of empty charts. `/api/meta` carries the same `progress`.
+**Backfill.** When the server starts it imports every transcript already on disk in the background, so the dashboard has your full history from day one. The page shows a progress bar (the stage — sessions, subagents, mod events — with the profile being read, files, requests, %, and a note that the numbers are partial until it finishes) and redraws as data arrives; an empty database shows a first-run screen instead of empty charts. `/api/meta` carries the same `progress`.
 
 **One server per machine, started when needed.** Every session start, every `/analytics` command and `/dashboard` start it if it is not running (a lock file keeps it to one), and replace one older than the installed mod. `claude-usage autostart on` also starts it at login (a launchd agent on macOS, a systemd user unit on Linux); `off` removes it. `"dashboard": false` keeps it off until you run `/dashboard`.
 
@@ -38,10 +38,13 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 | `/analytics advise applied\|accept\|dismiss\|revert <id> [note]` | record what you did with a recommendation (a dismissal's note teaches the next run) |
 | `/analytics advise reproduce <id>` | re-runs a recommendation's evidence queries and its verification, and says whether they give the same numbers |
 | `/analytics impact [--days N] [--profile P]` | are the mods saving money or costing more ([mod-impact.md](mod-impact.md)) |
+| `/analytics digest` | last week against the week before: spend, sessions, cache hit, top project and model, new advisor suggestions. The same comes as a toast once a week (`weeklyDigest`) |
+| `/analytics summary [--days N] [--format md\|html] [--no-projects] [--out F]` | a shareable summary (totals, by day, models, project names without paths, mod verdicts; no prompts or code), saved under `<mods home>/usage-analytics/summaries/`. The dashboard's **Share summary** button opens the same page for the period on screen (shift-click: Markdown) |
 | `/analytics status` · `/analytics ingest` · `/analytics stop` | data and dashboard status · ingest now · stop the dashboard |
 | `/analytics [overview\|daily\|models\|projects\|tools\|bash\|files\|agents\|sessions\|context\|hours\|cache\|prompts\|all] [--days N] [--profile P] [--project x]` | terminal report (ingests first) |
 | `claude-usage serve [--port 8787] [--daemon] [--open] [--tab T] [--quiet]` · `stop` · `status` · `impact [--json]` | the same from a shell |
 | `claude-usage setup [--json]` · `autostart on\|off\|status` | what was detected · start the server at login |
+| `claude-usage digest [--line\|--json]` · `summary [--days N] [--format md\|html] [--out F\|-]` | the weekly digest · a shareable summary (`GET /api/summary?days=&format=` on the dashboard) |
 | `claude-usage sql "SELECT …"` · `schema` · `export TABLE --format csv\|jsonl` · `reprice` · `path` | everything else |
 
 `claude-usage` lives at `usage-analytics/bin/claude-usage` (Python 3, stdlib only). An alias is handy:
@@ -204,6 +207,7 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 | `advisorEveryDays` | 7 | days between background advisor runs (0: only on `/analytics advise`) |
 | `advisorModel` | `sonnet` | the background advisor's model |
 | `advisorNotify` | true | toast when an applied recommendation gets a verdict |
+| `weeklyDigest` | true | once a week, two minutes into an interactive session, a toast with last week's digest |
 | `profileDirs` | `[]` | config dirs to read transcripts from; empty = auto: `~/.claude*` plus every config dir a session registered under `profiles/` |
 
 ## Files

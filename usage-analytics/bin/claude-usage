@@ -558,7 +558,14 @@ class Ingest:
         t0, last_commit = time.time(), time.time()
         # A long ingest (the first one backfills every transcript on disk) reports how far it got.
         backfill = sum(1 for x in todo if x[5] == 0) > 50
-        state = {'running': True, 'backfill': backfill, 'total': len(todo), 'done': 0, 'requests': 0, 'startedAt': int(t0)}
+        # Stages in the order todo runs them, for the progress bar: sessions, subagents, mod events.
+        stage_total, stage_start = {}, {}
+        for j, x in enumerate(todo):
+            st_ = stage_of(x[0], x[3])
+            stage_start.setdefault(st_, j)
+            stage_total[st_] = stage_total.get(st_, 0) + 1
+        state = {'running': True, 'backfill': backfill, 'total': len(todo), 'done': 0, 'requests': 0, 'startedAt': int(t0),
+                 'stages': [k for k in ('sessions', 'subagents', 'mod events') if k in stage_total]}
         if backfill:
             write_progress(state, progress)
         for i, (kind, profile, path, aid, st, start) in enumerate(todo):
@@ -583,12 +590,18 @@ class Ingest:
                 last_commit = time.time()
                 log(self.args, f'  {i + 1}/{len(todo)} files, {self.n["requests"]} request rows, {time.time() - t0:.0f}s')
                 if backfill:
-                    write_progress({**state, 'done': i + 1, 'requests': self.n['requests']}, progress)
+                    write_progress({**state, 'done': i + 1, 'requests': self.n['requests'], 'stage': stage_of(kind, aid),
+                                    'profile': profile, 'stageDone': i + 1 - stage_start[stage_of(kind, aid)],
+                                    'stageTotal': stage_total[stage_of(kind, aid)]}, progress)
         con.commit()
         if backfill:
             write_progress({**state, 'running': False, 'done': len(todo), 'requests': self.n['requests'], 'finishedAt': int(time.time())}, progress)
         log(self.args, f'ingested {self.n["files"]} files: {self.n["requests"]} request rows, {self.n["tools"]} tool calls, '
                        f'{self.n["prompts"]} prompts, {self.n["events"]} mod events in {time.time() - t0:.1f}s')
+
+
+def stage_of(kind, aid):
+    return 'mod events' if kind == 'events' else 'subagents' if kind == 'agent_meta' or aid is not None else 'sessions'
 
 
 def profile_dirs(cfg=None):
@@ -1077,6 +1090,52 @@ def cmd_impact(args):
     return 0
 
 
+def _summary_mod():
+    sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+    import summary
+    return summary
+
+
+def cmd_digest(args):
+    """Last week against the week before: the weekly toast (--line) or a short report."""
+    if args.ingest:
+        cmd_ingest(argparse.Namespace(quiet=True, full=False))
+    summary = _summary_mod()
+    import advisor
+    con = connect()
+    try:
+        new = [r for r in advisor.recs(advisor.adb(DATA)) if r.get('status') == 'proposed']
+    except Exception:  # the advisor is optional here
+        new = []
+    d = summary.digest(con, new_recs=new)
+    print(json.dumps(d, default=str, indent=1) if args.json else summary.fmt_digest_line(d) if args.line else summary.fmt_digest(d))
+    return 0
+
+
+def cmd_summary(args):
+    """A shareable summary of the last N days: Markdown or a self-contained HTML page, saved to a file."""
+    if args.ingest:
+        cmd_ingest(argparse.Namespace(quiet=True, full=False))
+    summary = _summary_mod()
+    import impact
+    con = connect()
+    try:
+        imp = impact.impact(con, make_coster(), days=args.days)
+    except Exception:  # no mod events yet
+        imp = None
+    s = summary.summary(con, days=args.days, projects=not args.no_projects, impact=imp)
+    text = summary.to_html(s) if args.format == 'html' else summary.to_md(s)
+    if args.out == '-':
+        sys.stdout.write(text)
+        return 0
+    out = args.out or os.path.join(DATA, 'summaries', f"usage-{s['from']}-to-{s['to']}.{'html' if args.format == 'html' else 'md'}")
+    os.makedirs(os.path.dirname(os.path.abspath(out)), exist_ok=True)
+    with open(out, 'w') as f:
+        f.write(text)
+    print(out)
+    return 0
+
+
 def cmd_advise(args):
     sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
     import advisor
@@ -1190,6 +1249,13 @@ def main(argv=None):
     au = sub.add_parser('autostart', help='keep the dashboard running from login too')
     au.add_argument('state', choices=['on', 'off', 'status']); au.set_defaults(fn=cmd_autostart)
     sub.add_parser('path').set_defaults(fn=lambda a: print(DATA) or 0)
+    dg = sub.add_parser('digest', help='last week against the week before (the weekly toast)')
+    dg.add_argument('--json', action='store_true'); dg.add_argument('--line', action='store_true', help='one line, for a toast')
+    dg.add_argument('--ingest', action='store_true'); dg.set_defaults(fn=cmd_digest)
+    sm = sub.add_parser('summary', help='a shareable summary (md or html), saved under <data>/summaries/ unless --out')
+    sm.add_argument('--days', type=int, default=30); sm.add_argument('--format', choices=['md', 'html'], default='md')
+    sm.add_argument('--out', help='file to write, - for stdout'); sm.add_argument('--no-projects', action='store_true', help='leave project names out')
+    sm.add_argument('--ingest', action='store_true'); sm.set_defaults(fn=cmd_summary)
     ad = sub.add_parser('advise', help='the self-improving advisor (show, brief, record, set, due, notify)')
     ad.add_argument('action', nargs='?', default='show', choices=['show', 'brief', 'record', 'set', 'get', 'due', 'fail', 'notify', 'sql', 'reproduce'])
     ad.add_argument('--limit', type=int, default=200, help='sql: most rows returned')

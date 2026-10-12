@@ -413,10 +413,12 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
         def log_message(self, *a):
             pass
 
-        def send(self, code, body, ctype='application/json'):
+        def send(self, code, body, ctype='application/json', headers=None):
             b = body if isinstance(body, bytes) else json.dumps(body, default=str).encode()
             self.send_response(code)
             self.send_header('Content-Type', ctype)
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
             self.send_header('Cache-Control', 'no-store')
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.send_header('X-Frame-Options', 'DENY')
@@ -464,6 +466,24 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
                         days = int((qs.get('days') or ['30'])[0] or 0)
                         profiles = [v for v in (qs.get('profile') or [''])[0].split(',') if v]
                         return self.send(200, impact.impact(con, coster, days=days, profiles=profiles or None))
+                    if u.path == '/api/summary':
+                        # A shareable summary: html opens as a page, md downloads.
+                        import impact
+                        import summary
+                        days = max(1, min(366, int((qs.get('days') or ['30'])[0] or 30)))
+                        fmt = 'md' if (qs.get('format') or [''])[0] == 'md' else 'html'
+                        projects = (qs.get('projects') or ['1'])[0] != '0'
+                        try:
+                            imp = impact.impact(con, coster, days=days)
+                        except Exception:
+                            imp = None
+                        s = summary.summary(con, days=days, projects=projects, impact=imp)
+                        name = f"claude-usage-{s['from']}-to-{s['to']}.{fmt}"
+                        if fmt == 'md':
+                            return self.send(200, summary.to_md(s).encode(), 'text/markdown; charset=utf-8',
+                                             {'Content-Disposition': f'attachment; filename="{name}"'})
+                        return self.send(200, summary.to_html(s).encode(), 'text/html; charset=utf-8',
+                                         {'Content-Disposition': f'inline; filename="{name}"'})
                     if u.path == '/api/advisor':
                         import advisor
                         days = int((qs.get('days') or ['30'])[0] or 30)

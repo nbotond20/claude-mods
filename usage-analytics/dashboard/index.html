@@ -405,6 +405,7 @@ table.mini td.good { color: var(--good); } table.mini td.bad { color: var(--bad)
     <div class="sidefoot">
       <div class="live" id="live" title="Pushed by the server when new requests, prompts or tool calls are ingested"><span class="dot"></span><span id="liveText">connecting…</span></div>
       <div class="row2"><button id="theme" title="Theme (t)">Theme</button><button id="ingest" title="Fold new transcript and mod data into the database now">Ingest</button></div>
+      <div class="row2"><button id="share" title="A shareable summary of the selected period as a standalone page (shift-click: Markdown)">Share summary</button></div>
     </div>
   </aside>
   <div class="main">
@@ -1430,7 +1431,10 @@ function showProgress(p) {
   el.classList.add('on')
   const pc = Math.min(100, 100 * (p.done || 0) / p.total)
   $('#progressTitle').textContent = p.backfill ? 'Importing your Claude Code history' : 'Ingesting new transcripts'
-  $('#progressText').textContent = `${big(p.done || 0)} of ${big(p.total)} files · ${big(p.requests || 0)} requests · ${Math.floor(pc)}%`
+  // Where it is: the stage (sessions, subagents, mod events), its step of the stages, and the profile being read.
+  const stages = p.stages || [], at = p.stage ? stages.indexOf(p.stage) + 1 : 0
+  const where = p.stage ? `${at && stages.length > 1 ? `step ${at} of ${stages.length}: ` : ''}${p.stage}${p.profile ? ` (${p.profile.replace(/^claude-/, '')})` : ''}${p.stageTotal ? ` ${big(p.stageDone || 0)}/${big(p.stageTotal)}` : ''} · ` : ''
+  $('#progressText').textContent = `${where}${big(p.done || 0)} of ${big(p.total)} files · ${big(p.requests || 0)} requests · ${Math.floor(pc)}% · numbers below are partial until it finishes`
   $('#progressBar').style.width = pc.toFixed(1) + '%'
 }
 function cycleTheme() {
@@ -1530,6 +1534,8 @@ function commands() {
     ...ORDER.map(k => ({ label: TABS[k].label, hint: 'go to · ' + (TABS[k].sub || ''), run: () => go(k) })),
     ...PERIODS.map(([v, l]) => ({ label: `Period: ${l === 'All' ? 'all time' : l}`, hint: 'filter', run: () => setDays(v) })),
     { label: 'Ingest now', hint: 'action', run: ingestNow },
+    { label: 'Share summary (HTML page)', hint: 'action', run: () => $('#share').click() },
+    { label: 'Share summary (Markdown)', hint: 'action', run: () => window.open(`/api/summary?days=${Number(state.days) || 366}&format=md`, '_blank', 'noopener') },
     { label: 'Refresh', hint: 'action · r', run: () => refresh() },
     { label: 'Toggle theme', hint: 'action · t', run: cycleTheme },
     { label: `${state.compare ? 'Hide' : 'Show'} change vs previous period`, hint: 'action', run: () => { $('#compare').click() } },
@@ -1578,6 +1584,12 @@ $('#model').onchange = render
 $('#refresh').onclick = () => { const b = $('#refresh'); b.classList.remove('spin'); void b.offsetWidth; b.classList.add('spin'); loadMeta().then(render) }
 $('#theme').onclick = cycleTheme
 $('#ingest').onclick = ingestNow
+// The summary covers the period picked above (All = a year); project names stay in unless the page hides them.
+$('#share').onclick = ev => {
+  const days = Number(state.days) || 366
+  const fmt = ev.shiftKey ? 'md' : 'html'
+  window.open(`/api/summary?days=${days}&format=${fmt}`, '_blank', 'noopener')
+}
 let pt; $('#project').oninput = () => { clearTimeout(pt); pt = setTimeout(render, 400) }
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (store.get('cu-theme', 'system') === 'system') render() })
 if (!TABS[state.tab]) state.tab = 'overview'

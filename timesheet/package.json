@@ -1,0 +1,51 @@
+{
+  "name": "timesheet",
+  "version": "0.2.0",
+  "description": "NetSuite-ready timesheets from Claude Code sessions, git history and Google Calendar",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "timesheet": "bin/timesheet.js"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "test": "node --experimental-sqlite --no-warnings --test 'test/*.spec.ts'",
+    "typecheck": "tsc --noEmit",
+    "dev:web": "vite --config web/vite.config.ts",
+    "build:web": "vite build --config web/vite.config.ts",
+    "typecheck:web": "tsc -p web --noEmit",
+    "prepack": "npm run build:cli && (test -f web/dist/index.html || (echo 'web/dist missing: run npm run build:web (needs LOAM_DIR)' && exit 1))",
+    "setup": "./scripts/setup.sh",
+    "build:cli": "node scripts/build-cli.mjs",
+    "build": "npm run build:cli && npm run build:web"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.3",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "esbuild": "^0.28.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^5.4.21"
+  },
+  "files": [
+    "README.md",
+    "bin",
+    "dist",
+    "scripts/launcher.sh",
+    "scripts/setup.sh",
+    "skills",
+    "web/dist",
+    "web/fallback.html"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {
+    "playwright-core": "^1.63.0"
+  }
+}

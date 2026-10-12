@@ -22,6 +22,14 @@ function engine(on: any, env: Record<string, string>, runs: string[][] = [], toa
   on('agent.list', () => ({ value: [] }))
   on('fs.write', ($: any, e: any) => (files.set(e.path, e.text), { value: undefined }))
   on('fs.read', ($: any, e: any) => (files.has(e.path) ? { value: files.get(e.path) } : { deny: 'ENOENT' }))
+  on('fs.list', ($: any, e: any) => {
+    const kids = new Map<string, string>()
+    for (const f of files.keys()) if (f.startsWith(`${e.path}/`)) {
+      const [name, ...rest] = f.slice(e.path.length + 1).split('/')
+      kids.set(name!, rest.length ? 'dir' : 'file')
+    }
+    return { value: [...kids].map(([name, kind]) => ({ name, kind, size: 1, mtimeMs: 0, isLink: false })) }
+  })
   on('session.end', ($: any, e: any) => ({ sessionId: e.sessionId }))
   on('tool.call', () => ({ result: 'a\nb\nc', text: 'a\nb\nc' }) as any)
   on('tool.register', ($: any, e: any) => ({ value: { tool: `mcp__usage-analytics__${e.name}` } }))
@@ -57,7 +65,8 @@ describe('usage-analytics', () => {
     expect(text.includes('sk-secret-value')).toBe(false)
     // A fresh machine: the generic data folder, the config written with defaults, one first-run notice.
     expect(JSON.parse(files.get('/h/.claude-mods/usage-analytics/config.json')!)).toMatchObject({ dashboard: true, port: 8787, profileDirs: [] })
-    expect(toasts.filter(t => /analytics setup/.test(t)).length).toBe(1)
+    await new Promise(r => setTimeout(r, 0))
+    expect(toasts.filter(t => /Mods on: usage-analytics \(importing your history/.test(t)).length).toBe(1)
     // The profile's config dir is registered so the CLI finds its transcripts wherever it lives.
     expect(JSON.parse(files.get('/h/.claude-mods/usage-analytics/profiles/claude-infi.json')!)).toEqual({ profile: 'claude-infi', configDir: '/h/.claude-infi' })
     // The live pulse the dashboard server watches.
@@ -70,7 +79,9 @@ describe('usage-analytics', () => {
     const files = engine(on, { ...ENV, CLAUDE_CONFIG_DIR: '', HOME: '/h' }, runs, toasts)
     files.set('/h/.claude-shared/usage-analytics/config.json', JSON.stringify({ storePrompts: false }))
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
-    expect(toasts.length).toBe(0)
+    await new Promise(r => setTimeout(r, 0))
+    // Not a first run: at most the what's-new line of the version it found.
+    expect(toasts.filter(t => !/^Updated usage-analytics/.test(t))).toEqual([])
     // Old configs gain the new keys, keeping their own values.
     expect(JSON.parse(files.get('/h/.claude-shared/usage-analytics/config.json')!)).toMatchObject({ storePrompts: false, port: 8787 })
     expect(files.has('/h/.claude-shared/usage-analytics/profiles/claude.json')).toBe(true)

@@ -148,6 +148,32 @@ describe('budget-guard', () => {
     expect(commands[2]).toBe('git status')
   })
 
+  test('a turn that ends over compactAt is compacted, and auto-compact is kept on', async ($, on) => {
+    engine(on, { holdout: 1 })
+    const set: any[] = []
+    on('config.list', () => ({ value: [{ key: 'autoCompact', label: 'Auto-compact', kind: 'toggle', value: false, provider: { plugin: 'engine', tier: 'core' }, isLocked: false }] }))
+    on('config.set', ($: any, e: any) => (set.push(e), { value: e.value }))
+    let tokens = 150_000
+    on('session.usage', () => ({ value: { context: { tokens, window: 1_000_000 } } }))
+    on('turn.complete', () => ({ text: '' }))
+    let compactions = 0
+    on('session.compact', () => (compactions++, (tokens = 30_000), { messages: [{ role: 'user', text: 'summary', toolUses: [] }], tokensBefore: 210_000, tokensAfter: 30_000 }))
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    expect(set).toMatchObject([{ key: 'autoCompact', value: true }])
+
+    const done = () => $.turn.complete({ turnId: 't1', answer: '', durationMs: 1, isAborted: false, reason: 'answer' } as any)
+    await done()
+    expect(compactions).toBe(0)
+    tokens = 210_000
+    await done()
+    expect(compactions).toBe(1)
+
+    await $.command.run({ command: 'budget', args: 'compact off' } as any)
+    tokens = 210_000
+    await done()
+    expect(compactions).toBe(1)
+  })
+
   test('a new task over a big context is held with clear / compact / keep', async ($, on) => {
     engine(on, { classify: 'an unrelated new task' })
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
@@ -221,7 +247,7 @@ describe('budget-guard', () => {
     expect((sent as any).drop).toBeUndefined()
   })
 
-  test('in the holdout the cost levers are off and every action is logged for comparison', async ($, on) => {
+  test('in the holdout the cost levers are off (the effort cap stays) and every action is logged for comparison', async ($, on) => {
     const files = engine(on, { holdout: 1, classify: QUICK })
     on('tool.call', () => ({ result: 'ran', text: 'ran' }) as any)
     on('session.end', ($: any, e: any) => ({ sessionId: e.sessionId }))
@@ -233,7 +259,7 @@ describe('budget-guard', () => {
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     await $.prompt.submit({ text: 'what does this function do?', origin: { kind: 'composer' } } as any)
     await step($, { model: 'claude-opus-5-5', effort: 'high' })
-    expect(sent.at(-1)).toMatchObject({ model: 'claude-opus-5-5', effort: 'high' })
+    expect(sent.at(-1)).toMatchObject({ model: 'claude-opus-5-5', effort: 'medium' })
     const lock = await $.tool.call({ tool: 'Read', file_path: '/work/package-lock.json' } as any)
     expect(lock.deny).toBeUndefined()
     await $.session.end({ sessionId: 's1', reason: 'exit' } as any)
@@ -256,5 +282,28 @@ describe('budget-guard', () => {
     expect(ev.find(x => x.kind === 'classify')).toMatchObject({ purpose: 'route' })
     expect(ev.find(x => x.kind === 'deny')?.what).toBe('image')
     expect(ev.some(x => x.kind === 'session_summary')).toBe(true)
+  })
+
+  test('/budget pause lets Opus effort through and turns routing off; resume puts the limits back', async ($, on) => {
+    engine(on)
+    const sent: any[] = []
+    on('turn.step', async function* ($: any, e: any) {
+      sent.push(e.effort)
+      return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: 'end_turn', usage: { ...usage, model: e.model } }
+    })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const before = String((await $.command.run({ command: 'budget', args: '' } as any)).text)
+    expect(before).toMatch(/route (decides|off|quick|normal|hard)/)
+    expect(String((await $.command.run({ command: 'budget', args: 'pause 1h' } as any)).text)).toMatch(/paused until/)
+    await step($, { model: 'claude-opus-5-5', effort: 'max' })
+    const paused = String((await $.command.run({ command: 'budget', args: '' } as any)).text)
+    expect(paused).toMatch(/PAUSED until/)
+    expect(paused).toMatch(/route off/)
+    await $.command.run({ command: 'budget', args: 'resume' } as any)
+    await step($, { model: 'claude-opus-5-5', effort: 'max' })
+    expect(sent).toEqual(['max', 'medium'])
+    const after = String((await $.command.run({ command: 'budget', args: '' } as any)).text)
+    expect(after).not.toMatch(/PAUSED/)
+    expect(after.split('\n')[2]).toBe(before.split('\n')[2])
   })
 })

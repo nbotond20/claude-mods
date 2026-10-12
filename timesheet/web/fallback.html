@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timesheet</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1d1b; --muted: #6b6a66; --line: #e4e2dc;
+    --accent: #2f5bd3; --accent-ink: #ffffff; --warn: #a45a00; --warn-bg: #fff4e2;
+    --capex: #2f7d4f; --opex: #6b6a66; --meeting: #8a4fd1; --work: #2f5bd3;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514; --panel: #1f1f1d; --ink: #ecebe7; --muted: #9a988f; --line: #33322f;
+      --accent: #7c9cff; --accent-ink: #10131c; --warn: #f0b060; --warn-bg: #2d2415;
+      --capex: #6cc990; --opex: #9a988f; --meeting: #b88cf0; --work: #7c9cff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg); border-bottom: 1px solid var(--line); padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  h1 { font-size: 16px; margin: 0 12px 0 0; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 16px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; }
+  .seg button.on { background: var(--accent); color: var(--accent-ink); }
+  button, input, select { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  input[type=number] { width: 70px; }
+  label { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .totals { display: flex; flex-wrap: wrap; gap: 24px; }
+  .stat b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .paste-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  textarea { width: 100%; min-height: 140px; font: 12px/1.5 var(--mono); background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 10px; white-space: pre; overflow: auto; }
+  .day h2 { font-size: 15px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .day h2 small { color: var(--muted); font-weight: 400; }
+  .badge { font-size: 11px; border-radius: 99px; padding: 1px 8px; border: 1px solid var(--line); color: var(--muted); }
+  .badge.partial { color: var(--warn); border-color: var(--warn); }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; }
+  .capex { color: var(--capex); font-size: 12px; } .opex { color: var(--opex); font-size: 12px; }
+  .edited { outline: 2px solid var(--accent); }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; color: var(--muted); }
+  .block { display: grid; grid-template-columns: 96px 1fr; gap: 4px 12px; padding: 6px 0; border-bottom: 1px dashed var(--line); }
+  .block .time { font: 12px var(--mono); color: var(--muted); }
+  .block .kind-meeting { color: var(--meeting); } .block .kind-work { color: var(--work); }
+  .block .texts { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+  .summary { white-space: pre-wrap; margin-top: 10px; }
+  .warn { background: var(--warn-bg); color: var(--warn); border-radius: 8px; padding: 6px 10px; margin-top: 8px; font-size: 13px; }
+  .empty { color: var(--muted); }
+  #status { color: var(--muted); font-size: 12px; margin-left: auto; }
+  @media (max-width: 640px) { .block { grid-template-columns: 1fr; } header { gap: 8px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Timesheet</h1>
+  <div class="seg" id="views">
+    <button data-view="day">Day</button><button data-view="week">Week</button><button data-view="month">Month</button>
+  </div>
+  <button id="prev" aria-label="Previous">‹</button>
+  <input type="date" id="at">
+  <button id="next" aria-label="Next">›</button>
+  <label>Target <input type="number" id="target" min="0" step="0.25"></label>
+  <label><input type="checkbox" id="real"> Real hours</label>
+  <button id="refresh">Recompute</button>
+  <span id="status"></span>
+</header>
+<main>
+  <section class="panel totals" id="totals"></section>
+  <section class="panel">
+    <div class="paste-head">
+      <div class="seg" id="formats">
+        <button data-format="grid">Weekly grid</button><button data-format="gridNoHeader">Grid, no header</button><button data-format="lines">Lines</button><button data-format="daily">Daily</button>
+      </div>
+      <button class="primary" id="copy">Copy for NetSuite</button>
+    </div>
+    <textarea id="paste" readonly spellcheck="false"></textarea>
+  </section>
+  <section id="days" style="display:grid;gap:12px"></section>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const state = { view: 'week', at: null, format: 'grid', meta: null, data: null };
+try { Object.assign(state, JSON.parse(localStorage.getItem('timesheet-ui') || '{}')); } catch {}
+const save = () => { try { localStorage.setItem('timesheet-ui', JSON.stringify({ view: state.view, format: state.format })); } catch {} };
+const fmt = (n) => String(Number((n || 0).toFixed(2)));
+const time = (ms) => new Date(ms).toTimeString().slice(0, 5);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const dow = (d) => new Date(d + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+
+async function api(path, body) {
+  const res = await fetch(path, body ? { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) } : {});
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+
+function shift(dir) {
+  const d = new Date(($('#at').value || state.meta.today) + 'T12:00:00');
+  if (state.view === 'day') d.setDate(d.getDate() + dir);
+  else if (state.view === 'week') d.setDate(d.getDate() + 7 * dir);
+  else d.setMonth(d.getMonth() + dir, 1);
+  $('#at').value = d.toISOString().slice(0, 10);
+  load();
+}
+
+async function load(refresh = false) {
+  $('#status').textContent = refresh ? 'Recomputing… (runs Claude classification)' : 'Loading…';
+  try {
+    state.data = await api('/api/report', {
+      view: state.view, at: $('#at').value, target: $('#target').value, real: $('#real').checked, refresh, wait: true,
+    });
+    $('#status').textContent = `${state.data.from} → ${state.data.to}`;
+    draw();
+  } catch (e) {
+    $('#status').textContent = 'Error: ' + e.message;
+  }
+}
+
+function draw() {
+  const { days, paste } = state.data;
+  document.querySelectorAll('#views button').forEach((b) => b.classList.toggle('on', b.dataset.view === state.view));
+  document.querySelectorAll('#formats button').forEach((b) => b.classList.toggle('on', b.dataset.format === state.format));
+  $('#paste').value = paste[state.format] || '';
+
+  let booked = 0, real = 0, capex = 0, opex = 0;
+  for (const d of days) {
+    real += d.realTotal;
+    for (const e of d.entries) { booked += e.hours; e.capex ? (capex += e.hours) : (opex += e.hours); }
+  }
+  $('#totals').innerHTML = [['Booked', booked], ['Real activity', real], ['CAPEX', capex], ['OPEX', opex]]
+    .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${fmt(v)}</b></div>`).join('')
+    + `<div class="stat"><span>Days</span><b>${days.filter((d) => d.entries.length).length}</b></div>`;
+
+  const cats = state.meta.categories;
+  const catOptions = (sel) => cats.map((c) => `<option ${c.name === sel ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+  $('#days').innerHTML = days.slice().reverse().map((d) => {
+    if (!d.blocks.length && !d.entries.length && !d.warnings.length) return `<div class="panel day"><h2>${dow(d.date)} <small>no activity</small></h2></div>`;
+    const status = d.status === 'final' ? '' : `<span class="badge ${d.status}">${d.status === 'today' ? 'today' : 'partial'}</span>`;
+    const entries = d.entries.map((e) => `<tr>
+        <td>${esc(e.category)}${state.meta.projects.length > 1 ? ` <small>· ${esc(e.project)}</small>` : ''}</td>
+        <td class="${e.capex ? 'capex' : 'opex'}">${e.capex ? 'CAPEX' : 'OPEX'}</td>
+        <td class="num">${fmt(e.real)}</td>
+        <td class="num"><input type="number" step="0.25" min="0" value="${e.hours}" class="${e.overridden ? 'edited' : ''}"
+          data-date="${d.date}" data-project="${esc(e.project)}" data-category="${esc(e.category)}" aria-label="Booked hours"></td>
+        <td>${e.overridden ? `<button data-clear="${d.date}|${esc(e.project)}|${esc(e.category)}">reset</button>` : ''}</td>
+      </tr>`).join('');
+    const blocks = d.blocks.map((b) => `<div class="block">
+        <div class="time">${time(b.start)}–${time(b.end)}<br><span class="kind-${b.kind}">${b.kind === 'meeting' ? 'meeting' : b.sources.join('+')}</span></div>
+        <div>
+          <select data-date="${d.date}" data-block="${b.id}" aria-label="Category">
+            ${b.allocations.length > 1 ? `<option selected>${esc(b.allocations.map((a) => `${a.category} ${Math.round(a.fraction * 100)}%`).join(', '))}</option>` : ''}
+            ${catOptions(b.allocations.length === 1 ? b.allocations[0].category : null)}
+          </select>
+          <small>${esc(b.project)}${b.branches.length ? ' · ' + esc(b.branches.join(', ')) : ''}</small>
+          <div class="texts">${b.texts.slice(0, 4).map((t) => esc(t.slice(0, 160))).join('<br>')}</div>
+        </div>
+      </div>`).join('');
+    return `<div class="panel day">
+      <h2>${dow(d.date)} <small>real ${fmt(d.realTotal)} → booked ${fmt(d.total)}${d.target === null ? '' : ` / target ${fmt(d.target)}`}</small> ${status}</h2>
+      ${d.warnings.map((w) => `<div class="warn">${esc(w)}</div>`).join('')}
+      ${entries ? `<table><thead><tr><th>Task category</th><th></th><th style="text-align:right">Real</th><th style="text-align:right">Book</th><th></th></tr></thead><tbody>${entries}</tbody></table>` : ''}
+      ${d.summary ? `<div class="summary">${esc(d.summary)}</div>` : ''}
+      ${blocks ? `<details><summary>${d.blocks.length} time blocks</summary>${blocks}</details>` : ''}
+    </div>`;
+  }).join('') || '<p class="empty">Nothing in this range yet.</p>';
+}
+
+document.addEventListener('change', async (ev) => {
+  const t = ev.target;
+  if (t.matches('input[data-category]')) {
+    await api('/api/override', { date: t.dataset.date, project: t.dataset.project, category: t.dataset.category, hours: t.value });
+    load();
+  } else if (t.matches('select[data-block]')) {
+    await api('/api/block', { date: t.dataset.date, blockId: t.dataset.block, category: t.value });
+    load();
+  } else if (t.id === 'at' || t.id === 'target' || t.id === 'real') load();
+});
+document.addEventListener('click', async (ev) => {
+  const t = ev.target.closest('button');
+  if (!t) return;
+  if (t.dataset.view) { state.view = t.dataset.view; save(); load(); }
+  else if (t.dataset.format) { state.format = t.dataset.format; save(); draw(); }
+  else if (t.dataset.clear) {
+    const [date, project, category] = t.dataset.clear.split('|');
+    await api('/api/override', { date, project, category, hours: null });
+    load();
+  }
+  else if (t.id === 'prev') shift(-1);
+  else if (t.id === 'next') shift(1);
+  else if (t.id === 'refresh') load(true);
+  else if (t.id === 'copy') {
+    await navigator.clipboard.writeText($('#paste').value);
+    t.textContent = 'Copied'; setTimeout(() => (t.textContent = 'Copy for NetSuite'), 1200);
+  }
+});
+
+(async () => {
+  state.meta = await api('/api/meta');
+  $('#at').value = state.meta.today;
+  $('#target').placeholder = state.meta.target;
+  load();
+})();
+</script>
+</body>
+</html>

@@ -9,7 +9,7 @@ Keeps spend and context visible and pushes work to cheaper models where that is 
 - session cost and burn rate ($/h over the last 20 minutes);
 - gauges for the daily and monthly budgets;
 - either LiteLLM key spend (gateway profiles) or the 5h/7d plan limits;
-- context tokens, with `compacts ~200k` taken from `autoCompactWindow`;
+- context tokens, with `compacts ~200k`: the mod's `compactAt`, or `autoCompactWindow` when that is lower;
 - live subagents with the model each one actually runs on, and background tasks.
 
 When a new-task prompt is held, the band shows the choice `[c] clear · [k] compact · [y] keep`.
@@ -28,7 +28,8 @@ When a new-task prompt is held, the band shows the choice `[c] clear · [k] comp
 | Lever | Behaviour | Ledger category |
 | --- | --- | --- |
 | **Session routing** | On the first prompt of a session, Haiku sorts it as *quick*, *normal* or *hard*. Quick runs on Sonnet 5.5 at low effort; normal and hard run on Opus 5.5 at medium. This applies only while the session model is Opus. `/budget route opus\|sonnet` pins the choice. | `route-session` |
-| **Opus effort cap** | Every Opus request is capped at `medium` effort. | (none) |
+| **Opus effort cap** | Every Opus request, main loop and subagents, is capped at `opusMaxEffort` (default `medium`). A rule: it applies in holdout sessions too. | (none) |
+| **Compaction at `compactAt`** | When a turn ends with the context at or over `compactAt` (default 200k), the conversation is compacted before the next prompt, whatever `autoCompactWindow` says. Each session also switches the engine's auto-compact back on if it was turned off. A rule: it applies in holdout sessions too. `/budget compact off` leaves compaction to the engine. | (none) |
 | **Subagent routing** | `Explore`, `claude-code-guide` and `statusline-setup` run on Haiku. `fork` keeps its model. Every other subagent runs on Sonnet. Engine forks (compaction, memory) are left alone. | `route-agents` |
 | **Subagent cap** | At most `maxAgents` (default 3) Agent calls per session; further calls are denied with a message. | (not counted) |
 | **New-task check** | With at least `newTaskAt` (default 60k) of context loaded, a substantial prompt that Haiku judges to be a new task is held. You then choose clear, compact or keep. | `new-task` |
@@ -51,8 +52,13 @@ lean-tools works alongside this. It caps *other* large shell output and leaves b
 /budget images|keepalive|trim|agentroute on|off
 /budget reset                    session limits back to defaults
 /budget refresh                  re-read LiteLLM spend now
-/budget holdout <0-1>            share of sessions left unguarded, for /analytics impact (default 0.1)
+/budget compact <n>|off          compact at n tokens of context (default 200k), saved to config.json
+/budget holdout <0-1>            share of sessions without the cost levers, for /analytics impact (default 0.1)
+/budget pause <30m|2h|1d|session>   routing, the effort cap, compaction, trimming and keep-alive step aside
+/budget resume                   ends a pause (so does its time running out)
 ```
+
+A pause keeps the budgets, the band and the context hold: it is for a stretch of work that needs Opus at full effort, not for turning the guard off. `/mods pause` pauses budget-guard with the other mods.
 
 Limits set with `/budget` last for the current session. Budgets persist.
 
@@ -66,7 +72,7 @@ Limits set with `/budget` last for the current session. Budgets persist.
 | --- | --- |
 | `<mods home>/budget-guard/budgets.json` | `{ profiles: { "<profile>": { daily: 25, monthly: 500 } } }` (set by `/budget setup` or `/budget daily|monthly`) |
 | `<mods home>/budget-guard/sessions/<profile>-<session>.json` | Per-session ledger: day, profile, spend, and savings by category. The dashboard's Savings tab reads these. |
-| `<mods home>/budget-guard/config.json` | What every session starts from: `holdout` (0.1, see /budget holdout), `limits` (overrides of the defaults below, e.g. `{ "route": false, "block": 400000 }`), `opusMaxEffort` (`medium`; `max` means no cap), `litellm` (`auto`: poll LiteLLM key spend on a gateway and stop if it has no `/key/info`; `on`; `off`). `/budget setup` writes it. |
+| `<mods home>/budget-guard/config.json` | What every session starts from: `holdout` (0.1, see /budget holdout), `limits` (overrides of the defaults below, e.g. `{ "route": false, "block": 400000 }`), `opusMaxEffort` (`medium`; `max` means no cap), `compactAt` (200000; 0 leaves compaction to the engine), `litellm` (`auto`: poll LiteLLM key spend on a gateway and stop if it has no `/key/info`; `on`; `off`). `/budget setup` writes it. |
 | `<mods home>/budget-guard/key-baselines.json` | LiteLLM key spend at period starts, used for the daily and monthly gauges on gateway profiles. |
 | `$TMPDIR/budget-guard.*` | Full logs of trimmed commands. |
 

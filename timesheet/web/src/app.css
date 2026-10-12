@@ -1,0 +1,11 @@
+@import '@loam/ui-web/styles.css';
+@source './';
+
+body {
+  background: var(--color-canvas, var(--canvas));
+}
+
+/* An unlayered `input { font-family: inherit }` reset would otherwise beat the font-mono utility on form fields. */
+:is(input, textarea).font-mono {
+  font-family: var(--font-mono);
+}

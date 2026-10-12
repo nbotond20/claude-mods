@@ -3,26 +3,114 @@
   "owner": {
     "name": "nbotond"
   },
+  "metadata": {
+    "description": "Claude Code mods for cost, context and workflow: budgets and routing, usage analytics, leaner tool output, LSP-first navigation, no self-attribution, and timesheets. `sh bin/mods install` adds them to every profile."
+  },
   "plugins": [
     {
       "name": "budget-guard",
-      "source": "./budget-guard"
+      "source": "./budget-guard",
+      "description": "Keeps token spend down: Opus capped at medium effort, compaction at 200k, context guard, subagent cap, image/generated-file read guard, and a budget HUD above the prompt (with LiteLLM key spend).",
+      "version": "0.10.0",
+      "author": {
+        "name": "nbotond"
+      },
+      "homepage": "https://github.com/nbotond20/claude-mods/tree/main/budget-guard",
+      "repository": "https://github.com/nbotond20/claude-mods",
+      "keywords": [
+        "cost",
+        "budget",
+        "routing",
+        "context"
+      ],
+      "category": "productivity"
     },
     {
       "name": "usage-analytics",
-      "source": "./usage-analytics"
+      "source": "./usage-analytics",
+      "description": "Records every model request, tool call, prompt, context breakdown, compaction and rate-limit reading from every profile into one store in the mods data folder, with a live dashboard, a weekly digest, shareable summaries, mod impact verdicts and a statistical advisor.",
+      "version": "0.8.0",
+      "author": {
+        "name": "nbotond"
+      },
+      "homepage": "https://github.com/nbotond20/claude-mods/tree/main/usage-analytics",
+      "repository": "https://github.com/nbotond20/claude-mods",
+      "keywords": [
+        "analytics",
+        "dashboard",
+        "cost",
+        "tokens"
+      ],
+      "category": "productivity"
     },
     {
       "name": "lsp-first",
-      "source": "./lsp-first"
+      "source": "./lsp-first",
+      "description": "Makes Claude actually use the TypeScript LSP: the LSP tool is loaded up front, the system prompt says when to prefer it, and symbol-shaped Greps over TS/JS get a nudge.",
+      "version": "0.5.0",
+      "author": {
+        "name": "nbotond"
+      },
+      "homepage": "https://github.com/nbotond20/claude-mods/tree/main/lsp-first",
+      "repository": "https://github.com/nbotond20/claude-mods",
+      "keywords": [
+        "lsp",
+        "typescript",
+        "navigation"
+      ],
+      "category": "development"
     },
     {
       "name": "lean-tools",
-      "source": "./lean-tools"
+      "source": "./lean-tools",
+      "description": "Cuts what tool calls put into the context: caps huge shell output (full log kept on disk), bounds git log, and nudges toward parallel/batched calls, ranged reads, Edit over Write and no re-reads.",
+      "version": "0.5.0",
+      "author": {
+        "name": "nbotond"
+      },
+      "homepage": "https://github.com/nbotond20/claude-mods/tree/main/lean-tools",
+      "repository": "https://github.com/nbotond20/claude-mods",
+      "keywords": [
+        "context",
+        "output",
+        "tokens"
+      ],
+      "category": "productivity"
     },
     {
       "name": "no-attribution",
-      "source": "./no-attribution"
+      "source": "./no-attribution",
+      "description": "Claude never credits itself: no Co-Authored-By, no 'Generated with Claude Code', no Claude author, in commits, PRs, files or tool calls",
+      "version": "0.3.0",
+      "author": {
+        "name": "nbotond"
+      },
+      "homepage": "https://github.com/nbotond20/claude-mods/tree/main/no-attribution",
+      "repository": "https://github.com/nbotond20/claude-mods",
+      "keywords": [
+        "git",
+        "commits",
+        "attribution"
+      ],
+      "category": "development"
+    },
+    {
+      "name": "timesheet",
+      "source": "./timesheet",
+      "description": "NetSuite-ready timesheets from your Claude Code and OpenCode sessions, git and GitHub history and Google Calendar: the timesheet CLI and web app, the timesheet skill, and /timesheet.",
+      "version": "0.2.0",
+      "author": {
+        "name": "nbotond"
+      },
+      "homepage": "https://github.com/nbotond20/claude-mods/tree/main/timesheet",
+      "repository": "https://github.com/nbotond20/claude-mods",
+      "keywords": [
+        "timesheet",
+        "netsuite",
+        "time-tracking",
+        "calendar"
+      ],
+      "category": "productivity"
     }
   ]
 }

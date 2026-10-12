@@ -74,4 +74,15 @@ describe('lsp-first', () => {
     await $.session.end({ sessionId: 'sess-1', reason: 'exit' } as any)
     expect(events(files).some(x => x.kind === 'would_nudge' && x.arm === 'holdout')).toBe(true)
   })
+
+  test('/lsp-first off session steps aside until /lsp-first on', async ($, on) => {
+    engine(on)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
+    const compose = () => $.prompt.compose({ model: 'claude-opus-5-5', promptModel: 'claude-opus-5-5', outputStyle: null, surfaces: ['terminal'], sections: [], tools: ['Bash', 'LSP'], traits: [] } as any)
+    const cmd = (args: string) => $.command.run({ command: 'lsp-first', args, origin: { kind: 'user' }, presentation: 'text' } as any) as any
+    expect((await cmd('off session')).text).toMatch(/paused for this session/)
+    expect((await compose()).sections.map(s => s.id)).toEqual(['core'])
+    await cmd('on')
+    expect((await compose()).sections.map(s => s.id)).toEqual(['core', 'lsp-first:guide'])
+  })
 })

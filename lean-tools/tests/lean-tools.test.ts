@@ -15,6 +15,14 @@ function engine(on: any, seen: { command?: string }, holdout = 0) {
   on('fs.read', ($: any, e: any) => (files.has(e.path) ? { value: files.get(e.path) } : { deny: 'ENOENT' }))
   on('fs.write', ($: any, e: any) => (files.set(e.path, e.text), { value: undefined }))
   on('fs.exists', ($: any, e: any) => ({ value: [...files.keys()].some(f => f === e.path || f.startsWith(`${e.path}/`)) }))
+  on('fs.list', ($: any, e: any) => {
+    const kids = new Map<string, string>()
+    for (const f of files.keys()) if (f.startsWith(`${e.path}/`)) {
+      const [name, ...rest] = f.slice(e.path.length + 1).split('/')
+      kids.set(name!, rest.length ? 'dir' : 'file')
+    }
+    return { value: [...kids].map(([name, kind]) => ({ name, kind, size: 1, mtimeMs: Date.now(), isLink: false })) }
+  })
   on('tool.call', ($: any, e: any) => {
     if (e.tool === 'Bash') seen.command = e.command
     const text = e.tool === 'Read' ? 'y'.repeat(e.limit ? 100 : 50_000) : 'ok'
@@ -89,5 +97,50 @@ describe('lean-tools', () => {
     expect(ev.find(x => x.kind === 'arm')?.arm).toBe('holdout')
     expect(ev.some(x => x.kind === 'would_nudge' && x.nudge === 'bigread')).toBe(true)
     expect(ev.some(x => x.kind === 'would_gitlog_bound')).toBe(true)
+  })
+
+  test('records itself for /mods, pauses for a while, and resumes', async ($, on) => {
+    const seen: { command?: string } = {}
+    const files = engine(on, seen)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
+    const entry = JSON.parse(files.get('/h/.claude-shared/mods/installed/claude-db/lean-tools.json')!)
+    expect(entry).toMatchObject({ mod: 'lean-tools', profile: 'claude-db', session: 'sess-1', command: 'lean', pausable: true })
+    expect(entry.setup).toMatch(/Set up the lean-tools mod/)
+    const cmd = (command: string, args: string) => $.command.run({ command, args, origin: { kind: 'user' }, presentation: 'text' } as any) as any
+
+    const status = await cmd('mods', 'status')
+    expect(status.text).toMatch(/lean-tools .*caps on/)
+    expect(status.text).toMatch(/not installed here: budget-guard/)
+
+    expect((await cmd('lean', 'off 1h')).text).toMatch(/paused until/)
+    expect(JSON.parse(files.get('/h/.claude-shared/mods/pause.json')!).mods['lean-tools']).toBeGreaterThan(Date.now())
+    await $.tool.call({ tool: 'Bash', tool_use_id: '1', command: 'find . -name "*.ts"' } as any)
+    expect(seen.command).toBe('find . -name "*.ts"')
+
+    await cmd('lean', 'on')
+    await $.tool.call({ tool: 'Bash', tool_use_id: '2', command: 'find . -name "*.ts"' } as any)
+    expect(seen.command).toMatch(/lean-tools: output was/)
+
+    expect((await cmd('mods', 'pause 2h')).text).toMatch(/paused until/)
+    await $.tool.call({ tool: 'Bash', tool_use_id: '3', command: 'find . -name "*.js"' } as any)
+    expect(seen.command).toBe('find . -name "*.js"')
+    await cmd('mods', 'resume')
+    await $.tool.call({ tool: 'Bash', tool_use_id: '4', command: 'find . -name "*.js"' } as any)
+    expect(seen.command).toMatch(/lean-tools: output was/)
+  })
+
+  test('one toast for a first run, none the next session', async ($, on) => {
+    const toasts: string[] = []
+    const files = engine(on, {})
+    files.delete(CONFIG)
+    on('clock.after', () => ({ value: undefined }))
+    on('ui.toast', ($: any, e: any) => (toasts.push(e.text), { value: undefined }))
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
+    await new Promise(r => setTimeout(r, 0))
+    expect(toasts.join('\n')).toMatch(/Mods on: lean-tools\. \/mods status/)
+    toasts.length = 0
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
+    await new Promise(r => setTimeout(r, 0))
+    expect(toasts).toEqual([])
   })
 })

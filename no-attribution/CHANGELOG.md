@@ -1,0 +1,10 @@
+# Changelog
+
+## 0.3.0
+- Joins `/mods`: one combined toast for first runs and updates, `/mods status`, `setup`, `doctor` (checks the global git hooks) and `uninstall`, which also unsets the hooks it installed.
+
+## 0.2.0
+- Optional global git hooks, so plain `git commit` is guarded too.
+
+## 0.1.1
+- Refuses instead of rewriting approved tool calls.

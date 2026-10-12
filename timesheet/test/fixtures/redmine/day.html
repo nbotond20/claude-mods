@@ -1,0 +1,151 @@
+<!doctype html>
+<!-- Derived from capture-2026-10-01.html (the sanitized Worktime page) and the plugin's show.html.erb / _user_day_table.html.erb. Placeholders {{…}} are filled by test/redmine-fixture.ts. -->
+<html><head>
+<meta charset="utf-8">
+<title>Redmine</title>
+<script>
+  // Stand-ins for the page's jQuery and Worktime helpers used by inline handlers.
+  window.$ = function () { return { off: function () {} }; };
+  function sumDayTimes() {
+    var total = 0;
+    document.querySelectorAll('#time_input_table input[name$="[hours]"]').forEach(function (i) { total += Number(i.value) || 0; });
+    document.getElementById('currentTotal').textContent = total.toFixed(2);
+  }
+  function statusUpdateOnDailyTable(name) {
+    var s = document.getElementsByName(name)[0];
+    s.options[s.selectedIndex].value = 'M' + s.options[s.selectedIndex].value;
+  }
+  function prj_pos() {}
+  function ticket_pos() {}
+  function input_done_ratio() {}
+  function dup_ticket() {}
+</script>
+{{SCRIPT}}
+</head>
+<body class="theme-Circle has-main-menu controller-work_time action-index avatars-off">
+<div id="wrapper">
+<div id="top-menu">
+    <div id="account">
+        <ul><li><a class="work-time selected" href="/work_time/index">WorkTime</a></li><li><a class="my-account" href="/my/account">My account</a></li><li><a class="logout" data-method="post" href="/logout">Sign out</a></li></ul>    </div>
+    <div id="loggedas">Logged in as <a class="user active" href="/users/{{LOGGED_ID}}">{{LOGIN}}</a></div>
+    <ul><li><a class="home" href="/">Home</a></li><li><a class="my-page" href="/my/page">My page</a></li><li><a class="projects" href="/projects">Projects</a></li></ul></div>
+<div id="header">
+    <div id="quick-search">
+        <form action="/search" name="form-99aa03fe" method="get"><input name="utf8" type="hidden" value="&#x2713;">
+        <input type="hidden" name="scope">
+        <label for="q"><a href="/search">Search</a>:</label>
+        <input type="text" name="q" id="q" class="small" data-auto-complete="true" value="">
+</form>
+    </div>
+</div>
+<div id="main">
+    <div id="content">
+{{MESSAGE}}
+<div class="contextual">
+<select onchange="if (this.value != '') {window.location = this.value;}">
+  <option selected="">Restrict project...</option>
+  <option value="/work_time/index?{{LINK}}">---</option>
+  <option value="/work_time/index?day={{DAY}}&amp;month={{MONTH}}&amp;prj=170&amp;user={{USER_ID}}&amp;year={{YEAR}}"> &nbsp;&nbsp;» IL.NLP </option>
+</select>
+</div>
+<h2>Monthly Report ({{USER_NAME}})</h2>
+<!-- The month table of _user_month_table.html.erb: the day scroller colours Sundays with style="background:#faa;" (@wday_color), like the plugin's error banner. -->
+<table width="100%" style="border:0;border-collapse:collapse;">
+<tbody><tr>
+  <td style="width:300px;padding:0px;">
+    <div style="background: #ccc;">
+    <div style="position:relative;height:{{BOX_H}}px;overflow:auto;">
+      <div style="position:absolute;top:1px;left:1px;">
+      <div style="background: #fff;font-size:1.5em;">
+      <div style="text-align:center;position:relative;top:1px;left:1px;width:298px;height:39px;">
+        {{FIRST_DATE}} - {{LAST_DATE}}
+      </div>
+      </div>
+      <div style="text-align:right;position:absolute;top:1px;left:1px;width:298px;height:39px;">
+        <a href="/work_time/index?{{LINK_NEXT}}">&gt;&gt;</a>
+      </div>
+      <div style="text-align:left;position:absolute;top:1px;left:1px;">
+        <a href="/work_time/index?{{LINK_PREV}}">&lt;&lt;</a>
+      </div>
+      </div>
+{{MONTH_LEFT}}
+    </div>
+    </div>
+  </td>
+  <td>
+    <div style="background: #ccc;">
+    <div style="position:relative;height:{{BOX_H}}px;overflow:auto;" id="day_scroll">
+{{MONTH_DAYS}}
+    </div>
+    </div>
+  </td>
+</tr></tbody>
+</table>
+<input type="button" onclick="location.href='/work_time/member_monthly_data?{{LINK}}'" value="Data download">
+<input type="button" onclick="location.href='/work_time/member_monthly_data_table?{{LINK}}'" value="Data download (table)">
+<br>
+<br>
+<hr>
+<form action="/work_time/index?{{LINK}}" name="form-36f16ba9" method="post"><input name="utf8" type="hidden" value="&#x2713;"><input type="hidden" name="authenticity_token" value="fixture-token">
+    <h2>
+      Daily Report
+      {{DATE}}
+    </h2>
+
+    <input type="hidden" name="year" id="year" value="{{YEAR}}">
+    <input type="hidden" name="month" id="month" value="{{MONTH}}">
+    <input type="hidden" name="day" id="day" value="{{DAY}}">
+    <input type="hidden" name="user" id="user" value="{{USER_ID}}">
+    <input type="hidden" name="prj" id="prj" value="false">
+    <table><tbody><tr><td>
+      <table>
+        <tbody><tr>
+          <td>Legend:</td>
+          <td class="wt_iss_default">By default</td>
+        </tr>
+      </tbody></table>
+    </td></tr></tbody></table>
+    <table id="time_input_table">
+  <tbody><tr style="background:#fff;font-size:14px">
+    <td>&nbsp;</td>
+    <td>WorkTime</td>
+    <td>Activity</td>
+    <td>Status</td>
+    <td>Comment</td>
+  </tr>
+{{ROWS}}
+<tr align="center" id="time_input_table_bottom" style="background:#ddd;">
+  <td>&nbsp;</td>
+  <td><span id="currentTotal" title="Saved timed:  {{TOTAL}}">{{TOTAL}}</span></td>
+  <td>&nbsp;</td>
+  <td>&nbsp;</td>
+  <td>&nbsp;</td>
+</tr>
+</tbody></table>
+        <input type="button" onclick="$(window).off('beforeunload'); window.onbeforeunload = null; submit();" value="Update">
+        :
+        <input type="button" onclick="location.href='/work_time/index?{{LINK}}&amp;ticket_del=closed'" value="delete closed tickets">
+        <div id="add_ticket_area">
+          <input type="button" onclick="return false;" value="Add ticket">
+        </div>
+    <br>
+    <br>
+    <hr>
+<h2 id="memo">
+  <a href="/work_time/index?{{LINK}}#memo">{{DATE}} {{USER_NAME}}</a>
+</h2>
+<div id="memo-wiki">
+[<a href="#" onclick="jQuery('#memo-wiki').hide(); jQuery('#memo-wiki-edit').show(); return false;">Edit memo</a>]
+</div>
+  <div id="memo-wiki-edit" hidden>
+      <textarea id="work_time_memo" name="memo" rows="15" cols="100">{{MEMO}}</textarea>
+    <br>
+    <input type="button" onclick="$(window).off('beforeunload'); window.onbeforeunload = null; submit();" value="Update">
+  </div>
+<br>
+</form>
+    </div>
+</div>
+<div id="footer">Powered by Redmine</div>
+</div>
+</body></html>

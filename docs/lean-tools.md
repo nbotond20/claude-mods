@@ -19,6 +19,8 @@ Source: `lean-tools/hooks/register.ts`. Tests: `lean-tools/tests/`.
 
 Each kind of nudge fires at most once every 10 minutes, so they cost almost nothing.
 
+`/lean off 1h` (or `30m`, `1d`, `session`) pauses all of it for that long, in every profile; `/lean on` resumes, and `/lean off` with no duration turns it off until `/lean on`. `/mods pause` pauses it together with the other mods.
+
 ## Config: `<mods home>/lean-tools/config.json`
 
 The file is written with these defaults on first start:

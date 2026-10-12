@@ -1,0 +1,64 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Shared blocks, version bumps, marketplace
+        env:
+          # A pull request is compared with its base, a push with the commit before it.
+          BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: sh scripts/check.sh
+      - name: Shell syntax
+        run: for f in bin/mods scripts/*.sh timesheet/scripts/*.sh; do sh -n "$f" || exit 1; done
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m unittest discover -s usage-analytics/tests -p 'test_*.py' -v
+
+  timesheet:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: timesheet
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: timesheet/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  mods:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install -g @anthropic-ai/claude-code
+      - name: Validate and test every mod
+        run: |
+          claude plugin validate .
+          for m in */.claude-plugin/plugin.json; do
+            mod=$(dirname "$(dirname "$m")")
+            echo "::group::$mod"
+            claude plugin validate "$mod" && claude plugin test "$mod" || exit 1
+            echo "::endgroup::"
+          done
