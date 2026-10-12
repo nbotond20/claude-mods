@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.2
+- Personal toggle in the timesheet: real hours spent in personal folders, shown next to work in the totals, under the NetSuite export grid (on screen only, never copied) and on each day. Never booked, rounded or targeted.
+
 ## 0.3.1
 - Block details are quieter: one line per piece of work (summary, repo, branch, counts, duration) that opens on click to its commits, GitHub actions, sessions and prompts. Repositories and branches sit in a collapsed Context row; time ranges and recorded minutes show on hover.
 - Redmine: issue discovery reads every issue a day page lists, even on days with private or odd rows; error banners are detected more reliably; a day where two categories map to one issue says how to fix it.

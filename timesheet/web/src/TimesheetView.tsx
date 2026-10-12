@@ -8,7 +8,7 @@ import { UnitInput } from './settings/fields';
 import { useReport } from './useReport';
 import { Delta } from './Delta';
 import { SubmitPreview } from './SubmitPreview';
-import { useShowOther, useShowRecorded } from './prefs';
+import { useShowOther, useShowPersonal, useShowRecorded } from './prefs';
 
 type View = 'day' | 'week' | 'month';
 type PasteFormat = keyof Report['paste'];
@@ -48,6 +48,8 @@ function rangeTitle(view: View, at: string, report: Report | null): string {
 const dayTitle = (d: string) => toDate(d).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
 const time = (ms: number) => new Date(ms).toTimeString().slice(0, 5);
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+/** Real hours spent in personal folders: block time as recorded, never rounded, targeted or booked. */
+const personalHours = (d: ReportDay) => (d.other ?? []).filter((b) => b.kind === 'personal').reduce((n, b) => n + b.end - b.start, 0) / 3_600_000;
 
 type DayState = 'work' | 'attention' | 'empty' | 'computing' | 'waiting' | 'paused' | 'future';
 
@@ -119,6 +121,7 @@ export function TimesheetView({ meta }: { meta: Meta }) {
   const { report, loading, refreshing, error, reload } = useReport({ view, at, target, real });
   const [showOther, setShowOther] = useShowOther();
   const [showRecorded, setShowRecorded] = useShowRecorded();
+  const [showPersonal, setShowPersonal] = useShowPersonal();
   const { jobs } = useJobs();
   const [details, setDetails] = useState<BlockRef | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -141,8 +144,11 @@ export function TimesheetView({ meta }: { meta: Meta }) {
   }, [report]);
 
   const totals = useMemo(() => {
-    const t = { booked: 0, real: 0, capex: 0, opex: 0, days: 0, target: 0, recorded: 0 as number | undefined };
+    const t = { booked: 0, real: 0, capex: 0, opex: 0, days: 0, target: 0, recorded: 0 as number | undefined, personal: 0, personalDays: 0 };
     for (const d of report?.days ?? []) {
+      const personal = personalHours(d);
+      t.personal += personal;
+      if (personal) t.personalDays++;
       if (d.blocks.length) t.recorded = t.recorded === undefined || d.measuredTotal === undefined ? undefined : t.recorded + d.measuredTotal;
       t.real += d.realTotal;
       if (d.entries.length) t.days++;
@@ -220,6 +226,12 @@ export function TimesheetView({ meta }: { meta: Meta }) {
         </label>
         {refreshing && !loading && <Spinner size="sm" label="Updating" />}
         <div className="flex w-full items-center justify-between gap-2 tablet:ml-auto tablet:w-auto">
+          <Tooltip content="Real hours spent in personal folders, shown next to work everywhere. Never booked.">
+            <label className="flex items-center gap-2 text-13 text-ink-2">
+              <Switch size="sm" checked={showPersonal} onCheckedChange={setShowPersonal} aria-label="Show personal time" />
+              Personal
+            </label>
+          </Tooltip>
           <Tooltip content="Recompute every day in this range (runs classification again)">
             <Button variant="ghost" size="sm" leadingIcon="refresh" loading={recomputing} onClick={recompute}>Recompute</Button>
           </Tooltip>
@@ -246,7 +258,7 @@ export function TimesheetView({ meta }: { meta: Meta }) {
 
           {/* Totals */}
           <Card className="flex flex-col p-0">
-            <div className={`grid grid-cols-2 divide-line tablet:divide-x ${showRecorded ? 'tablet:grid-cols-5' : 'tablet:grid-cols-4'}`}>
+            <div className={`grid grid-cols-2 divide-line tablet:divide-x ${['tablet:grid-cols-4', 'tablet:grid-cols-5', 'tablet:grid-cols-6'][+showRecorded + +showPersonal]}`}>
             <Stat label="Booked" value={totals.booked} unit="h" caption={totals.target ? `of ${fmt(totals.target)} h target` : 'no target'} loading={loading} />
             <Stat
               label="Real activity"
@@ -271,6 +283,7 @@ export function TimesheetView({ meta }: { meta: Meta }) {
             )}
             <Stat label="CAPEX" value={totals.capex} unit="h" caption={totals.booked ? `${Math.round((totals.capex / totals.booked) * 100)}% of booked` : '—'} loading={loading} />
             <Stat label="OPEX" value={totals.opex} unit="h" caption={totals.booked ? `${Math.round((totals.opex / totals.booked) * 100)}% of booked` : '—'} loading={loading} />
+            {showPersonal && <Stat label="Personal" value={totals.personal} unit="h" caption={`real · ${plural(totals.personalDays, 'day')} · not booked`} loading={loading} />}
             </div>
             <Coverage states={states} detected={detected} loading={loading} />
           </Card>
@@ -322,7 +335,7 @@ export function TimesheetView({ meta }: { meta: Meta }) {
               format === 'daily' ? (
                 <pre style={{ tabSize: 16 }} className="max-h-96 overflow-auto px-5 py-4 font-mono text-12 leading-6 text-ink">{report.paste.daily}</pre>
               ) : (
-                <ExportTables text={format === 'lines' ? report.paste.lines : report.paste.grid} totals={format !== 'lines'} showTarget={!real} days={report.days} dateFormat={meta.dateFormat} />
+                <ExportTables text={format === 'lines' ? report.paste.lines : report.paste.grid} totals={format !== 'lines'} showTarget={!real} showPersonal={showPersonal} days={report.days} dateFormat={meta.dateFormat} />
               )
             ) : (
               <p className="px-5 py-6 text-13 text-ink-3">{pending.size ? 'Waiting for the first days to be computed…' : 'Nothing to book in this range.'}</p>
@@ -354,7 +367,7 @@ export function TimesheetView({ meta }: { meta: Meta }) {
               <p className="text-13 text-ink-3">This range is in the future.</p>
             ) : (
               days.map((d) =>
-                'placeholder' in d ? <DaySkeleton key={d.date} date={d.date} /> : <DayCard key={d.date} day={d} meta={meta} repos={report?.repos ?? {}} pending={pending.has(d.date)} showOther={showOther} showRecorded={showRecorded} onOverride={override} onDayAction={dayAction} onOpenBlock={openBlock} />,
+                'placeholder' in d ? <DaySkeleton key={d.date} date={d.date} /> : <DayCard key={d.date} day={d} meta={meta} repos={report?.repos ?? {}} pending={pending.has(d.date)} showOther={showOther} showRecorded={showRecorded} showPersonal={showPersonal} onOverride={override} onDayAction={dayAction} onOpenBlock={openBlock} />,
               )
             )}
           </section>
@@ -369,7 +382,7 @@ export function TimesheetView({ meta }: { meta: Meta }) {
  * The paste text shown as real tables. It is parsed from the exact text that is copied
  * (tab-separated, blank line between weeks), so what you see is what you paste.
  */
-function ExportTables({ text, totals, showTarget, days, dateFormat }: { text: string; totals: boolean; showTarget: boolean; days: ReportDay[]; dateFormat: string }) {
+function ExportTables({ text, totals, showTarget, showPersonal, days, dateFormat }: { text: string; totals: boolean; showTarget: boolean; showPersonal: boolean; days: ReportDay[]; dateFormat: string }) {
   // Weekday columns are headed "Mon <date in the export's format>"; map them back to the day.
   const byHeader = new Map(days.map((d) => [dateAs(d.date, dateFormat), d]));
   const tables = text
@@ -434,6 +447,7 @@ function ExportTables({ text, totals, showTarget, days, dateFormat }: { text: st
                   ))}
                 </tr>
                 {showTarget && <TargetRow cols={head.slice(2).map((h) => byHeader.get(h.replace(/^\w{3} /, '')))} />}
+                {showPersonal && <PersonalRow cols={head.slice(2).map((h) => byHeader.get(h.replace(/^\w{3} /, '')))} />}
               </tfoot>
             )}
           </table>
@@ -463,6 +477,28 @@ function TargetRow({ cols }: { cols: (ReportDay | undefined)[] }) {
           ) : null}
         </td>
       ))}
+    </tr>
+  );
+}
+
+/** Under the totals, apart from what is pasted: real personal hours per day, the week's in the Total column. */
+function PersonalRow({ cols }: { cols: (ReportDay | undefined)[] }) {
+  if (!cols.some(Boolean)) return null;
+  const last = cols.length - 1;
+  const week = cols.reduce((n, d) => n + (d ? personalHours(d) : 0), 0);
+  return (
+    <tr className="bg-surface-2/60 text-12 text-ink-3">
+      <td className="border-t border-line px-3 py-1.5" colSpan={2}>
+        Personal (real, not booked)
+      </td>
+      {cols.map((d, i) => {
+        const h = i === last ? week : d ? personalHours(d) : 0;
+        return (
+          <td key={i} className="border-t border-line px-3 py-1.5 text-right tabular-nums">
+            {h ? fmt(h) : '–'}
+          </td>
+        );
+      })}
     </tr>
   );
 }
@@ -615,12 +651,13 @@ function BlockRow({ block: b, repos, hues, showRecorded, onOpen }: { block: Bloc
   );
 }
 
-function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverride, onDayAction, onOpenBlock }: { day: ReportDay; meta: Meta; repos: Record<string, RepoInfo>; pending: boolean; showOther: boolean; showRecorded: boolean; onOpenBlock: (ref: BlockRef) => void; onOverride: (date: string, project: string, category: string, hours: string | null) => void; onDayAction: (date: string, action: 'confirm' | 'lock' | 'unlock') => void }) {
+function DayCard({ day, meta, repos, pending, showOther, showRecorded, showPersonal, onOverride, onDayAction, onOpenBlock }: { day: ReportDay; meta: Meta; repos: Record<string, RepoInfo>; pending: boolean; showOther: boolean; showRecorded: boolean; showPersonal: boolean; onOpenBlock: (ref: BlockRef) => void; onOverride: (date: string, project: string, category: string, hours: string | null) => void; onDayAction: (date: string, action: 'confirm' | 'lock' | 'unlock') => void }) {
   const [blocksOpen, setBlocksOpen] = useState(false);
   const [summaryOpen, setSummaryOpen] = useState(false);
   const other = showOther ? day.other ?? [] : [];
   const otherHours = other.reduce((n, b) => n + b.end - b.start, 0) / 3_600_000;
-  const empty = !day.blocks.length && !day.entries.length && !other.length;
+  const personal = showPersonal ? personalHours(day) : 0;
+  const empty = !day.blocks.length && !day.entries.length && !other.length && !personal;
   const summary = day.summary.split('\n').map((l) => l.replace(/^\s*[-•]\s*/, '').trim()).filter(Boolean);
   const SUMMARY_LIMIT = 3;
   const hues = useMemo(() => new Map(meta.categories.map((c) => [c.name, c.hue])), [meta]);
@@ -674,6 +711,11 @@ function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverrid
               recorded <span className="font-medium text-ink-2">{fmtMin(day.measuredTotal)}</span>
             </span>
           )}
+          {personal > 0 && (
+            <span className="text-ink-3">
+              personal <span className="font-medium text-ink-2">{fmt(personal)} h</span>
+            </span>
+          )}
           <span className="text-ink-3">
             real <span className="font-medium text-ink-2">{fmt(day.realTotal)} h</span> {day.entries.length > 0 && <Delta real={day.realTotal} target={day.target} />}
           </span>
@@ -720,7 +762,7 @@ function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverrid
         </div>
       )}
 
-      {day.entries.length > 0 && (
+      {(day.entries.length > 0 || personal > 0) && (
         <div className="px-5 pt-3">
           <div className={`grid items-center gap-x-3 border-b border-line pb-1.5 text-12 font-medium text-ink-3 ${cols}`}>
             <span>Task category</span>
@@ -762,6 +804,18 @@ function DayCard({ day, meta, repos, pending, showOther, showRecorded, onOverrid
               </span>
             </div>
           ))}
+          {personal > 0 && (
+            <div className={`grid min-h-11 items-center gap-x-3 border-t border-dashed border-line text-13 text-ink-2 ${cols}`}>
+              <span className="flex min-w-0 items-baseline gap-2">
+                <span className="truncate">Personal</span>
+                <span className="shrink-0 text-12 text-ink-3">not booked</span>
+              </span>
+              {showRecorded && <span className="text-right tabular-nums">{fmtMin((day.other ?? []).filter((b) => b.kind === 'personal').reduce<number | undefined>((n, b) => (n === undefined || b.measured === undefined ? undefined : n + b.measured), 0))}</span>}
+              <span className="text-right tabular-nums">{fmt(personal)}</span>
+              <span className="pr-2 text-right text-ink-3">–</span>
+              <span />
+            </div>
+          )}
         </div>
       )}
 

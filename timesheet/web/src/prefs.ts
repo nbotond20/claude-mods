@@ -34,3 +34,6 @@ export const useShowOther = () => usePref('ts-show-other', true);
 
 /** Whether recorded minutes (timestamps only, nothing assumed or rounded) are shown next to hours. */
 export const useShowRecorded = () => usePref('ts-show-recorded', false);
+
+/** Whether time spent in personal folders is shown next to work, in real hours (never booked or rounded). */
+export const useShowPersonal = () => usePref('ts-show-personal', false);
