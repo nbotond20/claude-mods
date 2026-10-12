@@ -9,7 +9,7 @@ import { Store } from '../src/core/store.ts';
 import { chromeAvailable, openBrowser } from '../src/core/submit/browser.ts';
 import { SubmitSession } from '../src/core/submit/session.ts';
 import { SubmitRunner, type PrepareResult } from '../src/core/submit/run.ts';
-import { dayUrl, dayUrlProblem, hoursText, redmine, redmineBase, type RedmineCatalog } from '../src/core/submit/redmine.ts';
+import { DISCOVER_DAYS, dayUrl, dayUrlProblem, hoursText, mergeIssues, redmine, redmineBase, type RedmineCatalog } from '../src/core/submit/redmine.ts';
 import { Abort } from '../src/core/submit/adapter.ts';
 import type { Page } from 'playwright-core';
 import type { RedmineTarget, SubmitRule } from '../src/core/submit/types.ts';
@@ -156,6 +156,30 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
     } finally {
       await t.close();
     }
+  });
+
+  it('discovers issues of the two weeks before and does not judge the entries of those days', async () => {
+    const t = await setup({ state: { private: { '2026-10-01': 1.5, '2026-09-25': 2 }, hiddenIssues: [] } });
+    try {
+      const r = await t.runner.discover('redmine');
+      assert.equal(r.state, 'ok');
+      const c = (r as { catalog: RedmineCatalog }).catalog;
+      assert.deepEqual(c.issues.map((i) => i.id), [13, 31, 9888, 10964]);
+      const days = new Set(t.fx.rec.gets.map((g) => new URLSearchParams(g.split('?')[1] ?? '').get('day')).filter(Boolean));
+      assert.equal(days.size, DISCOVER_DAYS + 1);
+      assert.equal(t.fx.rec.posts.length, 0);
+      assertSafeGets(t.fx.rec.gets);
+    } finally {
+      await t.close();
+    }
+  });
+
+  it('merges issue lists by id, uniting activities', () => {
+    const a = { id: 1, title: 'A', project: 'P', activities: ['x'] };
+    assert.deepEqual(mergeIssues([[a], [{ ...a, title: 'A2', activities: ['y', 'x'] }, { id: 2, title: 'B', project: 'Q', activities: [] }]]), [
+      { id: 1, title: 'A', project: 'P', activities: ['x', 'y'] },
+      { id: 2, title: 'B', project: 'Q', activities: [] },
+    ]);
   });
 
   it('reads existing entries of the whole week, including future days', async () => {

@@ -130,7 +130,7 @@ export function buildPlan<T extends object>(input: PlanInput<T>): PlanResult<T> 
     for (const [key, set] of activities) {
       if (set.size < 2) continue;
       const [date, issueId] = key.split(' ');
-      reasons.push(`${date}: #${issueId} would get two activities (${[...set].sort().join(', ')}); Worktime has one row per issue`);
+      reasons.push(`${date}: #${issueId} would get two activities (${[...set].sort().join(', ')}); Worktime has one row per issue a day, so map these categories to one activity or to different issues`);
     }
   }
 

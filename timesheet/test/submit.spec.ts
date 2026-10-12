@@ -173,7 +173,7 @@ describe('submit plan', () => {
       { project: 'NLP', category: 'Testing', target: { issueId: 9888, activity: 'Tesztelés' } },
     ];
     const r = plan([day('2026-09-28', [['NLP', 'Testing', 1], ['NLP', 'Development', 5]]), day('2026-09-29', [['NLP', 'Testing', 2]])], '2026-09-29', rules);
-    assert.deepEqual(!r.ok && r.reasons, ['2026-09-28: #9888 would get two activities (Fejlesztés, Tesztelés); Worktime has one row per issue']);
+    assert.deepEqual(!r.ok && r.reasons, ['2026-09-28: #9888 would get two activities (Fejlesztés, Tesztelés); Worktime has one row per issue a day, so map these categories to one activity or to different issues']);
     assert.ok(plan([day('2026-09-28', [['NLP', 'Development', 5]]), day('2026-09-29', [['NLP', 'Testing', 2]])], '2026-09-29', rules).ok);
     const ns = buildPlan({
       system: 'netsuite', week: WEEK, today: '2026-09-28',

@@ -21,8 +21,8 @@ const when = (iso: string) => new Date(iso).toLocaleString(undefined, { month: '
 export const issueLabel = (i: { id: number; title: string; project: string }) => `#${i.id} ${i.title} (${i.project})`;
 
 /**
- * Maps the (project, category) pairs that matter (configured projects × categories booked in the
- * last 8 weeks, plus existing rules, plus one "any other category" row per project) to a row on
+ * Maps every (project, category) pair (configured projects × current categories, plus categories
+ * of existing rules, plus one "any other category" row per project) to a row on
  * the site, chosen from what discovery read there. Edits go into the Settings draft.
  */
 export function MappingEditor({ system, config, update, enabled }: SectionProps & { system: SystemId; enabled: boolean }) {
@@ -62,6 +62,10 @@ export function MappingEditor({ system, config, update, enabled }: SectionProps 
     };
     for (const p of pairs ?? []) add(p.project, p.category, p);
     for (const r of rules) add(r.project, r.category, null);
+    // Every current category of every project, not only the ones booked lately: a category booked
+    // for the first time must not block a week for want of a mapping nobody could set.
+    const today = new Date().toISOString().slice(0, 10);
+    for (const project of config.projects) for (const c of config.categories) if (!c.validTo || c.validTo >= today) add(project, c.name, null);
     const out: RowSpec[] = [];
     for (const project of config.projects) {
       const m = byProject.get(project);
@@ -117,7 +121,7 @@ export function MappingEditor({ system, config, update, enabled }: SectionProps 
       ) : !catalog || !pairs ? (
         <Skeleton width="60%" height={14} />
       ) : rows.length === 0 ? (
-        <p className="text-12 text-ink-3">No booked hours in the last 8 weeks on configured projects yet.</p>
+        <p className="text-12 text-ink-3">Add a project in Settings → Projects first.</p>
       ) : (
         <div className="overflow-x-auto rounded-md border border-line">
           <table className="w-full text-12">

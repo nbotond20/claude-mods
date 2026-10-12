@@ -143,7 +143,9 @@ export function readWorktimeDom(): WorktimeDom {
   const logged = document.querySelector('#loggedas a');
   // Worktime renders its messages (@message) as <div style="background:#faa;"> at the top of #content. The month
   // table's day scroller (#day_scroll) colours Sunday cells the same way: those are not errors. Everything else is.
-  const errors = [...document.querySelectorAll('div[style*="background:#faa"], div[style*="background: #faa"], #errorExplanation, .flash.error')]
+  const banner = /background(-color)?\s*:\s*#(faa|ffaaaa)\b/i;
+  const errors = [...document.querySelectorAll('div[style], #errorExplanation, .flash.error')]
+    .filter((e) => !e.matches('div[style]') || e.matches('#errorExplanation, .flash.error') || banner.test(e.getAttribute('style') ?? ''))
     .filter((e) => !e.closest('#day_scroll'))
     .map((e) => text(e) || 'error');
   const tables = document.querySelectorAll('#time_input_table');
@@ -365,6 +367,46 @@ export function parseDay(dom: WorktimeDom, date: string): DayData {
   if (cents(Number(saved[1])) !== sum) throw new Abort(`${where}: the saved day total (${saved[1]} h) does not match the entries shown (${fmtCents(sum)} h)`);
   return { date, cells: cells.sort(byCell), newRows, issueRows, issues: [...issues.values()] };
 }
+
+/**
+ * The issues a day page lists, with their project and activities, for discovery only: unlike
+ * parseDay it does not judge the day's entries (private hours, a filled-in field or an odd row on
+ * some day must not keep the user from mapping), it just skips what it cannot read.
+ */
+export function listIssues(dom: WorktimeDom): RedmineIssue[] {
+  const issues = new Map<number, RedmineIssue>();
+  let project: string | null = null;
+  for (const row of dom.rows) {
+    if (row.id === 'time_input_table_bottom' || row.index === 0 || row.first === 'private') continue;
+    if (!row.id && !row.issues.length && !row.controls.length) {
+      project = row.first.replace(/^(\*|-?\d+)\s*:\s*/, '').trim() || null;
+      continue;
+    }
+    if (project === null || row.issues.length !== 1 || !/^\d+$/.test(row.issues[0])) continue;
+    const id = Number(row.issues[0]);
+    const select = row.controls.find((c) => c.tag === 'select' && /\]\[activity_id\]$/.test(c.name));
+    const activities = (select?.options ?? []).map((o) => o.text).filter(Boolean);
+    const known = issues.get(id);
+    if (!known) issues.set(id, { id, title: subject(row.link), project, activities });
+    else known.activities = [...new Set([...known.activities, ...activities])];
+  }
+  return [...issues.values()];
+}
+
+/** Merges issue lists by id (first title/project wins, activities are united), keeping first-seen order. */
+export function mergeIssues(lists: RedmineIssue[][]): RedmineIssue[] {
+  const out = new Map<number, RedmineIssue>();
+  for (const list of lists)
+    for (const i of list) {
+      const known = out.get(i.id);
+      if (!known) out.set(i.id, { ...i, activities: [...i.activities] });
+      else known.activities = [...new Set([...known.activities, ...i.activities])];
+    }
+  return [...out.values()];
+}
+
+/** Days before the opened one that discovery also reads: Worktime lists issues with entries only on their days. */
+export const DISCOVER_DAYS = 13;
 
 /** Cells as a comparable list (duplicates kept). */
 const cellList = (cells: Cell<RedmineTarget>[]) => cells.map((c) => `${cellKey(c)}=${cents(c.hours)}`).sort();
@@ -647,7 +689,18 @@ export const redmine: Adapter<RedmineTarget, RedmineCatalog> & {
     } catch (e) {
       return { ok: false, reason: `could not open ${start} (${(e as Error).message.split('\n')[0]})` };
     }
-    const dom = await readDom(page);
+    let dom: WorktimeDom;
+    try {
+      dom = await readDom(page);
+    } catch {
+      // An SSO page that is still redirecting destroys the context under evaluate: wait once and read again.
+      await page.waitForLoadState('load', { timeout: NAV_TIMEOUT }).catch(() => {});
+      try {
+        dom = await readDom(page);
+      } catch (e) {
+        return { ok: false, reason: `the Redmine page did not settle (${(e as Error).message.split('\n')[0]}): log in to Redmine in the browser window, then try again` };
+      }
+    }
     const here = new URL(dom.url);
     if (dom.loginForm || !dom.loggedAs) return { ok: false, reason: 'not logged in: log in to Redmine in the browser window, then try again' };
     if (here.origin !== new URL(start).origin) return { ok: false, reason: `the browser ended up on ${here.origin}: log in to Redmine in the browser window, then try again` };
@@ -667,11 +720,21 @@ export const redmine: Adapter<RedmineTarget, RedmineCatalog> & {
     if (ownId !== String(userId)) throw new Abort(`the Worktime page is for user ${userId}, but you are logged in as user ${ownId ?? '?'}`);
     const date = dom.daily[0] ?? '';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Abort('cannot read the date of the Worktime day');
-    const ctx = { origin, userId, user: login.user, date };
-    assertDayPage(dom, ctx);
-    const day = parseDay(dom, date);
-    const activities = [...new Set(day.issues.flatMap((i) => i.activities))];
-    return { origin, userId, user: login.user, issues: day.issues, activities, discoveredAt: new Date().toISOString() };
+    assertDayPage(dom, { origin, userId, user: login.user, date });
+    // The issue list of one day misses issues that only show on days with entries: read the two weeks before as well.
+    const lists = [listIssues(dom)];
+    for (let i = 1; i <= DISCOVER_DAYS; i++) {
+      const day = addDays(date, -i);
+      try {
+        lists.push(listIssues(await gotoDay(page, { origin, userId, user: login.user, date: day })));
+      } catch (e) {
+        if (!(e instanceof Abort) || blockedRequest(page)) throw e;
+        // A day that does not open cleanly only adds nothing.
+      }
+    }
+    const issues = mergeIssues(lists);
+    const activities = [...new Set(issues.flatMap((i) => i.activities))];
+    return { origin, userId, user: login.user, issues, activities, discoveredAt: new Date().toISOString() };
   },
 
   sameSite(catalog, url) {
@@ -874,7 +937,7 @@ export const redmine: Adapter<RedmineTarget, RedmineCatalog> & {
         if (response && response.status() >= 400) throw new Failed(`${where}: Redmine answered ${response.status()} to Update; check Redmine by hand`);
         const after = await readDom(page);
         if (after.errors.length) throw new Failed(`${where}: Redmine reported an error after Update: ${after.errors.join(' / ').slice(0, 300)}; check Redmine by hand`);
-        if (dayUrlProblem(after.url, ctx.origin, ctx.userId, date)) throw new Failed(`${where}: Redmine went to ${after.url} after Update; check Redmine by hand`);
+        // Where Worktime lands after Update is not checked: the reload below reads what Redmine holds, which is what counts.
         opts.onState(`Verifying ${date}`);
         const reloaded = await gotoDay(page, ctx);
         const check = parseDay(reloaded, date);

@@ -99,8 +99,9 @@ export async function authorize(log: (msg: string) => void = console.log): Promi
         res.writeHead(404).end();
         return;
       }
-      res.writeHead(200, { 'content-type': 'text/html' });
-      res.end(err ? `<p>Authorization failed: ${err}</p>` : '<p>Timesheet is connected to Google Calendar. You can close this tab.</p>');
+      res.writeHead(200, { 'content-type': 'text/html', connection: 'close' });
+      // The browser keeps keep-alive and preconnect sockets open, which would hold the process alive after close().
+      res.end(err ? `<p>Authorization failed: ${err}</p>` : '<p>Timesheet is connected to Google Calendar. You can close this tab.</p>', () => server.closeAllConnections());
       server.close();
       if (err) reject(new Error(`Authorization failed: ${err}`));
       else if (url.searchParams.get('state') !== state) reject(new Error('OAuth state mismatch'));
