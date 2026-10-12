@@ -24,7 +24,19 @@ async function getJson(url: string): Promise<{ status: number; body: unknown }> 
   return { status: res.status, body: await res.json().catch(() => null) };
 }
 
+/**
+ * What holds `port`. The HTTP answer alone could come from any local process, so a timesheet answer only counts
+ * when the listening process (looked up by the OS, never taken from the reply) runs timesheet.js.
+ */
 export async function probe(port: number): Promise<PortHolder> {
+  const holder = await probeHttp(port);
+  if (holder.kind !== 'timesheet') return holder;
+  const pid = listeningPid(port);
+  if (pid === null) return { ...holder, pid: null };
+  return isTimesheetProcess(pid) ? { ...holder, pid } : { kind: 'foreign' };
+}
+
+export async function probeHttp(port: number): Promise<PortHolder> {
   const base = `http://127.0.0.1:${port}`;
   try {
     const v = await getJson(`${base}/api/version`);
@@ -41,6 +53,15 @@ export async function probe(port: number): Promise<PortHolder> {
   }
 }
 
+function isTimesheetProcess(pid: number): boolean {
+  try {
+    const cmd = execFileSync('ps', ['-p', String(pid), '-o', 'command='], { encoding: 'utf8' });
+    return /node/.test(cmd) && /timesheet(\.js|\.mjs|[/\\]src[/\\]cli\.ts)/.test(cmd);
+  } catch {
+    return false;
+  }
+}
+
 function listeningPid(port: number): number | null {
   try {
     const out = execFileSync('lsof', ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'], { encoding: 'utf8' });
@@ -53,7 +74,8 @@ function listeningPid(port: number): number | null {
 
 /** Stops the timesheet server on `port` the way Ctrl+C would (running jobs resume on the next start) and waits for the port. */
 export async function stopServer(port: number, holder: Extract<PortHolder, { kind: 'timesheet' }>): Promise<void> {
-  const pid = holder.pid ?? listeningPid(port);
+  // Only a pid the OS reported for this port and verified as timesheet is ever signalled.
+  const pid = holder.pid;
   if (!pid) throw new Error(`an older server holds port ${port}; stop it (Ctrl+C in its terminal) or use --port`);
   process.kill(pid, 'SIGTERM');
   // The server gives a submission browser up to 3 s to close before exiting.

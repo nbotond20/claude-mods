@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.4
+- `timesheet serve` only reuses or stops a server after the OS confirms the process listening on the port runs timesheet; the pid in an HTTP reply is never trusted, so another local service cannot pose as timesheet or get an unrelated process killed.
+
 ## 0.3.3
 - `timesheet serve` checks what already holds the port: a running server of this version (or newer) is reused and just opened, an older one is stopped cleanly and replaced, anything else is reported instead of crashing. `--restart` always replaces it. New `GET /api/version`.
 
