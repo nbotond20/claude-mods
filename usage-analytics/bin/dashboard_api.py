@@ -26,6 +26,7 @@ COLS = {
     'v_compactions': ('day', 'profile'),
     'v_system_prompt': ('day', 'profile'),
     'v_tool_schemas': ('profile',),
+    'gateway_spend': ('day', 'profile', 'model'),
 }
 
 TOK = '''ROUND(SUM(cost_usd), 2) cost, COUNT(*) requests, SUM(input) input, SUM(output) output,
@@ -34,6 +35,12 @@ TOK = '''ROUND(SUM(cost_usd), 2) cost, COUNT(*) requests, SUM(input) input, SUM(
 
 # name -> (source table for filters, sql). `{W}` is replaced by the filter clause (repeatable).
 Q = {
+    # What a LiteLLM gateway billed (synced by the mod), next to the list-price estimate of the same days and profiles.
+    'gateway_kpis': ('gateway_spend', '''SELECT ROUND(SUM(spend_usd), 2) billed, COUNT(DISTINCT day) days, MIN(day) first_day,
+        ROUND((SELECT SUM(cost_usd) FROM requests r WHERE EXISTS (SELECT 1 FROM gateway_spend g WHERE {W} AND g.day = r.day AND g.profile = r.profile)), 2) list
+        FROM gateway_spend WHERE {W}'''),
+    'gateway_daily': ('gateway_spend', 'SELECT day, ROUND(SUM(spend_usd), 2) billed FROM gateway_spend WHERE {W} GROUP BY day ORDER BY day'),
+    'gateway_models': ('gateway_spend', 'SELECT model, ROUND(SUM(spend_usd), 2) billed FROM gateway_spend WHERE {W} GROUP BY model ORDER BY billed DESC'),
     'kpis': ('requests', f'''SELECT ROUND(SUM(cost_usd), 2) cost, COUNT(*) requests, COUNT(DISTINCT session_id) sessions,
         COUNT(DISTINCT day) active_days, SUM(input) input, SUM(output) output, SUM(cache_read) cache_read, SUM(cache_write) cache_write,
         SUM(thinking) thinking, ROUND(100.0 * SUM(cache_read) / NULLIF(SUM(input + cache_read + cache_write), 0), 1) hit_pct,

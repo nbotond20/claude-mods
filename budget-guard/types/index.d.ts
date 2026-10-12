@@ -23,7 +23,9 @@ export type Limits = {
 
 export type Context = { tokens: number; window: number; percent: number }
 
-export type Spend = { spend: number; baseline: number; maxBudget: number | null; resetAt: string | null; at: number; error: string | null }
+export type Spend = { spend: number; baseline: number; maxBudget: number | null; resetAt: string | null; at: number; error: string | null
+  /** spend per day this month (LiteLLM /user/daily/activity), when the gateway serves it */
+  byDay?: Record<string, number> }
 
 /** The model and effort the first prompt chose for the main loop. */
 export type Route = {

@@ -89,7 +89,7 @@ Confounders, meaning setting changes and other recommendations started within 7 
 
 **Reproducible.** Seeds come from the recommendation id and the metric, and every verdict stores its method version, seed, resamples, windows, data version and a hash of the session ids. `/analytics advise reproduce <id>` re-runs everything and reports `identical` when nothing changed. `tests/test_advisor_stats.py` checks the statistics on synthetic sessions with a known truth: a real effect is found and covered by the interval, a null is rarely flagged, a change in the mix of work is ignored, the same input gives the same numbers, and power() matches simulation.
 
-**When it runs.** `/analytics advise` runs the research in the conversation, where you can watch and steer it. Every `advisorEveryDays` (default 7), an interactive session starts it in the background about three minutes in, on `advisorModel` (default Sonnet). A lock keeps it to one run per machine.
+**When it runs.** Only when you ask. `/analytics advise` runs the research in the conversation, where you can watch and steer it. `/analytics advise bg` runs it on a background agent on `advisorModel` (default Sonnet), which reports back into that session when it is done. The mod never starts it on its own, because a background agent's report always lands in the session that started it. A lock keeps it to one run per machine.
 
 The background agent can use only WebSearch, WebFetch and the mod's own four tools. The mod answers those four tools itself and never runs a shell for the agent. The agent runs with `dontAsk`, so anything else is refused instead of prompting, and it never edits files.
 
@@ -189,7 +189,9 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 
 **Views:** `v_requests` (adds `context_tokens` and `agent_type`), `v_mod_steps`, `v_mod_tools`, `v_context`, `v_measure`, `v_compactions`, `v_tool_schemas`, `v_system_prompt`.
 
-**Cost.** `cost_usd` is the list price from `<mods home>/usage-analytics/pricing.json`. Models are matched by substring, longest key first; fast mode is ×2. After editing the file, run `claude-usage reprice`. Gateway (LiteLLM) billing can differ; budget-guard shows that separately.
+**Cost.** `cost_usd` is the list price from `<mods home>/usage-analytics/pricing.json`. Models are matched by substring, longest key first; fast mode is ×2. After editing the file, run `claude-usage reprice`. Gateway (LiteLLM) billing can differ, so it is kept next to it, never mixed in.
+
+**Gateway spend.** On a LiteLLM gateway (`ANTHROPIC_BASE_URL` not anthropic.com), the mod reads `/user/daily/activity` with the session's own token about 20s after session start. It writes what LiteLLM billed per day and model (spend, requests, tokens) to `<data>/gateway/<profile>.json`: back `gatewayMonths` (12) months the first time, then from the 1st of last month. Only the host is kept, never the token. The import loads it into `gateway_spend` (profile, day, model, spend_usd, requests, input, output, cache_read, cache_write). `claude-usage report gateway` compares it with the list-price estimate per day; the dashboard shows it as a "billed by the gateway" tile. Set `gatewayMonths` to 0 to turn it off.
 
 ## Config: `<mods home>/usage-analytics/config.json`
 
@@ -204,8 +206,7 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 | `captureOtel` | true | also log Claude Code's own telemetry events |
 | `dashboard` | true | keep the one dashboard server running (started at session start and by `/analytics`) |
 | `port` | 8787 | dashboard port (127.0.0.1 only) |
-| `advisorEveryDays` | 7 | days between background advisor runs (0: only on `/analytics advise`) |
-| `advisorModel` | `sonnet` | the background advisor's model |
+| `advisorModel` | `sonnet` | the model `/analytics advise bg` runs on |
 | `advisorNotify` | true | toast when an applied recommendation gets a verdict |
 | `weeklyDigest` | true | once a week, two minutes into an interactive session, a toast with last week's digest |
 | `profileDirs` | `[]` | config dirs to read transcripts from; empty = auto: `~/.claude*` plus every config dir a session registered under `profiles/` |

@@ -992,10 +992,11 @@ let lastKpis = {}
 async function renderKpis(seq) {
   try {
     const pr = prevRange(), n = +state.days
-    const [cur, daily, prev, live] = await Promise.all([
+    const [cur, daily, prev, live, gw, gwDaily] = await Promise.all([
       api('/api/kpis'), api('/api/kpi_daily'),
       state.compare && pr && n > 1 ? api('/api/kpis', { days: 0, from: pr.from, to: pr.to }) : null,
       state.compare && n === 1 ? api('/api/live') : null,
+      api('/api/gateway_kpis').catch(() => null), api('/api/gateway_daily').catch(() => null),
     ])
     if (seq !== state.seq) return
     const k = asObjs(cur)[0] || {}, p = prev ? asObjs(prev)[0] || {} : {}, dd = asObjs(daily)
@@ -1014,7 +1015,13 @@ async function renderKpis(seq) {
       ['subagent_cost', usd(k.subagent_cost), 'in subagents', p.subagent_cost, -1, series(r => r.subagent_cost), mut],
       ['tool_calls', big(k.tool_calls), 'tool calls', p.tool_calls, 0, series(r => r.tool_calls), mut],
     ]
-    const FMT = { cost: 'usd', cost_per_session: 'usd', subagent_cost: 'usd', hit_pct: 'pct' }, days = dd.map(r => r.day)
+    const g = gw ? asObjs(gw)[0] || {} : {}
+    if (g.billed != null) {
+      const gd = Object.fromEntries(asObjs(gwDaily).map(r => [r.day, r.billed]))
+      k.billed = g.billed
+      cards.splice(1, 0, ['billed', usd(g.billed), `billed by the gateway (LiteLLM)${g.list ? ` · ${(g.billed / g.list).toFixed(2)}× list price on those days` : ''}`, null, -1, series(r => gd[r.day] ?? null), acc])
+    }
+    const FMT = { billed: 'usd', cost: 'usd', cost_per_session: 'usd', subagent_cost: 'usd', hit_pct: 'pct' }, days = dd.map(r => r.day)
     $('#kpis').innerHTML = cards.map(([key, v, l, prevV, sense, sp, color, cls]) => {
       const curV = key === 'cost' ? k.cost : k[key]
       const bump = lastKpis[key] != null && lastKpis[key] !== curV ? ' bump' : ''

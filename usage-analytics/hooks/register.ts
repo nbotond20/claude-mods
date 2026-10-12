@@ -560,14 +560,14 @@ type Config = {
   port: number
   /** Claude config dirs to read transcripts from; empty: every ~/.claude* dir plus each one a session ran from */
   profileDirs: string[]
-  /** days between the advisor's background research runs (0: only on /analytics advise) */
-  advisorEveryDays: number
-  /** the model the background advisor runs on (an alias or a full id) */
+  /** the model `/analytics advise bg` runs the advisor on (an alias or a full id) */
   advisorModel: string
   /** toast when an applied recommendation gets a verdict (improved, regressed, …) */
   advisorNotify: boolean
   /** a short toast with last week's numbers, in the first interactive session of each week */
   weeklyDigest: boolean
+  /** on a LiteLLM gateway: copy the key's real spend per day (and per model) into <data>/gateway/, back to this many months */
+  gatewayMonths: number
 }
 
 const DEFAULTS: Config = {
@@ -582,10 +582,10 @@ const DEFAULTS: Config = {
   dashboard: true,
   port: 8787,
   profileDirs: [],
-  advisorEveryDays: 7,
   advisorModel: 'sonnet',
   advisorNotify: true,
   weeklyDigest: true,
+  gatewayMonths: 12,
 }
 
 const FLUSH_MS = 15_000
@@ -754,6 +754,72 @@ async function weeklyDigest($: EngineInterface) {
   $.ui.toast(`${line} /analytics digest for more, /analytics summary to share.`, { timeoutMs: 15_000 })
 }
 
+// ---------- gateway spend: what LiteLLM billed, next to the list-price estimate ----------
+
+type GatewayModel = { spend: number; requests: number; input: number; output: number; cacheRead: number; cacheWrite: number }
+type GatewayDay = { spend: number; models: Record<string, GatewayModel> }
+
+/** What the gateway billed per day and model, from LiteLLM's /user/daily/activity (kept for the key's whole life,
+ * unlike /spend/logs), into <data>/gateway/<profile>.json. No credentials are stored.
+ * The first run goes back gatewayMonths months; later runs refresh from the 1st of last month. */
+export async function syncGateway($: EngineInterface) {
+  const base = ((await $.env.get('ANTHROPIC_BASE_URL')) ?? '').replace(/\/+$/, '')
+  const token = await $.env.get('ANTHROPIC_AUTH_TOKEN')
+  if (!base || !token || /anthropic\.com/.test(base) || cfg.gatewayMonths <= 0) return
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
+  for (const line of ((await $.env.get('ANTHROPIC_CUSTOM_HEADERS')) ?? '').split('\n')) {
+    const at = line.indexOf(':')
+    if (at > 0) headers[line.slice(0, at).trim()] = line.slice(at + 1).trim()
+  }
+  const path = `${root}/gateway/${profile}.json`
+  let prev: { days?: Record<string, GatewayDay> } = {}
+  try {
+    prev = JSON.parse(String(await $.fs.read(path)))
+  } catch {
+    // first sync for this profile
+  }
+  const now = new Date(await $.clock.now())
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (prev.days ? 1 : cfg.gatewayMonths), 1)).toISOString().slice(0, 10)
+  const end = new Date(now.getTime() + 86_400_000).toISOString().slice(0, 10)
+  const days: Record<string, GatewayDay> = Object.fromEntries(Object.entries(prev.days ?? {}).filter(([d]) => d < start))
+  for (let page = 1; page <= 50; page++) {
+    const r = await $.http.fetch(`${base}/user/daily/activity?start_date=${start}&end_date=${end}&page=${page}&page_size=1000`, { headers }).catch(() => null)
+    if (!r?.ok) return // not LiteLLM, or this key may not read its spend: keep what we have
+    let body: { results?: unknown[]; metadata?: { total_pages?: number } }
+    try {
+      body = JSON.parse(r.text)
+    } catch {
+      return
+    }
+    if (!Array.isArray(body?.results)) return
+    Object.assign(days, parseDailyActivity(body.results))
+    if (!body.results.length || page >= Number(body.metadata?.total_pages ?? 1)) break
+  }
+  await $.fs.write(path, JSON.stringify({ profile, host: host(base), source: 'litellm /user/daily/activity', syncedAt: now.toISOString(), days }) + '\n')
+}
+
+/** /user/daily/activity results ({ date, metrics: { spend }, breakdown: { models: { "azure_ai/claude-opus-5-5": { metrics } } } }). */
+export function parseDailyActivity(results: unknown[]): Record<string, GatewayDay> {
+  const out: Record<string, GatewayDay> = {}
+  const n = (v: unknown) => Number(v ?? 0) || 0
+  for (const x of results as { date?: unknown; metrics?: Record<string, unknown>; breakdown?: { models?: Record<string, { metrics?: Record<string, unknown> }> } }[]) {
+    if (typeof x?.date !== 'string') continue
+    const day: GatewayDay = (out[x.date.slice(0, 10)] = { spend: n(x.metrics?.spend), models: {} })
+    for (const [m, v] of Object.entries(x.breakdown?.models ?? {})) {
+      const k = v?.metrics ?? {}
+      const name = m.split('/').pop()!
+      const g = (day.models[name] ??= { spend: 0, requests: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+      g.spend += n(k.spend)
+      g.requests += n(k.api_requests)
+      g.input += n(k.prompt_tokens)
+      g.output += n(k.completion_tokens)
+      g.cacheRead += n(k.cache_read_input_tokens)
+      g.cacheWrite += n(k.cache_creation_input_tokens)
+    }
+  }
+  return out
+}
+
 async function ingest($: EngineInterface) {
   await flush($).catch(() => {})
   await cli($, ['ingest', '--quiet'], 600_000).catch(() => {})
@@ -855,10 +921,11 @@ const ADVISOR_TOOLS = [
 let advisorAgent = ''
 /** The advisor tools' full names (as registered) to their short names. */
 const advisorTools = new Map<string, string>()
-const ADVISOR_NAME = /^mcp__usage-analytics__(advisor_[a-z]+)$/
+const ADVISOR_NAME = /^(?:mcp__usage-analytics__)?(advisor_[a-z]+)$/
 /**
  * The advisor tool a call is for. The map empties when the module reloads mid-session while the engine keeps
- * the tools registered, so a call that misses it is still recognised by its registered name.
+ * the tools registered, so a call that misses it is still recognised by its registered name, with or without
+ * the mcp__usage-analytics__ prefix (a registered agent's calls can carry the short name).
  */
 function advisorToolName(tool: string) {
   const known = advisorTools.get(tool)
@@ -934,8 +1001,8 @@ async function advise($: EngineInterface, args: string[], timeoutMs = 120_000) {
   return { ok: r.exitCode === 0, text: (r.stdout || r.stderr || `claude-usage exited ${r.exitCode}`).trimEnd() }
 }
 
-async function claimRun($: EngineInterface, trigger: string, force: boolean) {
-  const r = await advise($, ['due', '--every', force ? '0' : String(cfg.advisorEveryDays), '--claim', '--trigger', trigger, '--model', trigger === 'manual' ? 'session' : cfg.advisorModel])
+async function claimRun($: EngineInterface, model: string) {
+  const r = await advise($, ['due', '--every', '0', '--claim', '--trigger', 'manual', '--model', model])
   try {
     return (JSON.parse(r.text) as { runId?: string }).runId ?? ''
   } catch {
@@ -943,11 +1010,14 @@ async function claimRun($: EngineInterface, trigger: string, force: boolean) {
   }
 }
 
-/** Starts the research in the background on the advisor agent; its turn.complete reports back. */
-async function adviseInBackground($: EngineInterface, trigger: 'schedule' | 'manual') {
+/**
+ * Starts the research on the advisor agent, only when the person asks (`/analytics advise bg`): a spawned agent
+ * reports back into the session that spawned it, so the mod never starts one on its own.
+ */
+async function adviseInBackground($: EngineInterface) {
   if (advisorBg) return 'The advisor is already researching in the background.'
   if (!advisorAgent) return 'The advisor agent is not registered in this session.'
-  const runId = await claimRun($, trigger, trigger === 'manual')
+  const runId = await claimRun($, cfg.advisorModel)
   if (!runId) return 'A research run is already in progress (or not due).'
   let agentId = ''
   let deny = ''
@@ -1021,7 +1091,7 @@ async function advisorTool($: EngineInterface, name: string, input: Record<strin
     case 'advisor_sql':
       return advise($, ['sql', '--', str('query') ?? ''])
     case 'advisor_record': {
-      const runId = advisorRun || (await claimRun($, 'manual', true))
+      const runId = advisorRun || (await claimRun($, 'session'))
       const path = `${root}/advisor-runs/${runId || Date.now()}.json`
       await $.fs.write(path, JSON.stringify(input, null, 2) + '\n')
       const model = advisorBg?.runId === runId ? cfg.advisorModel : 'session'
@@ -1070,13 +1140,13 @@ async function adviseCommand($: EngineInterface, rest: string[]) {
   const [act, id, ...note] = rest
   const verbs: Record<string, string> = { accept: 'accepted', accepted: 'accepted', trial: 'trial', applied: 'applied', done: 'applied', dismiss: 'dismissed', dismissed: 'dismissed', revert: 'reverted', reverted: 'reverted', reopen: 'proposed' }
   if (!act || act === 'now') {
-    const runId = await claimRun($, 'manual', true)
+    const runId = await claimRun($, 'session')
     advisorRun = runId
     const text = `${ADVISOR_PROMPT}\n\nRun the advisor workflow now${runId ? ` (run id ${runId})` : ''}. I'm watching: keep progress notes to a line each. After the list, tell me: /analytics advise apply <id> applies one with my approval, /analytics advise applied <id> marks one I did myself, /analytics advise dismiss <id> drops one; /dashboard advisor shows the trends and verdicts.`
     $.clock.after(50, () => void $.prompt.submit({ text }).catch(() => {}))
     return 'Starting the usage advisor…'
   }
-  if (act === 'bg' || act === 'background') return adviseInBackground($, 'manual')
+  if (act === 'bg' || act === 'background') return adviseInBackground($)
   if (act === 'show' || act === 'status') return (await advise($, ['show', '--ingest', ...rest.slice(1)], 600_000)).text
   if (act === 'reproduce' || act === 'check') {
     if (!id) return 'Usage: /analytics advise reproduce <id>'
@@ -1224,7 +1294,7 @@ export const register: Register = on => {
       pausable: false,
       welcome: () => 'importing your history; /dashboard opens it',
       status: () =>
-        `recording · dashboard ${cfg.dashboard ? `on :${cfg.port}` : 'off'} · import every ${cfg.ingestEveryMin}m · advisor ${cfg.advisorEveryDays > 0 ? `every ${cfg.advisorEveryDays}d` : 'on demand'}`,
+        `recording · dashboard ${cfg.dashboard ? `on :${cfg.port}` : 'off'} · import every ${cfg.ingestEveryMin}m · advisor on demand`,
       setup: async () => {
         const missing = await pythonMissing($)
         const note = missing ? `python3 is not installed, and usage-analytics needs it for its database and dashboard. Before its questions, tell me to install it with ${missing}, then skip its CLI steps.\n\n` : ''
@@ -1277,12 +1347,12 @@ export const register: Register = on => {
     await registerAdvisor($).catch((err: unknown) => $.ui.toast(`usage-analytics: advisor tools not registered (${String(err).slice(0, 120)})`))
     if (e.isInteractive) {
       $.clock.after(90_000, () => void notifyVerdicts($).catch(() => {}))
-      if (cfg.advisorEveryDays > 0) $.clock.after(180_000, () => void adviseInBackground($, 'schedule').catch(() => {}))
       if (cfg.weeklyDigest) $.clock.after(120_000, () => void weeklyDigest($).catch(() => {}))
     }
 
     $.clock.every(FLUSH_MS, () => void flush($).catch(() => {}))
     $.clock.after(1500, () => void ensureDashboard($))
+    $.clock.after(20_000, () => void syncGateway($).catch(() => {}))
     if (cfg.autoIngest) {
       $.clock.after(45_000, () => void ingest($))
       $.clock.every(Math.max(5, cfg.ingestEveryMin) * 60_000, () => void ingest($))
@@ -1417,7 +1487,11 @@ export const register: Register = on => {
       contextChars: 'context' in r ? size(r.context) : 0,
     })
     return r
-  }).catch(($, e, next) => next(e))
+  }).catch(($, e, next) => {
+    // Nothing after this hook answers the advisor's tools: serve them here even when the logging above failed.
+    const advisor = advisorToolName(e.tool)
+    return advisor ? serveAdvisorTool($, advisor, e) : next(e)
+  })
 
   on('session.measure', async ($, e, next) => {
     await emit($, 'measure', {

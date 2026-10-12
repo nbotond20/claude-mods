@@ -882,7 +882,11 @@ async function refreshPeriods($: EngineInterface) {
   const s = await read($, litellm)
   let p: Periods
 
-  if ((await read($, billing)) === 'gateway' && s && !s.error) {
+  if ((await read($, billing)) === 'gateway' && s && !s.error && s.byDay) {
+    // LiteLLM reports spend per day: use it, so a fresh install starts with the real numbers.
+    const m = Object.entries(s.byDay).reduce((a, [d, v]) => (d.startsWith(month) ? a + v : a), 0)
+    p = { kind: 'real', today: s.byDay[today] ?? 0, month: m, since: null }
+  } else if ((await read($, billing)) === 'gateway' && s && !s.error) {
     // The key only reports a lifetime total: remember where it stood when each day and month began.
     const path = `${await modsHome($)}/budget-guard/key-baselines.json`
     let b: { day?: { date: string; spend: number }; month?: { ym: string; spend: number }; since?: string } = {}
@@ -1001,7 +1005,9 @@ async function fetchLiteLLM($: EngineInterface): Promise<Spend | null> {
     }
     if (!r.ok) return { spend: 0, baseline: 0, maxBudget: null, resetAt: null, at, error: `HTTP ${r.status}` }
     const info = JSON.parse(r.text)?.info ?? {}
+    const byDay = await fetchKeyDays($, base, headers, at)
     return {
+      byDay,
       spend: Number(info.spend ?? 0),
       baseline: Number(info.spend ?? 0),
       maxBudget: info.max_budget == null ? null : Number(info.max_budget),
@@ -1011,6 +1017,24 @@ async function fetchLiteLLM($: EngineInterface): Promise<Spend | null> {
     }
   } catch (err) {
     return { spend: 0, baseline: 0, maxBudget: null, resetAt: null, at, error: String(err).slice(0, 60) }
+  }
+}
+
+/** Spend per day since the 1st of the month from LiteLLM's /user/daily/activity (the numbers its UI and
+ * usage-analytics show); undefined when the gateway does not serve it. */
+async function fetchKeyDays($: EngineInterface, base: string, headers: Record<string, string>, now: number): Promise<Record<string, number> | undefined> {
+  const end = new Date(now + 86_400_000).toISOString().slice(0, 10)
+  const start = `${localDay(now).slice(0, 7)}-01`
+  try {
+    const r = await $.http.fetch(`${base.replace(/\/+$/, '')}/user/daily/activity?start_date=${start}&end_date=${end}&page_size=1000`, { headers })
+    if (!r.ok) return undefined
+    const rows = JSON.parse(r.text)?.results
+    if (!Array.isArray(rows)) return undefined
+    const byDay: Record<string, number> = {}
+    for (const x of rows) if (typeof x?.date === 'string') byDay[x.date.slice(0, 10)] = Number(x.metrics?.spend ?? 0) || 0
+    return byDay
+  } catch {
+    return undefined
   }
 }
 

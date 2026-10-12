@@ -5,6 +5,7 @@ Sources, all folded incrementally into <data>/usage.db (`claude-usage path` prin
   * every profile's transcripts   ~/.claude*/projects/**/*.jsonl  (incl. subagents/), plus any config
                                   dir a session ran from (registered by the mod) or listed in `profileDirs`
   * the usage-analytics mod's log <data>/events/**.jsonl
+  * gateway spend                 <data>/gateway/<profile>.json: what LiteLLM billed per day and model (the mod syncs it)
 <data> is $CLAUDE_USAGE_DIR, else <mods home>/usage-analytics, where <mods home> is $CLAUDE_MODS_HOME,
 else ~/.claude-shared if it exists, else ~/.claude-mods.
 
@@ -12,7 +13,7 @@ Commands:
   ingest  [--quiet] [--full]          fold new data in (lock-protected, incremental by byte offset)
   report  [what] [--days N] [--profile P[,P]] [--project S] [--limit N] [--ingest]
           what: overview (default) | profiles | daily | models | projects | tools | bash | files |
-                agents | sessions | context | hours | cache | prompts | all
+                agents | sessions | context | hours | cache | prompts | gateway | all
   sql     "SELECT ..."                run any query (tables: see `schema`)
   schema                              list tables and views
   export  TABLE|VIEW [--format csv|jsonl] [--out FILE]
@@ -96,6 +97,8 @@ CREATE INDEX IF NOT EXISTS prompt_session ON prompts(session_id, ts);
 CREATE INDEX IF NOT EXISTS prompt_day ON prompts(day);
 CREATE INDEX IF NOT EXISTS sys_day ON system_events(day);
 CREATE INDEX IF NOT EXISTS att_day ON attachments(day);
+CREATE TABLE IF NOT EXISTS gateway_spend (profile TEXT, day TEXT, model TEXT, spend_usd REAL, requests INTEGER, input INTEGER, output INTEGER,
+  cache_read INTEGER, cache_write INTEGER, PRIMARY KEY (profile, day, model));
 
 CREATE VIEW IF NOT EXISTS v_requests AS
   SELECT r.*, input + cache_read + cache_write AS context_tokens,
@@ -536,6 +539,31 @@ class Ingest:
         for p in glob.glob(os.path.join(DATA, 'events', '*', '*', '*.jsonl')):
             yield 'events', p.split(os.sep)[-3], p, None
 
+    def gateway(self):
+        """What the gateway billed: <data>/gateway/<profile>.json, written by the mod from LiteLLM /user/daily/activity.
+        Each file holds the whole history it knows, so its profile's rows are replaced."""
+        if len(self.con.execute('PRAGMA table_info(gateway_spend)').fetchall()) != 9:
+            # an earlier shape of the table: it is rebuilt from the files anyway
+            self.con.execute('DROP TABLE gateway_spend')
+            self.con.executescript(DDL)
+        for path in glob.glob(os.path.join(DATA, 'gateway', '*.json')):
+            try:
+                g = json.load(open(path))
+            except (OSError, ValueError) as ex:
+                log(self.args, f'skip {path}: {ex}')
+                continue
+            prof = g.get('profile') or os.path.basename(path)[:-5]
+            rows = []
+            for day, d in (g.get('days') or {}).items():
+                models = d.get('models') or {}
+                rest = float(d.get('spend') or 0) - sum(float(v.get('spend') or 0) for v in models.values())
+                rows += [(prof, day, m, float(v.get('spend') or 0), v.get('requests'), v.get('input'), v.get('output'),
+                          v.get('cacheRead'), v.get('cacheWrite')) for m, v in models.items()]
+                if abs(rest) > 0.005:
+                    rows.append((prof, day, '(other)', rest, None, None, None, None, None))
+            self.con.execute('DELETE FROM gateway_spend WHERE profile = ?', (prof,))
+            self.con.executemany('INSERT OR REPLACE INTO gateway_spend VALUES (?,?,?,?,?,?,?,?,?)', rows)
+
     def run(self, full=False, progress=None):
         con = self.con
         if full:
@@ -593,6 +621,7 @@ class Ingest:
                     write_progress({**state, 'done': i + 1, 'requests': self.n['requests'], 'stage': stage_of(kind, aid),
                                     'profile': profile, 'stageDone': i + 1 - stage_start[stage_of(kind, aid)],
                                     'stageTotal': stage_total[stage_of(kind, aid)]}, progress)
+        self.gateway()
         con.commit()
         if backfill:
             write_progress({**state, 'running': False, 'done': len(todo), 'requests': self.n['requests'], 'finishedAt': int(time.time())}, progress)
@@ -734,6 +763,20 @@ def cmd_report(args):
     if want('overview', 'daily'):
         table(con, 'By day', f'''SELECT day, COUNT(DISTINCT session_id) sessions, COUNT(*) requests, {TOK},
             GROUP_CONCAT(DISTINCT profile) profiles FROM requests WHERE {W} GROUP BY day ORDER BY day DESC LIMIT ?''', p + [L if what != 'overview' else 14])
+    if want('gateway') or (what == 'overview' and con.execute('SELECT 1 FROM gateway_spend LIMIT 1').fetchone()):
+        gw, gp = ['day >= ?'], [since]
+        if args.profile:
+            gw.append(f'profile IN ({",".join("?" * len(profs))})')
+            gp += profs
+        G = ' AND '.join(gw)
+        table(con, 'Gateway billed (LiteLLM) vs list-price estimate, by day', f'''SELECT g.day, g.profile, ROUND(g.billed, 2) billed_usd,
+            ROUND(r.list, 2) list_usd, ROUND(g.billed / NULLIF(r.list, 0), 2) ratio FROM
+            (SELECT day, profile, SUM(spend_usd) billed FROM gateway_spend WHERE {G} GROUP BY day, profile) g
+            LEFT JOIN (SELECT day, profile, SUM(cost_usd) list FROM requests GROUP BY day, profile) r USING (day, profile)
+            ORDER BY g.day DESC LIMIT ?''', gp + [L if what != 'overview' else 14])
+        table(con, 'Gateway billed by model', f'''SELECT model, ROUND(SUM(spend_usd), 2) billed_usd, SUM(requests) requests,
+            SUM(input) input, SUM(output) output, SUM(cache_read) cache_read, SUM(cache_write) cache_write, COUNT(DISTINCT day) days
+            FROM gateway_spend WHERE {G} GROUP BY model ORDER BY SUM(spend_usd) DESC''', gp)
     if want('overview', 'models'):
         table(con, 'By model', f'''SELECT model, speed, COUNT(*) requests, {TOK}, SUM(thinking) thinking
             FROM requests WHERE {W} GROUP BY model, speed ORDER BY SUM(cost_usd) DESC''', p)
@@ -1222,7 +1265,7 @@ def main(argv=None):
     r = sub.add_parser('report')
     r.add_argument('what', nargs='?', default='overview',
                    choices=['overview', 'profiles', 'daily', 'models', 'projects', 'tools', 'bash', 'files', 'agents',
-                            'sessions', 'context', 'hours', 'cache', 'prompts', 'all'])
+                            'sessions', 'context', 'hours', 'cache', 'prompts', 'gateway', 'all'])
     r.add_argument('--days', type=int, default=30, help='0 = all time')
     r.add_argument('--profile'); r.add_argument('--project'); r.add_argument('--limit', type=int, default=15)
     r.add_argument('--ingest', action='store_true', help='ingest new data first')

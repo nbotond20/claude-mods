@@ -73,7 +73,7 @@ Limits set with `/budget` last for the current session. Budgets persist.
 | `<mods home>/budget-guard/budgets.json` | `{ profiles: { "<profile>": { daily: 25, monthly: 500 } } }` (set by `/budget setup` or `/budget daily|monthly`) |
 | `<mods home>/budget-guard/sessions/<profile>-<session>.json` | Per-session ledger: day, profile, spend, and savings by category. The dashboard's Savings tab reads these. |
 | `<mods home>/budget-guard/config.json` | What every session starts from: `holdout` (0.1, see /budget holdout), `limits` (overrides of the defaults below, e.g. `{ "route": false, "block": 400000 }`), `opusMaxEffort` (`medium`; `max` means no cap), `compactAt` (200000; 0 leaves compaction to the engine), `litellm` (`auto`: poll LiteLLM key spend on a gateway and stop if it has no `/key/info`; `on`; `off`). `/budget setup` writes it. |
-| `<mods home>/budget-guard/key-baselines.json` | LiteLLM key spend at period starts, used for the daily and monthly gauges on gateway profiles. |
+| `<mods home>/budget-guard/key-baselines.json` | LiteLLM key spend at period starts: the fallback for the daily and monthly gauges when the gateway has no `/user/daily/activity` (normally the gauges use LiteLLM's per-day spend). |
 | `$TMPDIR/budget-guard.*` | Full logs of trimmed commands. |
 
 ## Is it worth it?

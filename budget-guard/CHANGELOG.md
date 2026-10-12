@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.12.0
+- On a LiteLLM gateway the day and month gauges come from LiteLLM's per-day spend (`/user/daily/activity`), so they are right from the first session instead of counting from when budget-guard was installed. Gateways without that endpoint keep the key-baseline method.
+
 ## 0.11.0
 - A session routed to Sonnet moves to Opus when a later prompt asks for implementation ("ok, implement it"). A local check of ~150 verbs and go-ahead phrases ("do it", "lgtm", "option 2", a few Hungarian ones) decides for free; only long prompts with no match cost one Haiku call. Never downgrades; `/budget route sonnet|opus` pins the model.
 
