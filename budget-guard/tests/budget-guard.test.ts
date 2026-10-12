@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'claude-code/testing'
 
 const QUICK = 'quick question, explanation, lookup, or a tiny one-file edit'
+const TRIVIAL = 'trivial: a greeting, a yes/no, run or start a command or server, open a file or URL, a one-line factual answer'
 const usage = { input_tokens: 10, output_tokens: 2_000, cache_read_input_tokens: 40_000, cache_creation_input_tokens: 20_000 }
 
 // What the engine answers beneath the plugin in every test.
@@ -88,6 +89,35 @@ describe('budget-guard', () => {
     const out = await $.command.run({ command: 'budget', args: '' } as any)
     expect(String(out.text)).toMatch(/route quick → sonnet 5\.5 · low/)
     expect(String(out.text)).toMatch(/saved this session ~\$0\.0[1-9]/)
+  })
+
+  test('a trivial first prompt runs on Haiku 5.5; a real follow-up moves it up, /budget route haiku pins it', async ($, on) => {
+    engine(on, { classify: TRIVIAL })
+    let sent: any
+    on('turn.step', async function* ($: any, e: any) {
+      sent = e
+      return { turnId: e.turnId, index: e.index, answer: 'ok', toolUses: [], stopReason: 'end_turn', usage: { ...usage, model: e.model } }
+    })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const say = (text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } } as any)
+    await say('start docs and storybook')
+    await step($, { model: 'claude-opus-5-5', effort: 'high' })
+    expect(sent.model).toBe('claude-haiku-5-5')
+    expect(sent.effort).toBe('low')
+    await measure($, 20_000)
+
+    await say('open the tree stories')
+    await step($, { model: 'claude-opus-5-5', effort: 'high' })
+    expect(sent.model).toBe('claude-haiku-5-5')
+
+    await say('fix the tree indentation')
+    await step($, { model: 'claude-opus-5-5', effort: 'high' })
+    expect(sent.model).toBe('claude-opus-5-5')
+
+    await $.command.run({ command: 'budget', args: 'route haiku' } as any)
+    await say('now do the same for the list')
+    await step($, { model: 'claude-opus-5-5', effort: 'high' })
+    expect(sent.model).toBe('claude-haiku-5-5')
   })
 
   test('a quick session that turns to implementation moves to Opus without a classifier call; questions and pins stay', async ($, on) => {

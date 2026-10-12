@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.13.0
+- Finer session routing: five tiers instead of three. Trivial asks (start a server, open a file, a one-line answer) run on Haiku 5.5; quick questions on Sonnet 5.5 at low effort; small, well-defined edits on Sonnet 5.5 at medium; real coding work on Opus 5.5. A Haiku session that gets a real follow-up moves up (implementation verbs → Opus, longer prompts re-ranked by Haiku). `/budget route haiku` pins Haiku.
+
 ## 0.12.0
 - On a LiteLLM gateway the day and month gauges come from LiteLLM's per-day spend (`/user/daily/activity`), so they are right from the first session instead of counting from when budget-guard was installed. Gateways without that endpoint keep the key-baseline method.
 

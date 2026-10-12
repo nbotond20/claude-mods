@@ -29,12 +29,12 @@ export type Spend = { spend: number; baseline: number; maxBudget: number | null;
 
 /** The model and effort the first prompt chose for the main loop. */
 export type Route = {
-  tier: 'quick' | 'normal' | 'hard'
+  tier: 'trivial' | 'quick' | 'small' | 'normal' | 'hard'
   model: string
   effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   /** the model the engine named when the route was taken; a different one means the user switched */
   engineModel: string
-  /** set by /budget route opus|sonnet: later prompts never move it */
+  /** set by /budget route opus|sonnet|haiku: later prompts never move it */
   pinned?: boolean
 }
 

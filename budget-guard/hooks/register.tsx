@@ -660,7 +660,7 @@ export function setupPrompt(configFile: string, budgetsFile: string, profile: st
 
 1. Ask me with the AskUserQuestion tool, in a single call (recommended option first, my current choice marked "(current)"):
    - "Spending limits for the ${profile} profile?" (soft: shown as gauges, never blocking): "None", "$10 a day / $200 a month", "$25 a day / $500 a month"; Other lets me type my own.
-   - "Pick the model per task?": "Auto (recommended)": the first prompt decides, quick questions go to Sonnet at low effort, the rest to Opus (limits.route true); "Off": always the session's own model (limits.route false).
+   - "Pick the model per task?": "Auto (recommended)": the first prompt decides, trivial asks (run a command, open a file) go to Haiku, questions and small edits to Sonnet, real coding work to Opus (limits.route true); "Off": always the session's own model (limits.route false).
    - "Cap Opus effort?": "Medium (recommended, cheapest)", "High", "No cap" (opusMaxEffort "medium", "high", "max").
    - "Compact the conversation at?": "200k tokens (recommended)", "150k", "Engine default" (compactAt 200000, 150000, 0).
    - "Hold prompts when the context gets this large?": "300k tokens (recommended)", "200k", "500k" (limits.block; set limits.warn to half of it).
@@ -760,11 +760,16 @@ const capEffort = (model: string, effort: Effort | undefined): Effort | undefine
   return opusMax()
 }
 
+/** Cheapest first: the rank decides whether a later prompt moves a session up. */
 const TIERS = {
+  trivial: { label: 'trivial: a greeting, a yes/no, run or start a command or server, open a file or URL, a one-line factual answer', model: HAIKU, effort: 'low' },
   quick: { label: 'quick question, explanation, lookup, or a tiny one-file edit', model: SONNET, effort: 'low' },
+  small: { label: 'small, well-defined change in one or two files: a rename, a config value, a short function, a simple test', model: SONNET, effort: 'medium' },
   normal: { label: 'normal coding task: a feature, a bug fix, a refactor across a few files', model: OPUS, effort: 'medium' },
   hard: { label: 'hard: architecture or design, deep debugging, large multi-step or ambiguous work', model: OPUS, effort: 'medium' },
 } as const
+type Tier = keyof typeof TIERS
+const RANK = Object.fromEntries(Object.keys(TIERS).map((t, i) => [t, i])) as Record<Tier, number>
 
 const k = (n: number) => (Math.abs(n) >= 1000 ? `${(n / 1000).toFixed(Math.abs(n) >= 100_000 ? 0 : 1)}k` : `${n}`)
 const usd = (n: number) => `$${Math.abs(n) < 10 ? n.toFixed(2) : n.toFixed(0)}`
@@ -1076,7 +1081,7 @@ async function classifyFirstPrompt($: EngineInterface, text: string, engineModel
   const labels = Object.values(TIERS).map(t => t.label)
   await logClassify($, 'route', Math.min(text.length, 4000) + labels.join('').length)
   const picked = await $.model.classify(text.slice(0, 4000), labels, { model: HAIKU }).catch(() => undefined)
-  const tier = (Object.keys(TIERS) as (keyof typeof TIERS)[]).find(t => TIERS[t].label === picked) ?? 'normal'
+  const tier = (Object.keys(TIERS) as Tier[]).find(t => TIERS[t].label === picked) ?? 'normal'
   const r: Route = { tier, model: TIERS[tier].model, effort: tier === 'hard' ? opusMax() : TIERS[tier].effort, engineModel }
   return r
 }
@@ -1112,22 +1117,24 @@ const inflect = (v: string) => (v.endsWith('e') ? `${v.slice(0, -1)}(e|es|ed|ing
 const BUILD_INTENT = new RegExp(`(^|[^\\p{L}])(${BUILD_VERBS.map(inflect).join('|')}|${GO_AHEAD.join('|')})(?![\\p{L}])`, 'iu')
 /** A question about the work, not a request for it ("can you fix it?" is still a request). */
 const QUESTION = /^(how|what|why|where|when|which|who|is|are|was|were|does|did|do (you|we|i)|should|shall|whats|what's|hogyan|miért|mi|mit)\b[^\n]*\?\s*$/iu
-/** Prompts this long can ask for work without the usual verbs: Haiku decides those. */
-const REROUTE_CLASSIFY_CHARS = 200
+/** Prompts this long can ask for work without the usual verbs: Haiku decides those. A Haiku session asks sooner. */
+const REROUTE_CLASSIFY_CHARS = { trivial: 40, quick: 200, small: 200 } as const
 
 /**
- * A session routed to Sonnet as "quick" (often an investigation) that now asks for implementation goes to
- * Opus for the rest of the session. Never downgrades: a model switch throws the prompt cache away once, and
- * flip-flopping would do it every time. A verb match costs nothing; only a long prompt with no match pays
+ * A session routed below Opus that now asks for more moves up for the rest of the session: a trivial or
+ * quick session (often an investigation) that asks for implementation goes to Opus; a longer prompt Haiku
+ * ranks higher goes to that tier. Never downgrades: a model switch throws the prompt cache away once, and
+ * flip-flopping would do it every time. A verb match costs nothing; only a longer prompt with no match pays
  * for one Haiku call.
  */
 async function upgradeTier($: EngineInterface, r: Route, text: string): Promise<Route | null> {
-  if (r.tier !== 'quick' || r.pinned) return null
+  if (r.pinned || !(r.tier in REROUTE_CLASSIFY_CHARS)) return null
   const t = text.trim()
-  if (BUILD_INTENT.test(t) && !QUESTION.test(t)) return { ...r, tier: 'normal', model: TIERS.normal.model, effort: TIERS.normal.effort }
-  if (t.length < REROUTE_CLASSIFY_CHARS) return null
+  const from = r.tier as keyof typeof REROUTE_CLASSIFY_CHARS
+  if (from !== 'small' && BUILD_INTENT.test(t) && !QUESTION.test(t)) return { ...r, tier: 'normal', model: TIERS.normal.model, effort: TIERS.normal.effort }
+  if (t.length < REROUTE_CLASSIFY_CHARS[from]) return null
   const c = await classifyFirstPrompt($, t, r.engineModel)
-  return c.tier === 'quick' ? null : c
+  return RANK[c.tier] > RANK[r.tier] ? c : null
 }
 
 async function looksLikeNewTask($: EngineInterface, previous: string[], text: string) {
@@ -1235,7 +1242,7 @@ export const register: Register = on => {
     const r = await next(e)
     await $.command.register({
       name: 'budget',
-      description: 'Budget guard: status, setup, savings, pause <30m|2h|1d|session>, resume, route opus|sonnet|auto|off, warn|block|agents|bigturn|newtask <n>, images|keepalive|trim|agentroute on|off, compact <n>|off, holdout <0-1>, reset',
+      description: 'Budget guard: status, setup, savings, pause <30m|2h|1d|session>, resume, route opus|sonnet|haiku|auto|off, warn|block|agents|bigturn|newtask <n>, images|keepalive|trim|agentroute on|off, compact <n>|off, holdout <0-1>, reset',
     })
     await loadConfig($)
     await update($, limits, () => startLimits())
@@ -1353,7 +1360,7 @@ export const register: Register = on => {
       if (up) {
         await update($, route, () => up)
         await trackLog($, 'reroute', { from: r!.model, tier: up.tier, model: up.model, effort: up.effort })
-        $.ui.toast(`budget-guard: implementation work, switching to ${short(up.model)} (/budget route sonnet keeps ${short(r!.model)})`, { timeoutMs: TOAST_MS })
+        $.ui.toast(`budget-guard: ${up.tier} work, switching to ${short(up.model)} (/budget route ${family(r!.model)} keeps ${short(r!.model)})`, { timeoutMs: TOAST_MS })
       }
     }
 
@@ -1537,11 +1544,10 @@ export const register: Register = on => {
     if (what === 'route') {
       if (val === 'off') await set({ route: false })
       else if (val === 'auto') await set({ route: true })
-      else if (val === 'opus' || val === 'sonnet') {
+      else if (val === 'opus' || val === 'sonnet' || val === 'haiku') {
         const r = await read($, route)
-        const pick: Route = val === 'opus'
-          ? { tier: 'hard', model: OPUS, effort: opusMax(), engineModel: r?.engineModel ?? '', pinned: true }
-          : { tier: 'quick', model: SONNET, effort: 'low', engineModel: r?.engineModel ?? '', pinned: true }
+        const tier: Tier = val === 'opus' ? 'hard' : val === 'sonnet' ? 'quick' : 'trivial'
+        const pick: Route = { tier, model: TIERS[tier].model, effort: tier === 'hard' ? opusMax() : TIERS[tier].effort, engineModel: r?.engineModel ?? '', pinned: true }
         await update($, route, () => pick)
         await set({ route: true })
       }
@@ -1584,7 +1590,7 @@ export const register: Register = on => {
     } else if (what === 'refresh') {
       await refreshSpend($)
     } else if (what) {
-      return { text: 'Usage: /budget [setup] [savings] [pause <30m|2h|1d|session> | resume] [route opus|sonnet|auto|off] [daily|monthly <$|off>] [warn|block|agents|bigturn|newtask <n>] [images|keepalive|trim|agentroute on|off] [compact <n>|off] [holdout <0-1>] [reset] [refresh]' }
+      return { text: 'Usage: /budget [setup] [savings] [pause <30m|2h|1d|session> | resume] [route opus|sonnet|haiku|auto|off] [daily|monthly <$|off>] [warn|block|agents|bigturn|newtask <n>] [images|keepalive|trim|agentroute on|off] [compact <n>|off] [holdout <0-1>] [reset] [refresh]' }
     }
 
     const l = await read($, limits)
