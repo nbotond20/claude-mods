@@ -25,6 +25,8 @@ Uninstall stops the dashboard server, removes its login item and the no-attribut
 
 ## `/mods` inside Claude Code
 
+![/mods status: each mod with its version, a one-line state and its command, then today's spend and the dashboard address](images/mods/mods-status.png)
+
 | Command | What it does |
 | --- | --- |
 | `/mods` · `/mods status` | each mod with its version and a one-line state, plus profiles that run different versions |
@@ -48,5 +50,7 @@ At session start each mod records itself in `<mods home>/mods/installed/<profile
 - first runs, with a pointer to `/mods setup`;
 - updates, with the headline (first bullet) of each new version in the mod's `CHANGELOG.md`;
 - profiles that run different versions of a mod (shown once per change; `/mods update` fixes it).
+
+![The session toast after an update, with the new version's headline](images/mods/session-toast.png)
 
 Where several installed mods carry the hub, the one with the newest hub answers `/mods`.

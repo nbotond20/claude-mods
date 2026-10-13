@@ -4,6 +4,8 @@ Gets the model to use the language server for symbol questions instead of greppi
 
 Source: `lsp-first/hooks/register.ts`. Tests: `lsp-first/tests/`.
 
+![The model finds a symbol's references through the LSP tool, then reads only the lines it needs](images/lsp-first/lsp-lookup.png)
+
 ## What it does
 
 1. **Keeps the LSP tool's schema in the prompt.** `tool.describe` with `isDeferred: false` puts it in the tool list instead of behind ToolSearch, so using it costs no extra round trip.

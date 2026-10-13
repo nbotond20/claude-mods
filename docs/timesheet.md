@@ -4,6 +4,15 @@ NetSuite-ready timesheets from your Claude Code and OpenCode sessions, git and G
 
 Needs Node 22.18 or newer (it uses `node:sqlite` and runs TypeScript directly).
 
+![The week view: booked hours against the target, real activity, the CAPEX/OPEX split, the NetSuite grid ready to paste, and a card per day](images/timesheet/week-view.png)
+
+## What you get
+
+- **Two figures per day.** *Real* is the time your sessions, commits and meetings actually cover. *Booked* is that time scaled to the daily target (8h by default) and rounded, which is what goes into NetSuite.
+- **A task category for every hour.** A headless Claude call reads each day's time blocks: the prompts, the commits and what changed (code, tests, CI, infra, docs). It puts each block in a NetSuite task category and writes a short summary of the day. CAPEX or OPEX follows from the category.
+- **Hand edits that stick.** Override a category's hours, move a block to another category, or lock a day. Recomputes keep the edits, `timesheet history` lists them and `timesheet undo` reverts them.
+- **Checks before you submit.** `timesheet review` flags a day booked far above what was recorded, a day not computed, or a repo with no scope. `submit plan` shows what would be entered in Redmine and NetSuite without writing anything.
+
 ## On by default
 
 Installing the mod puts `~/.local/bin/timesheet` in place at the next session start and turns on the weekly toast below. Nothing is collected until you run a report. The CLI then reads Claude Code (every profile), OpenCode and git by default and classifies with `claude -p`. Work scope is empty until you set it, so nothing is booked yet. Google Calendar, GitHub and Redmine/NetSuite submission stay off until you connect them. The web app runs only after `/timesheet open` or `timesheet serve`. The full table is in [the manual](../timesheet/README.md#on-by-default).
@@ -21,6 +30,78 @@ Installing the mod puts `~/.local/bin/timesheet` in place at the next session st
 | `/timesheet install [--force]` | (re)installs the `timesheet` launcher |
 
 Once a week, about half a minute into a session, a toast says when last week still needs something: days not computed, days flagged for a look, or (with submission set up) workdays not entered yet. It reads only days already computed and never starts the classifier.
+
+## The web app
+
+`/timesheet open` (or `timesheet serve --open`) starts it on http://127.0.0.1:4280. The screenshots use generated demo data; [scripts/demo](../scripts/demo/README.md) rebuilds it.
+
+**Timesheet** has Day, Week and Month ranges. Each day card shows real against booked hours, and the booked hours can be edited in place; *Reset* drops an override. *Lock* freezes a day. *Show other activity* adds personal and unassigned time, and *Recorded minutes* shows the exact timestamp-backed minutes. The app follows the system's light or dark theme.
+
+![The same week in the dark theme](images/timesheet/week-view-dark.png)
+
+![The month view](images/timesheet/month-view.png)
+
+Click a time block to see what it was built from: the commits, branches, sessions and prompts behind it.
+
+![Block details for a day: the commits, branch, session and prompts behind a block](images/timesheet/day-block-details.png)
+
+The **Submission** panel shows per system whether the week is ready and the entries it would make. Nothing is written until you confirm in the terminal (`timesheet submit week`).
+
+![The submission preview: Redmine and NetSuite entries for the week, per day and issue](images/timesheet/submit-preview.png)
+
+**Calendar** shows the same blocks in Day, Week, Month, Agenda and Resources views, coloured by category or project. Drag a block to move or resize it. In Resources, drag it to another category to recategorize it.
+
+![The calendar's week view](images/timesheet/calendar-week.png)
+
+![A block's popover: edit, delete, duplicate, show as free](images/timesheet/calendar-block-details.png)
+
+![Resources view, one column per task category](images/timesheet/calendar-resources.png)
+
+![The calendar's month view](images/timesheet/calendar-month.png)
+
+**Settings** covers projects and daily hours, activity sources, work scope (which repos and folders count as which project), GitHub, Google Calendar, task categories, classification, submission, and an Advanced section with the setup wizard and a raw JSON editor.
+
+![Settings: general](images/timesheet/settings-general.png)
+
+![Settings: work scope](images/timesheet/settings-work-scope.png)
+
+![Settings: task categories](images/timesheet/settings-task-categories.png)
+
+![Settings: activity sources](images/timesheet/settings-activity-sources.png)
+
+## From the terminal
+
+The same demo data, from the CLI:
+
+```
+$ timesheet day 2026-10-08
+Thu 2026-10-08  recorded 396.3 min · real 6.61h → booked 8h (target 8)
+  09:30–09:45       15 min  meeting  Internal · Team Meeting  — Daily standup
+  09:50–12:00    120.9 min  claude+git  mobile-app · Development  — Design a queue for offline edits that survives app restarts | MOB-377: Persist pending mutations in SQLite
+  12:00–12:40     37.2 min  claude+git  mobile-app · Small Enhancements  — Open the order screen when the push notification is tapped | MOB-390: Route push payloads to order screen
+  13:40–15:10     83.7 min  claude+git  infra · Security (S&M)  — List certificates that expire within 30 days | INFRA-97: Rotate edge certificates
+  15:10–17:40    139.5 min  claude+git  acme-web · Development  — Split the checkout form into steps and keep the cart state in the URL | Why does the summary flash on step change?
+    Development              CAPEX  recorded   139.5 min  real  2.33  book  2.75  [acme-web]
+    Development              CAPEX  recorded   120.9 min  real  2.02  book   2.5  [mobile-app]
+    Security (S&M)           OPEX   recorded    83.7 min  real   1.4  book  1.75  [infra]
+    Small Enhancements       OPEX   recorded    37.2 min  real  0.62  book  0.75  [mobile-app]
+    Team Meeting             OPEX   recorded      15 min  real  0.25  book  0.25  [Internal]
+
+Total booked 8h (real 6.61h, recorded 396.3 min) · CAPEX 5.25h · OPEX 2.75h
+```
+
+```
+$ timesheet review 2026-09-28
+Week of 2026-09-28:
+  2026-09-28      8h booked /    8h target · 6.6h recorded  [locked]
+  2026-09-29      8h booked /    8h target · 6.8h recorded  [locked]
+  2026-09-30      8h booked /    8h target · 6.8h recorded  [locked]
+  2026-10-01      8h booked /    8h target · 6.6h recorded  [locked]
+  2026-10-02      8h booked /    8h target · 2.4h recorded
+      ✗ Only 2.4h of recorded work, booked as 8h: confirm it (`timesheet confirm 2026-10-02`) or set the hours (`timesheet edit`)
+```
+
+`timesheet week` prints the NetSuite grid (one row per project and category, one column per day). `--copy` puts it on the clipboard, and `--no-header` leaves only the rows for pasting into cells. The full command list is in [the manual](../timesheet/README.md#use).
 
 ## The launcher
 

@@ -2,6 +2,8 @@
 
 One central store for everything about how every profile spends tokens, with a terminal report and a web dashboard.
 
+![The dashboard's Overview tab: KPI cards with sparklines and period-over-period change, automatic insights, daily spend by profile and the cost breakdowns](images/usage-analytics/overview.png)
+
 ## Two data sources, one database
 
 1. **Transcripts** (all history, every profile): `<config dir>/projects/**/*.jsonl` for `~/.claude*` and every registered or configured profile dir, subagent transcripts included (`<session>/subagents/agent-*.jsonl` + `.meta.json`). These carry exact per-request usage: input, output, cache read, 5m/1h cache writes, thinking, server tools, model, effort, speed, plus every tool call and result, prompts, attachments, system events (turn durations, compactions, API errors) and titles.
@@ -199,6 +201,62 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 - cost by agent;
 - tool output by tool;
 - every prompt, tool call, subagent and request.
+
+### A tour of the dashboard
+
+The screenshots use generated demo data (two profiles, 45 days, about 260 sessions); [scripts/demo](../scripts/demo/README.md) rebuilds it.
+
+**Live.** Today against yesterday at the same time, the last hour's burn rate, the month's projection and the sessions running now, each with its context gauge.
+
+![Live tab](images/usage-analytics/live.png)
+
+**Overview**, in the dark theme. The insights at the top are computed from the filtered data: here the month's pace and the cache hit rate.
+
+![Overview tab in the dark theme](images/usage-analytics/overview-dark.png)
+
+**Cost & tokens.** Spend per day by model, tokens per day by kind, cache hit rate and the subagent share.
+
+![Cost & tokens tab](images/usage-analytics/cost.png)
+
+**Context.** How much each request carried. Requests above 200k cost the most per call, and the `/context` composition shows what fills the window.
+
+![Context tab](images/usage-analytics/context.png)
+
+**Tools.** Where tool output comes from (Bash usually dominates), whole against ranged reads, Edit against Write, and LSP against grep.
+
+![Tools tab](images/usage-analytics/tools.png)
+
+**Agents.** Spend by subagent type and the model each type actually ran on. With budget-guard's routing, Explore runs on Haiku and most others on Sonnet.
+
+![Agents tab](images/usage-analytics/agents.png)
+
+**Projects & sessions.** Spend per project per day, and a scatter of session cost against peak context. Click a dot to open that session.
+
+![Projects & sessions tab](images/usage-analytics/projects.png)
+
+**Session drill-down.** Context per request next to cumulative cost, cost by agent, output by tool, and the full timeline.
+
+![Session drill-down](images/usage-analytics/session-drilldown.png)
+
+**Prompts.** Prompts per day, slash commands, and the most expensive prompts (every request until the next prompt is charged to it).
+
+![Prompts tab](images/usage-analytics/prompts.png)
+
+**Engine.** Time to first token and latency by model, tool latency, and the size of tool schemas and system prompt sections.
+
+![Engine tab](images/usage-analytics/engine.png)
+
+**Mod impact.** The holdout comparison for each mod; see [mod-impact.md](mod-impact.md).
+
+![Mod impact tab](images/usage-analytics/impact.png)
+
+**Savings.** budget-guard's ledgers: dollars saved by lever, per day against spend, and per profile.
+
+![Savings tab](images/usage-analytics/savings.png)
+
+**Command palette** (<kbd>⌘K</kbd>): jump to a tab, set the period, pick profiles, run an ingest.
+
+![Command palette](images/usage-analytics/command-palette-dark.png)
 
 ## Database
 

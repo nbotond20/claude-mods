@@ -4,6 +4,12 @@ Keeps spend and context visible and pushes work to cheaper models where that is 
 
 ## What you see
 
+![The band on a LiteLLM gateway: model and effort, session cost and burn rate, day and month gauges, LiteLLM key spend, savings, context, live subagents and a background task](images/budget-guard/band-gateway.png)
+
+On a Claude subscription the money is API-equivalent (`≈`) and the plan's 5-hour and 7-day limits take the LiteLLM part's place. Here the day gauge is past 80% and the context past `warn`, so both are yellow:
+
+![The band on a subscription: API-equivalent cost, a yellow day gauge, 5h and 7d limits, yellow context](images/budget-guard/band-subscription.png)
+
 **The band above the prompt** (`ui.render AbovePrompt`):
 - the main model and effort;
 - session cost and burn rate ($/h over the last 20 minutes);
@@ -18,6 +24,8 @@ Keeps spend and context visible and pushes work to cheaper models where that is 
 
 When a new-task prompt is held, the band shows the choice `[c] clear · [k] compact · [y] keep`.
 
+![A prompt held as a new task with 96k of earlier context loaded](images/budget-guard/new-task-hold.png)
+
 **Toasts**:
 - context over `warn` (consider /compact);
 - a heavy turn (context grew by more than `bigTurn`);
@@ -25,7 +33,9 @@ When a new-task prompt is held, the band shows the choice `[c] clear · [k] comp
 - every 10th screenshot;
 - budgets at 80% and at 100%.
 
-**Savings pane** (`/budget savings`, pane id `budget-savings`): the estimated dollars each lever saved, for this session and across all sessions.
+**Savings pane** (`/budget savings`, pane id `budget-savings`): the estimated dollars each lever saved, for this session and across all sessions. The same ledgers feed the dashboard's [Savings tab](usage-analytics.md#a-tour-of-the-dashboard).
+
+![The savings pane: total saved against spend, the last 14 days, savings by lever and by profile](images/budget-guard/savings-pane.png)
 
 ## What it does
 

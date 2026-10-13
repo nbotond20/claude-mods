@@ -10,6 +10,8 @@ claude-usage impact [--days N] [--profile P] [--json]   from a shell
 
 `--days` defaults to 30 (0 is all time).
 
+![The Mod impact tab: per mod, the holdout verdict, active against holdout cost per session with 95% intervals, and the ledger of what the mod cost and saved](images/usage-analytics/impact.png)
+
 ## On by default
 
 | Feature | Default | How to change |

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Terminal Scenes</title>
+<!-- Docs screenshots of the mods' terminal UI, with demo values in the mods' own text formats.
+     Serve this folder (python3 -m http.server) and open terminal-scenes.html?s=<scene id>. -->
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --win: #18181b; --bar: #232327; --fg: #e4e4e7; --dim: #8b8b93;
+    --cyan: #67d4e4; --green: #7ccf8a; --yellow: #e5c07b; --red: #ef6f6c; --magenta: #c792ea; --blue: #7aa2f7;
+    --orange: #d97757; --rule: #3a3a40;
+  }
+  * { box-sizing: border-box; }
+  html { background: #1b1d24; }
+  body { margin: 0; padding: 28px; display: inline-block; background: linear-gradient(135deg, #2b2f3a, #1b1d24); }
+  .win { width: var(--w, 1040px); background: var(--win); border-radius: 12px; overflow: hidden;
+         box-shadow: 0 24px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.06); }
+  .bar { height: 34px; background: var(--bar); display: flex; align-items: center; padding: 0 14px; gap: 8px; }
+  .bar i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .bar i:nth-child(1) { background: #ff5f57; } .bar i:nth-child(2) { background: #febc2e; } .bar i:nth-child(3) { background: #28c840; }
+  .bar span { flex: 1; text-align: center; color: var(--dim); font: 12px/1 -apple-system, system-ui, sans-serif; margin-right: 52px; }
+  pre { margin: 0; padding: 18px 22px 20px; color: var(--fg); font: 14px/1.55 'JetBrains Mono', ui-monospace, Menlo, monospace; white-space: pre-wrap; }
+  .d { color: var(--dim); } .b { font-weight: 700; } .c { color: var(--cyan); } .g { color: var(--green); } .y { color: var(--yellow); }
+  .r { color: var(--red); } .m { color: var(--magenta); } .bl { color: var(--blue); } .o { color: var(--orange); }
+  .rule { display: block; border-top: 1px solid var(--rule); margin: 6px 0 4px; }
+  .cur { display: inline-block; width: 9px; height: 17px; background: #c9f4ff; vertical-align: -3px; }
+  .toast { display: inline-block; border: 1px solid #3f3f46; border-radius: 8px; padding: 6px 12px; background: #202024; }
+  .scene { display: none; } .scene.on { display: block; }
+</style>
+</head>
+<body>
+
+<div class="scene" id="band-gateway" style="--w:1120px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>~/code/acme-web — claude</span></div><pre><span class="o">✶ Refactoring…</span> <span class="d">(1m 12s · ↓ 3.4k tokens · thinking with medium effort)</span>
+
+ <span class="c b">◆ opus 5.5</span><span class="c"> · medium</span>  <span class="d">│ </span>$3.84<span class="d"> · $4.10/h</span>  <span class="d">│ day $18.20/$40 46%  │ month $412/$900 46%</span>
+ <span class="d">│ </span>LiteLLM +$3.84 · 24h $27 · 7d $141 · key $5.20/h  <span class="g">saved ~$2.15</span>
+ <span class="g b">● 118k ctx</span><span class="d"> (12%)</span>  <span class="d">▲14.2k last turn  │ compacts ~200k · hold 300k</span>
+ <span class="m">⚙ 2 agents</span><span class="d">  │ </span>Explore<span class="d">·haiku 5.5 Find every caller of formatMoney</span><span class="d">  │ </span>Plan<span class="d">·sonnet 5.5 Plan the checkout-v2 migration</span>
+ <span class="bl">▶ 1 task</span><span class="d">  │ local_bash</span> npm run test -- --watch
+<span class="rule"></span><span class="d">❯</span> <span class="cur"></span></pre></div></div>
+
+<div class="scene" id="band-subscription" style="--w:1040px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>~/code/billing-api — claude</span></div><pre><span class="o">✻ Considering…</span> <span class="d">(24s · ↓ 890 tokens)</span>
+
+ <span class="c b">◆ sonnet 5.5</span><span class="c"> · medium</span>  <span class="d">│ </span>≈$1.92<span class="d"> · $2.40/h API-equiv  │ </span><span class="y">day $21.30/$25 85%</span><span class="d"> ≈</span><span class="d">  │ </span><span class="y">5h 74% resets 1h52</span><span class="d"> · 7d 38%</span>
+ <span class="g">saved ~$0.86</span>
+ <span class="y b">● 162k ctx</span><span class="d"> (16%)</span>  <span class="d">▲31.4k last turn</span>  <span class="d">│ compacts ~200k · hold 300k</span>
+<span class="rule"></span><span class="d">❯</span> <span class="cur"></span></pre></div></div>
+
+<div class="scene" id="newtask-hold" style="--w:1040px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>~/code/acme-web — claude</span></div><pre><span class="d">❯</span> now add rate limiting to the public search endpoint
+  <span class="d">⎿</span>  <span class="y">budget-guard: this looks like a new task with 96.4k of earlier context loaded. Pick in the band: [c] clear, [k] compact, [y] keep and send.</span>
+
+ <span class="c b">◆ opus 5.5</span><span class="c"> · medium</span>  <span class="d">│ </span>$6.12<span class="d"> · $3.70/h  │ day $24.90/$40 62%</span>
+ <span class="y b">● 96.4k ctx</span><span class="d"> (10%)  │ compacts ~200k · hold 300k</span>
+<span class="rule"></span><span class="d">❯</span> <span class="cur"></span></pre></div></div>
+
+<div class="scene" id="budget-savings" style="--w:760px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>Budget savings</span></div><pre><span class="b">Saved ~$279 · spent $819 · 25% less than without the guard</span>
+<span class="d">357 sessions across profiles · estimates at list prices</span>
+
+<span class="b">Last 14 days (saved)</span>
+<span class="d">09-30 </span><span class="g">████████████████████████████████████████</span><span class="d"> $16 / spent $31</span>
+<span class="d">10-01 </span><span class="g">████████████████████████████████</span><span class="d"> $13 / spent $35</span>
+<span class="d">10-02 </span><span class="g">████████████████</span><span class="d"> $6.25 / spent $18</span>
+<span class="d">10-03 </span><span class="g">███████</span><span class="d"> $2.76 / spent $10</span>
+<span class="d">10-04 </span><span class="g">███</span><span class="d"> $1.37 / spent $7.05</span>
+<span class="d">10-05 </span><span class="g">██████████████</span><span class="d"> $5.39 / spent $21</span>
+<span class="d">10-06 </span><span class="g">████████████████████████</span><span class="d"> $9.68 / spent $27</span>
+<span class="d">10-07 </span><span class="g">████████████████████████████</span><span class="d"> $11 / spent $37</span>
+<span class="d">10-08 </span><span class="g">████████████████████</span><span class="d"> $7.75 / spent $36</span>
+<span class="d">10-09 </span><span class="g">████████████████████████████████████</span><span class="d"> $14 / spent $28</span>
+<span class="d">10-10 </span><span class="g">████████</span><span class="d"> $3.09 / spent $3.64</span>
+<span class="d">10-11 </span><span class="g">██████████</span><span class="d"> $3.78 / spent $4.21</span>
+<span class="d">10-12 </span><span class="g">███████████████████████████</span><span class="d"> $11 / spent $40</span>
+<span class="d">10-13 </span><span class="g">████████████████</span><span class="d"> $6.46 / spent $9.06</span>
+
+<span class="b">By lever</span>
+new-task           $108 <span class="d">(74×)</span>
+route-session       $69 <span class="d">(99×)</span>
+route-agents        $50 <span class="d">(770×)</span>
+output-trim         $43 <span class="d">(413×)</span>
+guards            $8.88 <span class="d">(74×)</span>
+
+<span class="b">By profile</span>
+claude-work     saved $227  <span class="d">spent $671</span>
+claude-personal saved $52  <span class="d">spent $148</span>
+
+<span class="toast">Refresh <span class="d">(r)</span></span></pre></div></div>
+
+<div class="scene" id="mods-status" style="--w:1120px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>~/code/acme-web — claude</span></div><pre><span class="d">❯</span> /mods
+
+my-mods · profile claude-work · data in ~/.claude-mods
+  budget-guard     0.13.1  route auto · Opus effort ≤ medium · compact at 200k · session $3.84  /budget
+  lean-tools       0.5.1   caps on · nudges on · active this session  /lean
+  lsp-first        0.5.1   guide on · nudges on · active this session  /lsp-first
+  no-attribution   0.3.1   guarding · git hooks on  /no-attribution
+  timesheet        0.3.5   launcher ok  /timesheet
+  usage-analytics  0.9.2   recording · dashboard on :8787 · import every 30m · advisor on demand  /analytics
+  today: $36.40 across profiles (budget-guard ledgers)
+  dashboard: http://127.0.0.1:8787/ (0.9.2)</pre></div></div>
+
+<div class="scene" id="mods-toast" style="--w:1060px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>~/code/acme-web — claude</span></div><pre><span class="o b">✻ Welcome to Claude Code</span>
+
+<span class="toast">Updated budget-guard 0.13.1: On a LiteLLM gateway the band shows the key's spend over the last 24 hours and 7 days (`· 24h $x · 7d $y`), also in `/budget` (/mods changes)</span>
+
+<span class="rule"></span><span class="d">❯</span> <span class="cur"></span></pre></div></div>
+
+<div class="scene" id="lean-cap" style="--w:1060px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>~/code/acme-web — claude</span></div><pre><span class="g">⏺</span> <span class="b">Bash</span>(find src -name "*.tsx" | xargs grep -l "useCart")
+  <span class="d">⎿</span>  src/cart/CartDrawer.tsx
+     src/cart/MiniCart.tsx
+     src/checkout/Summary.tsx
+     <span class="d">…</span>
+     src/search/QuickAdd.tsx
+     <span class="y">[lean-tools: output was 1284 lines / 61840 bytes; showing first 150 and last 80 lines. Full output: /tmp/lean-tools.Xr4q2 (grep or sed -n it for more)]</span>
+
+<span class="g">⏺</span> Too many hits to read one by one. Narrowing to the files that call the hook, not just import it:
+
+<span class="g">⏺</span> <span class="b">Bash</span>(grep -n "useCart(" /tmp/lean-tools.Xr4q2 | head -20)
+<span class="rule"></span><span class="y">lean-tools: that whole-file read added ~18k tokens that every later call re-reads. Next time locate the part first (grep -n, or LSP documentSymbol for TS/JS) and Read with offset/limit.</span></pre></div></div>
+
+<div class="scene" id="lsp-first" style="--w:1060px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>~/code/design-system — claude</span></div><pre><span class="g">⏺</span> <span class="b">LSP</span>(findReferences · src/DatePicker/keyboard.ts:14:17 handleKey)
+  <span class="d">⎿</span>  Found 6 references in 3 files
+     src/DatePicker/DatePicker.tsx:88:9
+     src/DatePicker/DatePicker.tsx:131:21
+     src/DatePicker/keyboard.ts:14:17
+     src/DatePicker/keyboard.test.ts:9:12, 27:12, 44:12
+
+<span class="g">⏺</span> <span class="b">Read</span>(src/DatePicker/DatePicker.tsx · lines 80–140)
+  <span class="d">⎿</span>  Read 61 lines
+
+<span class="g">⏺</span> handleKey is called from two places in DatePicker: the grid's onKeyDown and the input's. Both pass the focused date, so the fix belongs in handleKey.</pre></div></div>
+
+<script>
+  const s = new URLSearchParams(location.search).get('s') || 'band-gateway'
+  document.getElementById(s)?.classList.add('on')
+</script>
+</body>
+</html>

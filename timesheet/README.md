@@ -8,6 +8,10 @@ NetSuite-ready timesheets built from your AI coding sessions (Claude Code, OpenC
 - **Cached:** past days are computed once and cached in SQLite (`~/.timesheet/db.sqlite`). Days with errors, unclassified repos or a failed classification stay *partial* and are recomputed.
 - **Three front-ends over one core:** CLI, a local web app (timesheet, Loam Scheduler calendar, settings, setup wizard), and a Claude Code mod (`/timesheet` plus the skill).
 
+![The week view](../docs/images/timesheet/week-view.png)
+
+More screenshots: [docs/timesheet.md](../docs/timesheet.md#the-web-app).
+
 ## Install
 
 Requirements: Node.js ≥ 22.18, git. Optional: the `claude` CLI (classification and summaries) and Google Calendar.

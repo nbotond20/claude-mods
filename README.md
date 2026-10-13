@@ -13,6 +13,15 @@ Claude Code mods (function-hook plugins), shipped as the marketplace **`my-mods`
 | *`/mods`* | One place for all of them: status, a combined setup, doctor, what changed, pause, update, install, uninstall | [docs/mods.md](docs/mods.md) |
 | *Mod impact* | Each mod leaves a random holdout of sessions untouched; `/analytics impact` says whether it saves money or costs more | [docs/mod-impact.md](docs/mod-impact.md) |
 
+![The usage-analytics dashboard](docs/images/usage-analytics/overview.png)
+
+| | |
+| --- | --- |
+| ![budget-guard's band above the prompt](docs/images/budget-guard/band-gateway.png) **budget-guard**: spend, context, subagents and savings above the prompt | ![The timesheet week view](docs/images/timesheet/week-view.png) **timesheet**: a NetSuite-ready week from your sessions and commits |
+| ![Mod impact](docs/images/usage-analytics/impact.png) **Mod impact**: each mod against its holdout | ![/mods status](docs/images/mods/mods-status.png) **`/mods`**: every mod's state in one place |
+
+The screenshots use generated demo data ([scripts/demo](scripts/demo/README.md)).
+
 ## Install
 
 Requires Claude Code with mod support, **python3** (standard library only) for usage-analytics and **Node 22.18+** for timesheet. The installer says how to get either when it is missing.

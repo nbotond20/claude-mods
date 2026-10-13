@@ -4,6 +4,8 @@ Makes tool output smaller and round trips fewer. Every tool call re-sends the wh
 
 Source: `lean-tools/hooks/register.ts`. Tests: `lean-tools/tests/`.
 
+![A capped Bash result: head and tail kept, the full output saved to a log the model can grep, and a nudge after a whole-file read](images/lean-tools/capped-output.png)
+
 ## What it does
 
 | Hook | Behaviour |
