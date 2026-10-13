@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.2
+- The band's LiteLLM `24h` and `7d` now match LiteLLM's UI: whole synced days only, today left out. `24h` is yesterday's spend and `7d` the six days before today, so the band and LiteLLM's "Last 24 hours" and "Last 7 days" show the same numbers. The 10-minute key readings (`key-history/`) are no longer taken; old files can be deleted.
+- Docs: screenshots of the band, the new-task hold and the savings pane.
+
 ## 0.13.1
 - On a LiteLLM gateway the band shows the key's spend over the last 24 hours and 7 days (`· 24h $x · 7d $y`), also in `/budget`. 24h is marked `~` while it is estimated from per-day figures (until a day of 10-minute readings exists).
 - `bin/mods install` asks which mods to install when run in a terminal (Enter = all); `--except a,b` skips some, `--only` and `--yes` skip the question.

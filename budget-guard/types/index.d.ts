@@ -26,9 +26,9 @@ export type Context = { tokens: number; window: number; percent: number }
 export type Spend = { spend: number; baseline: number; maxBudget: number | null; resetAt: string | null; at: number; error: string | null
   /** spend per day this month (LiteLLM /user/daily/activity), when the gateway serves it */
   byDay?: Record<string, number>
-  /** spend over the last 24 hours: exact from key snapshots, else estimated from byDay (exact false) */
-  last24h?: { usd: number; exact: boolean }
-  /** spend over the last 7 days, today included (byDay) */
+  /** "last 24 hours" as LiteLLM's UI shows it: yesterday's spend (byDay; today is not synced yet) */
+  last24h?: number
+  /** "last 7 days" as LiteLLM's UI shows it: the six days before today (byDay) */
   last7d?: number }
 
 /** The model and effort the first prompt chose for the main loop. */

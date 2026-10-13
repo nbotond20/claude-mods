@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.6
+- Docs: screenshots of the web app (week, month, block details, submission preview, calendar, settings) and CLI examples, from generated demo data (`scripts/demo`).
+
 ## 0.3.5
 - `bin/mods install` asks which mods to install when run in a terminal (Enter = all); `--except a,b` skips some, `--only` and `--yes` skip the question.
 - Docs: an "On by default" table, the full config reference (history import, classifier, calendar and submit keys) and `submit week`; test fixtures anonymized.

@@ -17,7 +17,7 @@ On a Claude subscription the money is API-equivalent (`≈`) and the plan's 5-ho
 - either LiteLLM key spend (gateway profiles) or the 5h/7d plan limits;
   on a gateway the band reads `LiteLLM +$a · 24h $b · 7d $c · key $d/h`:
   - `+$a` is how much the key's total grew during this session;
-  - `24h` and `7d` are the key's spend over the last 24 hours and the last 7 days. `7d` sums LiteLLM's per-day spend. `24h` is the key total now minus the reading from a day ago. Until a day of readings exists, it is estimated from per-day figures and shown with a `~`;
+  - `24h` and `7d` match LiteLLM's UI ("Last 24 hours", "Last 7 days"), which counts whole synced days only: `24h` is yesterday's spend and `7d` the six days before today, both from LiteLLM's per-day spend. Today's spend is in `+$a` and the day gauge;
   - `key $d/h` is the key's burn rate over the last 20 minutes. It counts every session and tool using that key, not only this one;
 - context tokens, with `compacts ~200k`: the mod's `compactAt`, or `autoCompactWindow` when that is lower;
 - live subagents with the model each one actually runs on, and background tasks.
@@ -113,7 +113,6 @@ Session limits (`limits` in config.json overrides them): `warn 150k · block 300
 | `<mods home>/budget-guard/budgets.json` | `{ profiles: { "<profile>": { daily: 25, monthly: 500 } } }` (set by `/budget setup` or `/budget daily|monthly`) |
 | `<mods home>/budget-guard/sessions/<profile>-<session>.json` | Per-session ledger: day, profile, spend, and savings by category. The dashboard's Savings tab reads these. |
 | `<mods home>/budget-guard/config.json` | What every session starts from: `holdout` (0.1, see /budget holdout), `limits` (overrides of the defaults below, e.g. `{ "route": false, "block": 400000 }`), `opusMaxEffort` (`medium`; `max` means no cap), `compactAt` (200000; 0 leaves compaction to the engine), `litellm` (`auto`: poll LiteLLM key spend on a gateway and stop if it has no `/key/info`; `on` keeps trying; `off`). `/budget setup` writes it; the file is created with the defaults on first start. |
-| `<mods home>/budget-guard/key-history/<profile>.json` | A reading of the LiteLLM key's total spend every 10 minutes, kept for 8 days. The band's exact `24h` figure comes from it. Readings above the current total are dropped (the key's budget was reset). |
 | `<mods home>/budget-guard/key-baselines.json` | LiteLLM key spend at period starts: the fallback for the daily and monthly gauges when the gateway has no `/user/daily/activity` (normally the gauges use LiteLLM's per-day spend). |
 | `$TMPDIR/budget-guard.*` | Full logs of trimmed commands. |
 

@@ -335,13 +335,15 @@ describe('budget-guard', () => {
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
     await $.session.measure({ context: { tokens: 40_000, window: 1_000_000, percent: 4 }, rateLimits: [], cost: { usd: 1 }, changed: ['context', 'cost'] } as any)
     await $.command.run({ command: 'budget', args: 'refresh' } as any)
-    // No reading from a day ago yet: 24h is today plus the second half of yesterday, marked as an estimate.
-    expect(await band()).toMatch(/24h ~\$4\.00 · 7d \$16\b/)
+    // As LiteLLM's UI counts them: 24h is yesterday, 7d the six days before today; today (not synced yet) and 10-05 are out.
+    expect(await band()).toMatch(/24h \$4\.00 · 7d \$14\b/)
 
-    // With a reading from a day ago, 24h is exact.
-    files.set('/.claude-mods/budget-guard/key-history/claude.json', JSON.stringify([{ t: now - 86_400_000 - 60_000, spend: 50 }]))
+    // The figures a real LiteLLM UI showed for these days: $46.50 last 24 hours, $122.46 last 7 days.
+    Object.assign(byDay, { '2026-10-06': 92.75, '2026-10-07': 19.01, '2026-10-08': 46.84, '2026-10-09': 10.07, '2026-10-10': 0.03, '2026-10-11': 0.01, '2026-10-12': 46.5, '2026-10-13': 1.16 })
+    delete byDay['2026-10-05']
     await $.command.run({ command: 'budget', args: 'refresh' } as any)
-    expect(await band()).toMatch(/24h \$7\.50 · 7d \$16\b/)
+    expect(await band()).toMatch(/24h \$47 · 7d \$122\b/)
+    expect([...files.keys()].some(k => k.includes('key-history'))).toBe(false)
   })
 
   test('in the holdout the cost levers are off (the effort cap stays) and every action is logged for comparison', async ($, on) => {

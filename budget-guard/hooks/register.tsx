@@ -978,46 +978,18 @@ async function loadHistory($: EngineInterface): Promise<History> {
 
 async function refreshSpend($: EngineInterface) {
   const s = await fetchLiteLLM($).catch(() => null)
-  if (s && !s.error) Object.assign(s, await spendWindows($, s).catch(() => ({})))
+  if (s && !s.error) Object.assign(s, spendWindows(s))
   await update($, litellm, prev => (s && prev && !prev.error && !s.error ? { ...s, baseline: prev.baseline } : s))
 }
 
-const SNAPSHOT_MS = 10 * 60_000
-
 /**
- * Spend over the last 24 hours and 7 days. The key only reports a lifetime total, so each profile keeps
- * a reading every 10 minutes for 8 days (<mods home>/budget-guard/key-history/<profile>.json); 24h is the
- * total now minus the reading from a day ago. Until a day of readings exists (or after the key's budget
- * reset its total), 24h is estimated from LiteLLM's per-day figures: today plus the part of yesterday
- * still inside the window. 7 days is the sum of the last 7 days of those figures.
+ * Spend over the last 24 hours and 7 days as LiteLLM's UI counts them: whole days only, today left out
+ * until it is synced. 24h is yesterday; 7d is the six days before today (the 7-day window up to today).
  */
-async function spendWindows($: EngineInterface, s: Spend): Promise<Pick<Spend, 'last24h' | 'last7d'>> {
-  const now = s.at
-  const path = `${await modsHome($)}/budget-guard/key-history/${await profileName($)}.json`
-  let hist: { t: number; spend: number }[] = []
-  try {
-    hist = JSON.parse(String(await $.fs.read(path)))
-  } catch {
-    // no readings yet
-  }
-  const last = hist[hist.length - 1]
-  if (!last || now - last.t >= SNAPSHOT_MS || s.spend < last.spend) {
-    hist = [...hist.filter(h => now - h.t <= 8 * DAY_MS && h.spend <= s.spend), { t: now, spend: s.spend }]
-    await $.fs.write(path, JSON.stringify(hist))
-  }
-
-  const out: Pick<Spend, 'last24h' | 'last7d'> = {}
-  const dayAgo = hist.filter(h => h.t <= now - DAY_MS).pop()
-  if (dayAgo && now - dayAgo.t <= DAY_MS + 2 * SNAPSHOT_MS) out.last24h = { usd: s.spend - dayAgo.spend, exact: true }
-  if (s.byDay) {
-    const today = localDay(now)
-    const day = (back: number) => s.byDay![localDay(now - back * DAY_MS)] ?? 0
-    const midnight = Date.parse(`${today}T00:00:00`)
-    const elapsed = Number.isFinite(midnight) ? Math.min(1, Math.max(0, (now - midnight) / DAY_MS)) : 0.5
-    out.last24h ??= { usd: day(0) + day(1) * (1 - elapsed), exact: false }
-    out.last7d = [0, 1, 2, 3, 4, 5, 6].reduce((a, back) => a + day(back), 0)
-  }
-  return out
+function spendWindows(s: Spend): Pick<Spend, 'last24h' | 'last7d'> {
+  if (!s.byDay) return {}
+  const day = (back: number) => s.byDay![localDay(s.at - back * DAY_MS)] ?? 0
+  return { last24h: day(1), last7d: [1, 2, 3, 4, 5, 6].reduce((a, back) => a + day(back), 0) }
 }
 
 async function isGateway($: EngineInterface) {
@@ -1652,7 +1624,7 @@ export const register: Register = on => {
         `session cost ${cost == null ? 'n/a' : usd(cost)}  saved this session ~${usd(savedNow)}  (/budget savings for history)`,
         ...(hubPaused() ? [`PAUSED ${hubPausedUntil() === Infinity ? 'for this session' : `until ${hubClock(hubPausedUntil())}`}: levers, effort cap and compaction step aside (/budget resume)`] : []),
         trackOn() ? 'impact: this session is in the active arm (/analytics impact compares it with the holdout)' : 'impact: this session is in the HOLDOUT arm: cost levers are off so their effect can be measured (/budget route auto etc. still work)',
-        s ? (s.error ? `LiteLLM: ${s.error}` : `LiteLLM this session +${usd(s.spend - s.baseline)}${s.last24h ? `, last 24h ${s.last24h.exact ? '' : '~'}${usd(Math.max(0, s.last24h.usd))}` : ''}${s.last7d !== undefined ? `, last 7 days ${usd(s.last7d)}` : ''}, key total ${usd(s.spend)}${s.maxBudget ? ` / ${usd(s.maxBudget)}` : ' (no max_budget set)'}${s.resetAt ? `, resets ${s.resetAt.slice(0, 10)}` : ''}`) : 'LiteLLM: not in use',
+        s ? (s.error ? `LiteLLM: ${s.error}` : `LiteLLM this session +${usd(s.spend - s.baseline)}${s.last24h !== undefined ? `, last 24h ${usd(s.last24h)}` : ''}${s.last7d !== undefined ? `, last 7 days ${usd(s.last7d)}` : ''}, key total ${usd(s.spend)}${s.maxBudget ? ` / ${usd(s.maxBudget)}` : ' (no max_budget set)'}${s.resetAt ? `, resets ${s.resetAt.slice(0, 10)}` : ''}`) : 'LiteLLM: not in use',
       ].join('\n'),
     }
   })
@@ -1709,7 +1681,7 @@ export const register: Register = on => {
       pay = (
         <Text color={sOver >= 0.9 ? 'red' : sOver >= 0.7 ? 'yellow' : undefined}>
           LiteLLM +{usd(s.spend - s.baseline)}
-          {s.last24h ? ` · 24h ${s.last24h.exact ? '' : '~'}${usd(Math.max(0, s.last24h.usd))}` : ''}
+          {s.last24h !== undefined ? ` · 24h ${usd(s.last24h)}` : ''}
           {s.last7d !== undefined ? ` · 7d ${usd(s.last7d)}` : ''}
           {keyRate !== null ? ` · key ${usd(Math.max(0, keyRate))}/h` : ''}
           {s.maxBudget ? ` · ${Math.round(100 * sOver)}% of ${usd(s.maxBudget)}` : ''}
