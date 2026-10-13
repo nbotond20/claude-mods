@@ -238,6 +238,23 @@ h2.sec small { color: var(--muted); font-weight: normal; font-size: 12px; }
 .rec-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 12px; margin-top: -4px; }
 .rec-sub > span:not(.scope) + span:not(.scope)::before { content: "·"; margin-right: 8px; color: var(--faint); }
 .rec-sub .scope { padding: 0 7px; border-radius: 5px; background: var(--panel2); border: 1px solid var(--line2); font-size: 11px; line-height: 18px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-kpis { margin-bottom: 4px; }
+table.rc { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.rc th { text-align: left; cursor: pointer; user-select: none; white-space: nowrap; padding: 6px 9px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--panel2); }
+table.rc th.num, table.rc td.num { text-align: right; font-variant-numeric: tabular-nums; }
+table.rc th.on::after { content: ' ▾'; } table.rc th.on.asc::after { content: ' ▴'; }
+table.rc td { padding: 6px 9px; border-bottom: 1px solid var(--line2); vertical-align: top; }
+table.rc tr.rc-row { cursor: pointer; } table.rc tr.rc-row:hover td { background: var(--panel2); }
+table.rc td.ask { max-width: 520px; } table.rc td.ask .t { font-weight: 600; } table.rc td.ask small { display: block; color: var(--muted); font-size: 11px; }
+.rc-wrap { border: 1px solid var(--line2); border-radius: 10px; background: var(--panel); overflow-x: auto; }
+.rc-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 12px 14px; background: var(--panel2); }
+@media (max-width: 800px) { .rc-detail { grid-template-columns: 1fr; } }
+.rc-detail h5 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); }
+.rc-detail ul { margin: 0; padding-left: 16px; } .rc-detail li { margin: 2px 0; }
+.rc-detail pre { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; padding: 8px 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--panel); font-size: 12px; }
+.rc-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; grid-column: 1 / -1; }
+.rc-actions .btn { font-size: 12px; padding: 3px 9px; }
+
 .rstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); border: 1px solid var(--line2); border-radius: 8px; background: var(--panel2); overflow: hidden; }
 .rstat { padding: 8px 12px; min-width: 0; border-left: 1px solid var(--line2); }
 .rstat:first-child { border-left: 0; }
@@ -487,6 +504,7 @@ const ICON = {
   health: I('<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>'),
   engine: I('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>'),
   advisor: I('<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2V16h5v-.2c.1-.8.5-1.5 1.1-2A6 6 0 0 0 12 3z"/>'),
+  recurring: I('<path d="M17 2l3 3-3 3"/><path d="M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3"/><path d="M20 13v2a4 4 0 0 1-4 4H4"/>'),
   impact: I('<path d="M3 20h18M6 16l4-5 3 3 5-7"/><path d="M15 7h3v3"/>'),
   savings: I('<path d="M5 11a7 6 0 0 1 13-2h2v4h-2a7 6 0 0 1-3 3v3h-3v-2h-3v2H6v-3.5A6 6 0 0 1 5 11z"/>'),
   sql: I('<ellipse cx="12" cy="5.5" rx="7.5" ry="2.8"/><path d="M4.5 5.5v13c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8v-13M4.5 12c0 1.5 3.4 2.8 7.5 2.8s7.5-1.3 7.5-2.8"/>'),
@@ -809,7 +827,7 @@ function toggleMax(P) {
 $('#scrim').onclick = () => maxed && toggleMax(maxed)
 
 // ---------- tabs ----------
-const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context']], ['Work', ['tools', 'agents', 'projects', 'prompts']], ['Quality', ['health', 'engine']], ['Improve', ['advisor', 'impact', 'savings']], ['Data', ['sql']]]
+const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context']], ['Work', ['tools', 'agents', 'projects', 'prompts']], ['Quality', ['health', 'engine']], ['Improve', ['advisor', 'recurring', 'impact', 'savings']], ['Data', ['sql']]]
 const TABS = {
   live: { label: 'Live', sub: 'right now, pushed as you work', custom: renderLive, live: true, noKpis: true, filters: ['profiles'] },
   overview: { label: 'Overview', sub: 'spend, efficiency and where it goes', panels: [
@@ -896,6 +914,7 @@ const TABS = {
     { title: 'Mod events', q: 'mod_events', kind: 'table' },
   ] },
   advisor: { label: 'Advisor', sub: 'how to use Claude cheaper, leaner, faster and more reliably, and whether each change worked', custom: renderAdvisor, noKpis: true, filters: ['period', 'profiles'] },
+  recurring: { label: 'Recurring asks', sub: 'the prompts you keep typing, and which could be automated', custom: renderRecurring, noKpis: true, filters: ['period', 'profiles'] },
   impact: { label: 'Mod impact', sub: 'are the mods saving money or costing more?', custom: renderImpact, noKpis: true, filters: ['period', 'profiles'] },
   savings: { label: 'Savings', sub: 'what budget-guard’s levers avoided', custom: renderSavings, noKpis: true, filters: [] },
   sql: { label: 'SQL', sub: 'read-only console on the database', custom: renderSql, noKpis: true, quiet: true, filters: [] },
@@ -1313,6 +1332,96 @@ async function renderAdvisor(view) {
     renderAdvisor(view)
   })
   view.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => navigator.clipboard.writeText(b.dataset.copy).then(() => toast('Copied: ' + b.dataset.copy), () => toast(b.dataset.copy)))
+  status()
+}
+
+async function renderRecurring(view) {
+  view.innerHTML = `<p class="tabnote">Prompts you typed three or more times, on at least two days, grouped by meaning without a model: paths, numbers, branch names and quoted text are ignored, so
+    “fix CI on feat/a” and “why did CI fail on fix/b” are one ask. Each gets a score for how automatable it looks (how often, how steadily, how stable the wording, what it costs).
+    Run <code>/analytics recurring classify</code> in Claude Code to have a model name each one and draft a skill, hook, slash command or CLAUDE.md rule; mark it automated and the table shows whether it stopped.
+    Prompts are redacted before they are stored and again before any are shown to a model.</p><div class="skel"></div>`
+  teardown()
+  $('#status').textContent = 'Loading…'
+  const d = await api('/api/recurring')
+  view.querySelector('.skel')?.remove()
+  const color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#888'
+  const stat = (label, value, sub) => `<div class="kpi"><small>${label}</small><b>${value}</b><span class="delta">${sub || '&nbsp;'}</span></div>`
+  const live = d.clusters.filter(c => c.status !== 'dismissed')
+  const auto = d.clusters.filter(c => c.status === 'automated')
+  const saved = d.clusters.reduce((a, c) => a + (c.status === 'new' && c.label?.estUsdMonth || 0), 0)
+  view.insertAdjacentHTML('beforeend', `<div class="kpis rc-kpis">
+    ${stat('Recurring asks', big(d.clusterCount), `${big(d.recurring)} prompts`)}
+    ${stat('Share of prompts', Math.round(100 * d.recurringShare) + '%', `${big(d.prompts - d.recurring)} one-off`)}
+    ${stat('Per month', big(Math.round(d.perMonth)), 'prompts you could skip')}
+    ${stat('Their cost', usd(d.costPerMonth), 'per month, est.')}
+    ${stat('Automated', big(auto.length), saved ? `${usd(saved)}/month still open` : 'marked by you')}
+  </div>`)
+  if (!d.clusters.length) {
+    view.insertAdjacentHTML('beforeend', `<div class="insights"><div class="insight"><span>No ask came up ${d.params.minCount}+ times on ${d.params.minDays}+ days in this period. Try a longer period.</span></div></div>`)
+    status(); return
+  }
+  const STATUS = { new: 'New', automated: 'Automated', dismissed: 'Dismissed' }
+  const EFF = { stopped: ['good', 'stopped'], dropped: ['good', 'dropped'], unchanged: ['bad', 'unchanged'], 'too early': ['', 'too early'], 'no baseline': ['', 'no baseline'] }
+  const cols = [['title', 'Ask', 0], ['count', 'Times', 1], ['days', 'Days', 1], ['perMonth', '/month', 1], ['costPerMonth', '$/month', 1], ['score', 'Score', 1], ['last', 'Last', 0], ['st', 'Status', 0]]
+  const view_ = { key: 'score', asc: false, show: 'open' }
+  const title = c => c.label?.title || c.exemplar
+  const val = (c, k) => k === 'title' ? title(c).toLowerCase() : k === 'last' ? c.lastSeen : k === 'st' ? c.status : c[k]
+  view.insertAdjacentHTML('beforeend', `<h2 class="sec">Asks <small>click a row for samples, the draft and the status buttons</small></h2>
+    <div class="filters" style="margin-bottom:8px"><button class="btn" data-show="open">Open</button><button class="btn" data-show="all">All</button><button class="btn" data-show="automated">Automated</button><button class="btn" data-show="dismissed">Dismissed</button></div>
+    <div class="rc-wrap"><table class="rc"><thead></thead><tbody></tbody></table></div>`)
+  const thead = view.querySelector('table.rc thead'), tbody = view.querySelector('table.rc tbody')
+  const detail = c => {
+    const L = c.label, A = L?.automation, e = c.effect
+    const btn = (st, label, kind = '') => `<button class="btn ${kind}" data-id="${esc(c.id)}" data-st="${st}">${label}</button>`
+    return `<tr class="rc-detail-row" data-for="${esc(c.id)}" hidden><td colspan="${cols.length}" style="padding:0"><div class="rc-detail">
+      <div><h5>Samples</h5><ul>${c.samples.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+        <h5 style="margin-top:10px">Per week</h5>${spark(c.weekly, color, d.weeks.map(w => 'week of ' + w), 'num') || '<small>too short for a trend</small>'}
+        <small>${esc(c.reason)}. In ${c.sessions} sessions${c.projects.length ? ': ' + c.projects.slice(0, 3).map(p => esc(String(p[0]).split('/').filter(Boolean).pop() || p[0]) + ' ×' + p[1]).join(', ') : ''}.</small>
+        ${e ? `<p style="margin:8px 0 0"><span class="tagv ${(EFF[e.verdict] || [''])[0]}">${(EFF[e.verdict] || ['', e.verdict])[1]}</span> ${e.beforePerWeek}/week before ${esc(e.at)}, ${e.afterPerWeek}/week since (${e.afterDays} days)</p>` : ''}</div>
+      <div>${L ? `<h5>${esc(L.category || '')} · ${esc(A?.kind || 'none')}${L.estPromptsMonth ? ` · saves ~${big(Math.round(L.estPromptsMonth))} prompts, ~${usd(L.estUsdMonth)}/month` : ''}</h5><p style="margin:0 0 8px">${esc(L.rationale || '')}</p>
+        ${A?.draft ? `<h5>Draft</h5><pre>${esc(A.draft)}</pre>` : ''}`
+        : `<h5>Not labelled yet</h5><p style="margin:0">Run <code>/analytics recurring classify</code> in Claude Code to get a title, a category and a draft for this ask.</p>`}</div>
+      <div class="rc-actions">${A?.draft ? `<button class="btn primary" data-copy-draft="${esc(c.id)}">Copy draft</button>` : ''}${c.status === 'automated' ? btn('new', 'Reopen', 'ghost') : btn('automated', 'Mark automated', 'primary')}${c.status === 'dismissed' ? btn('new', 'Reopen', 'ghost') : btn('dismissed', 'Dismiss', 'ghost')}
+        <button class="btn ghost" data-copy="/analytics recurring show ${esc(c.id)}">Copy show</button></div>
+    </div></td></tr>`
+  }
+  const draw = () => {
+    thead.innerHTML = '<tr>' + cols.map(([k, l, n]) => `<th class="${n ? 'num' : ''} ${view_.key === k ? 'on' + (view_.asc ? ' asc' : '') : ''}" data-k="${k}">${l}</th>`).join('') + '</tr>'
+    const rows = d.clusters.filter(c => view_.show === 'all' ? true : view_.show === 'open' ? c.status !== 'dismissed' : c.status === view_.show)
+      .sort((a, b) => { const x = val(a, view_.key), y = val(b, view_.key); return (x < y ? -1 : x > y ? 1 : 0) * (view_.asc ? 1 : -1) })
+    tbody.innerHTML = rows.map(c => `<tr class="rc-row" data-id="${esc(c.id)}"><td class="ask"><span class="t">${esc(title(c))}</span><small>${c.label ? esc(c.label.category || '') + (c.label.automation?.kind && c.label.automation.kind !== 'none' ? ' · ' + esc(c.label.automation.kind.replace(/_/g, ' ')) : '') : esc(c.reason)}</small></td>
+      <td class="num">${big(c.count)}</td><td class="num">${c.days}</td><td class="num">${c.perMonth}</td><td class="num">${usd(c.costPerMonth)}</td><td class="num">${Math.round(c.score)}</td><td>${esc(c.lastSeen)}</td>
+      <td><span class="tagv ${c.status === 'automated' ? 'good' : ''}">${STATUS[c.status] || esc(c.status)}</span></td></tr>${detail(c)}`).join('') || `<tr><td colspan="${cols.length}"><small>Nothing here.</small></td></tr>`
+    view.querySelectorAll('[data-show]').forEach(b => b.classList.toggle('primary', b.dataset.show === view_.show))
+  }
+  view.onclick = async ev => {
+    const t = ev.target
+    if (t.closest('th[data-k]')) { const k = t.closest('th').dataset.k; view_.asc = view_.key === k ? !view_.asc : k === 'title'; view_.key = k; draw(); return }
+    if (t.dataset.show) { view_.show = t.dataset.show; draw(); return }
+    if (t.dataset.copy) return navigator.clipboard.writeText(t.dataset.copy).then(() => toast('Copied: ' + t.dataset.copy), () => toast(t.dataset.copy))
+    if (t.dataset.copyDraft) {
+      const c = d.clusters.find(x => x.id === t.dataset.copyDraft)
+      return navigator.clipboard.writeText(c?.label?.automation?.draft || '').then(() => toast('Draft copied'), () => toast('Copy failed'))
+    }
+    if (t.dataset.st) {
+      t.disabled = true
+      const r = await fetch('/api/recurring/status', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: t.dataset.id, status: t.dataset.st, days: +state.days || 0 }) })
+      const j = await r.json()
+      if (!r.ok) { toast(j.error || 'failed'); t.disabled = false; return }
+      toast(`${t.dataset.id}: ${j.status}`)
+      renderRecurring(view)
+      return
+    }
+    const row = t.closest('tr.rc-row')
+    if (row) { const det = tbody.querySelector(`tr.rc-detail-row[data-for="${row.dataset.id}"]`); if (det) det.hidden = !det.hidden }
+  }
+  draw()
+  if (d.retired?.length) view.insertAdjacentHTML('beforeend', `<div class="insights">${d.retired.map(x => `<div class="insight good"><span><b>${esc(x.title || x.id)}</b>: marked automated ${esc(String(x.statusAt || '').slice(0, 10))} and no longer shows up as a recurring ask.</span></div>`).join('')}</div>`)
+  const grid = document.createElement('div'); grid.className = 'grid'
+  view.insertAdjacentHTML('beforeend', '<h2 class="sec">Over time</h2>'); view.appendChild(grid)
+  fill(makePanel({ title: 'Recurring vs one-off prompts per week', kind: 'stacked', x: 'week', series: 'kind', y: 'prompts', wide: true,
+    note: 'Recurring prompts are the ones in the asks above; a falling blue share means asks are being automated away.' }, grid),
+    { cols: ['week', 'kind', 'prompts'], rows: d.weeks.flatMap((w, i) => [[w, 'recurring', d.weeklyRecurring[i]], [w, 'one-off', Math.max(0, d.weeklyAll[i] - d.weeklyRecurring[i])]]) })
   status()
 }
 

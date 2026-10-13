@@ -410,6 +410,7 @@ def watch(db, ingest, live, live_dir, fallback_s=20, trailer_s=3):
 
 
 def make_handler(db, html_path, coster, ingest, live=None, version=None):
+    recur = {}    # (live version, filters) -> the recurring asks report
     advice = {}   # (live version, days, profiles) -> the advisor's page; it takes seconds to compute
 
     def ro():
@@ -504,6 +505,21 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
                             finally:
                                 a.close()
                         return self.send(200, advice[key])
+                    if u.path == '/api/recurring':
+                        import recurring
+                        g = lambda k, d='': (qs.get(k) or [d])[0] or d
+                        days = int(g('days', '90') or 90)
+                        profiles = [v for v in g('profile').split(',') if v]
+                        key = (live.version if live else time.time() // 60, days, g('from'), g('to'), tuple(profiles), g('project'))
+                        if key not in recur:
+                            a = recurring.adb(os.path.dirname(db))
+                            try:
+                                recur.clear()
+                                recur[key] = recurring.report(con, a, days=days, profiles=profiles or None, project=g('project') or None,
+                                                              since=g('from') or None, until=g('to') or None)
+                            finally:
+                                a.close()
+                        return self.send(200, recur[key])
                     if u.path == '/api/batch':
                         names = [n for n in (qs.get('q') or [''])[0].split(',') if n in Q]
                         return self.send(200, {n: query(con, n, qs) for n in names})
@@ -567,6 +583,18 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
                         advisor.set_status(con, a, str(req.get('id', '')), str(req.get('status', '')), req.get('note') or None)
                         advice.clear()
                         return self.send(200, {'ok': True, 'rec': dict(a.execute('SELECT id, status, verdict FROM recs WHERE id = ?', (req.get('id'),)).fetchone() or {})})
+                    finally:
+                        a.close()
+                        con.close()
+                if u.path == '/api/recurring/status':
+                    import recurring
+                    req = json.loads(body or b'{}')
+                    con, a = ro(), recurring.adb(os.path.dirname(db))
+                    try:
+                        r = recurring.set_status(con, a, str(req.get('id', '')), str(req.get('status', '')), req.get('note') or None,
+                                                 days=int(req.get('days') or 90))
+                        recur.clear()
+                        return self.send(200, {'ok': True, **r})
                     finally:
                         a.close()
                         con.close()

@@ -101,6 +101,7 @@ On first start usage-analytics starts the dashboard server and imports every tra
 | `/dashboard [tab]` | opens the dashboard, e.g. `/dashboard live`, `/dashboard impact`. One server per machine; it is started on demand and updates live as you work. |
 | `/analytics setup` · `status` · `ingest` · `stop` | setup wizard · data status · fold in new data now · stop the dashboard |
 | `/analytics advise` · `advise bg` · `advise apply <id>` · `advise trial <id>` · `advise reproduce <id>` | research how to use Claude cheaper, leaner, faster and more reliably, from your own data, with every claim backed by a re-runnable query; apply a recommendation, or A/B-trial it on a random half of sessions; each one is measured (randomized, controlled, or before/after with a placebo check), graded A–D and gets a verdict (helped, backfired, no effect) that anyone can reproduce |
+| `/analytics recurring` · `recurring classify [bg]` · `recurring automated\|dismiss <id>` | the prompts you keep typing, found without a model; a model then names each and drafts a skill, hook, command or CLAUDE.md rule; mark one automated and the tab shows whether it stopped |
 | `/analytics impact` | are the mods saving money or costing more |
 | `/analytics digest` · `summary [--days N] [--format html] [--no-projects]` | last week against the week before (also a toast once a week) · a shareable summary file (the dashboard's Share summary button makes the same page) |
 | `/analytics [report] [--days N] [--profile P]` | terminal reports |

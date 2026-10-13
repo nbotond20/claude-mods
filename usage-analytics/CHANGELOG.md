@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.0
+- Recurring asks: a new Recurring tab and `/analytics recurring` find the prompts you keep typing (three or more times on two or more days), grouped by shared wording (no model; headless `claude -p`/SDK runs left out), with cost, trend and an automatable score. `/analytics recurring classify` (or `classify bg`) has a model draft a skill, hook, command or CLAUDE.md rule for each; mark one automated and the tab shows prompts per week before and after.
+- New `claude-usage recurring [show|brief|record|set]`, tools `recurring_brief` and `recurring_record`, a hidden `recurring` agent, and `GET /api/recurring` with `POST /api/recurring/status` on the dashboard.
+- Labels and statuses live in `recurring.db` and stay attached when the wording drifts.
+- Demo data has recurring prompt families, and the docs have a tour screenshot.
+
 ## 0.9.2
 - `bin/mods install` asks which mods to install when run in a terminal (Enter = all); `--except a,b` skips some, `--only` and `--yes` skip the question.
 - Docs: "On by default" table, every command, config key and env var.

@@ -49,6 +49,32 @@ PROMPTS = ['can you look at why the cart total flickers when quantity changes qu
            'use the existing formatMoney helper instead', 'what does the reconciliation job do, step by step?',
            'bump terraform aws provider to 6.x and fix the plan diff', 'write a short post outline about WAL mode',
            'the e2e test is flaky on CI only, find out why', 'add a GPX importer that keeps elevation data']
+
+# Asks a person types again and again, each with several wordings and a few details that change (paths, branches, numbers).
+RECURRING = [
+    ('release', 0.035, ['bump the version to {ver}, update the changelog and tag the release',
+                        'cut a release {ver}: version bump, changelog entry, tag it',
+                        'please bump version to {ver} and add a changelog entry, then tag',
+                        'prepare release {ver} - bump version, changelog, tag']),
+    ('ci', 0.03, ['check why CI failed on {branch} and fix it',
+                  'CI is red on {branch}, find out why it failed and fix it',
+                  'why did the CI run fail on branch {branch}? fix it',
+                  'look at the failing CI checks on {branch} and fix them']),
+    ('pr', 0.03, ['write the PR description for this branch',
+                  'write a PR description for {branch}, summarize the changes and the test plan',
+                  'draft the pull request description for this branch']),
+    ('tests', 0.025, ['run the tests and fix what fails',
+                      'run the test suite and fix whatever fails',
+                      'run all tests, then fix the failures']),
+    ('snap', 0.015, ['update the snapshot tests', 'the snapshots are outdated, update the snapshot tests',
+                     'update snapshots in {file} and rerun']),
+    ('lint', 0.02, ['fix the lint errors and the type errors', 'run lint and tsc and fix all errors',
+                    'fix lint and type check errors in {file}']),
+    ('changes', 0.02, ['summarize what changed since {branch}', 'summarize the changes on this branch since main',
+                       'what changed on this branch compared to main? short summary']),
+    ('dep', 0.012, ['upgrade the dependencies in {file} and fix what breaks',
+                    'bump outdated dependencies, then fix the breakage']),
+]
 FILES = {'acme-web': ['src/cart/CartLine.tsx', 'src/cart/useCart.ts', 'src/checkout/ApplePay.tsx', 'src/search/Facets.tsx', 'src/api/client.ts', 'e2e/checkout.spec.ts'],
          'billing-api': ['app/invoices/pdf.py', 'app/billing/proration.py', 'app/webhooks/sender.py', 'tests/test_proration.py', 'app/models.py'],
          'mobile-app': ['src/sync/queue.ts', 'src/push/tokens.ts', 'src/screens/Orders.tsx', 'ios/Podfile'],
@@ -138,6 +164,41 @@ def tool_call(proj, cwd, fam_main):
     return 'TodoWrite', {'todos': []}, 100
 
 
+ONE_VERB = ['add', 'remove', 'rename', 'extract', 'inline', 'memoize', 'validate', 'paginate', 'debounce', 'log', 'cache', 'sort', 'translate', 'animate',
+            'throttle', 'split', 'merge', 'document', 'benchmark', 'profile', 'harden', 'simplify', 'migrate', 'mock', 'typecheck', 'stub', 'batch', 'index']
+ONE_NOUN = ['the cart badge', 'user avatars', 'the export button', 'the settings modal', 'the invoice footer', 'search suggestions', 'the retry queue',
+            'the onboarding checklist', 'currency rounding', 'the tooltip', 'the sidebar state', 'webhook signatures', 'the CSV importer', 'dark mode colors',
+            'the pricing table', 'session timeouts', 'the audit log', 'the map markers', 'email templates', 'the upload progress bar', 'the refund flow',
+            'tax rules', 'the coupon field', 'feature flags', 'the date range filter', 'push token refresh', 'the elevation chart', 'the tag cloud',
+            'rate limit headers', 'the health endpoint', 'the nightly cleanup job', 'locale fallbacks', 'the drag handle', 'keyboard shortcuts', 'the cron parser']
+ONE_WHY = ['it flickers on first load', 'support asked for it', 'we saw timeouts in prod last week', 'the old version confuses new users',
+           'a customer reported wrong totals', 'it is slow with 10k rows', 'the design changed on Monday', 'QA found a crash on Safari',
+           'it leaks memory after a long session', 'the API now returns nulls', 'we are dropping Node 18', 'legal wants it logged',
+           'the spec says otherwise', 'it breaks the build on Windows', 'it is hard to test']
+ONE_ADJ = ['', '', 'old', 'new', 'legacy', 'shared', 'mobile', 'admin', 'public', 'cached', 'nested', 'async', 'offline', 'beta']
+ONE_AFTER = ['', '', ' for the Q4 launch', ' before the freeze', ' like we did for billing', ' for the Berlin office', ' per the RFC',
+             ' for the partner API', ' on the staging box', ' after the migration', ' for large accounts', ' with the new copy']
+ONE_FORM = ['{v} {n} in {f}, {w}', '{w}, so {v} {n} ({f})', 'can you {v} {n}? {w}', 'in {f}: {v} {n} because {w}', '{v} {n}. context: {w}',
+            'I think we should {v} {n} - {w}. look at {f} first']
+
+
+def one_off(proj):
+    return (rng.choice(ONE_FORM).format(v=rng.choice(ONE_VERB), n=(rng.choice(ONE_ADJ) + ' ' + rng.choice(ONE_NOUN)).strip(), w=rng.choice(ONE_WHY), f=rng.choice(FILES[proj])) + rng.choice(ONE_AFTER))
+
+
+def ask_text(proj, branch, t):
+    r = rng.random()
+    acc = 0.0
+    for fam, share, variants in RECURRING:
+        acc += share * 1.6
+        if r < acc:
+            if fam == 'changes' and t > NOW - timedelta(days=21):   # automated three weeks ago: the ask stopped
+                return one_off(proj)
+            return rng.choice(variants).format(ver=f'{rng.randint(1, 4)}.{rng.randint(0, 19)}.{rng.randint(0, 9)}', branch=branch,
+                                                file=rng.choice(FILES[proj]))
+    return rng.choice(PROMPTS) if r < acc + 0.08 else one_off(proj)
+
+
 def session(profile, start, proj, branch, arms, live=False):
     sid = str(uuid.UUID(int=rng.getrandbits(128)))
     cwd = f'{OUT}/code/{proj}'
@@ -170,7 +231,7 @@ def session(profile, start, proj, branch, arms, live=False):
     W.ev(profile, sid, t, 'system_prompt', model=MODEL[fam_main], chars=sum(c[1] for c in cats[:2]) * 4,
          sections=[{'id': s, 'chars': c} for s, c in [('identity', 1200), ('tone', 2600), ('tools', 6400), ('env', 900), ('claude_md', 5200), ('mods', 2100)]])
     for i in range(n_prompts):
-        text = rng.choice(PROMPTS)
+        text = ask_text(proj, branch, t)
         if i == 0 and rng.random() < 0.25:
             text = f'<command-name>/{rng.choice(["review", "budget", "analytics", "timesheet", "lean status"])}</command-name>'
         u = str(uuid.uuid4())

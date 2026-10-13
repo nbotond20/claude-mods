@@ -56,13 +56,16 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 | | |
 | --- | --- |
 | `/analytics setup` | the setup wizard |
-| `/dashboard [tab]` or `/analytics dashboard [tab]` | starts the dashboard in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, tools, agents, projects, prompts, health, engine, advisor, impact, savings, sql) |
+| `/dashboard [tab]` or `/analytics dashboard [tab]` | starts the dashboard in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, tools, agents, projects, prompts, health, engine, advisor, recurring, impact, savings, sql) |
 | `/analytics advise` (or `advise now`) | research how to use Claude cheaper, with fewer tokens, faster and more reliably, here in the conversation ([below](#the-advisor)) |
 | `/analytics advise bg` · `show` | the same research in the background · the trends, findings and recommendations in the terminal |
 | `/analytics advise apply <id>` | shows the exact change, asks before making it, and starts measuring it |
 | `/analytics advise trial <id>` | runs a recommendation that is a model instruction as an A/B trial: a random half of new sessions get it |
 | `/analytics advise applied\|accept\|dismiss\|revert <id> [note]` | record what you did with a recommendation (a dismissal's note teaches the next run) |
 | `/analytics advise reproduce <id>` | re-runs a recommendation's evidence queries and its verification, and says whether they give the same numbers |
+| `/analytics recurring [--days N] [--profile P] [--project X] [--min N]` | the prompts you keep typing, found without a model ([below](#recurring-asks)) |
+| `/analytics recurring classify` · `classify bg` | a model names each ask and drafts an automation, here in the conversation or on a background agent |
+| `/analytics recurring show <id>` · `automated\|dismiss\|reopen <id> [note]` | one ask with its samples and draft · set its status |
 | `/analytics impact [--days N] [--profile P]` | are the mods saving money or costing more ([mod-impact.md](mod-impact.md)) |
 | `/analytics digest` | last week against the week before: spend, sessions, cache hit, top project and model, new advisor suggestions. The same comes as a toast once a week (`weeklyDigest`) |
 | `/analytics summary [--days N] [--format md\|html] [--no-projects] [--out F]` | a shareable summary (totals, by day, models, project names without paths, mod verdicts; no prompts or code), saved under `<mods home>/usage-analytics/summaries/`. The dashboard's **Share summary** button opens the same page for the period on screen (shift-click: Markdown) |
@@ -72,6 +75,7 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 | `claude-usage serve [--port N] [--daemon] [--open] [--tab T] [--quiet]` · `stop [--port N]` · `status` · `impact [--days N] [--profile P] [--json]` | the same from a shell |
 | `claude-usage setup [--json]` · `autostart on\|off\|status` | what was detected · start the server at login |
 | `claude-usage digest [--line\|--json]` · `summary [--days N] [--format md\|html] [--out F\|-]` | the weekly digest · a shareable summary (`GET /api/summary?days=&format=` on the dashboard) |
+| `claude-usage recurring [show\|brief\|record FILE\|set ID STATUS] [--days N] [--min N] [--json]` | the recurring asks and their labels from a shell |
 | `claude-usage advise [show\|brief\|record\|set\|get\|reproduce\|sql\|due\|notify\|fail]` | the advisor's store from a shell |
 | `claude-usage sql "SELECT …"` · `schema` · `export TABLE --format csv\|jsonl [--out F]` · `reprice` · `scrub` · `path` | query, tables, export, recompute cost after editing `pricing.json`, redact secrets in stored data, print the data dir |
 
@@ -122,6 +126,28 @@ Confounders, meaning setting changes and other recommendations started within 7 
 The background agent can use only WebSearch, WebFetch and the mod's own four tools. The mod answers those four tools itself and never runs a shell for the agent. The agent runs with `dontAsk`, so anything else is refused instead of prompting, and it never edits files.
 
 **Where it lives.** Everything is stored in `<mods home>/usage-analytics/advisor.db`: runs, recommendations, verdict checks and research notes. Instructions on trial or adopted are in `advisor-trials.json`, which the mod reads at each new session. While one is active, it adds a short `usage-analytics:advisor` system-prompt section in that trial's 'on' sessions, and only there. `claude-usage advise show|brief|sql|set|…` reads and writes the same data from a shell.
+
+## Recurring asks
+
+Some prompts you type again and again: "bump the version and tag it", "why did CI fail on this branch", "write the PR description". Each one could be a skill, a slash command, a hook or a line in CLAUDE.md. The Recurring tab finds them.
+
+**What it finds.** Only prompts you typed in the main conversation: not subagent prompts, not slash commands, and not headless runs (`claude -p` and the SDK, such as the timesheet classifier or the advisor), which are automated already. `--headless` counts those too. No model is involved. Each prompt is cut to the part you wrote (code blocks and pasted logs dropped), then paths, URLs, numbers, ids, branch names and quoted text are removed, and the rest is lower-cased and reduced to word stems. Prompts that share at least 55% of their words are one ask, so "check why CI failed on feat/a" and "why did the CI run fail on fix/b" land together. An ask is recurring when it has at least 3 prompts on at least 2 different days (`--min`, `--min-days`). One-word replies like "continue" are left out. 50,000 prompts take a few seconds.
+
+**What you see.** Per ask: how often (times, days, per month), what it cost (every request until your next prompt), a weekly trend, a few different samples and a score from 0 to 100 for how automatable it looks, with the reason. The score rises with frequency and steadiness, and with stable wording and a low price of the prompt; long, context-heavy prompts score lower. The cards show the recurring share of all prompts and what the recurring ones cost per month. A chart splits each week into recurring and one-off prompts.
+
+![Recurring tab](images/usage-analytics/recurring.png)
+
+**Classify.** `/analytics recurring classify` has the model read the redacted samples and, for each ask, record a title, a category, an automation (`slash_command`, `skill`, `hook`, `script`, `claude_md_rule`, `mod_setting`, `scheduled_task`, or `none` when it needs judgment each time), a ready-to-save draft, a rationale and the prompts and dollars per month it would save (never more than the ask costs now). `classify bg` does the same on a hidden background agent on `advisorModel`; it starts only when you ask, and you get a toast when the labels are in. Labels are stored in `<mods home>/usage-analytics/recurring.db` and stay attached when the wording drifts.
+
+**Act on it.** Copy the draft from the dashboard row (or `/analytics recurring show <id>`), save it as a skill, command, hook or CLAUDE.md line, then mark the ask `automated` (a button in the row, or `/analytics recurring automated <id>`). From that date the tab shows prompts per week before and after, with a verdict: stopped, dropped, unchanged, or too early. An automated ask that no longer turns up is listed as gone. `dismiss` hides an ask you do not want to automate; `reopen` brings it back.
+
+| Command | What it does |
+| --- | --- |
+| `claude-usage recurring brief [--limit N] [--relabel]` | the unlabelled asks as JSON for a model |
+| `claude-usage recurring record FILE\|-` | store labels: `{summary, clusters: [{id, title, category, automation: {kind, draft}, rationale, est_prompts_month, est_usd_month}]}` |
+| `claude-usage recurring set <id> automated\|dismissed\|new [--note T] [--at ISO]` | change a status |
+
+**Privacy.** Prompt text is redacted for secrets when it is stored. The samples a model sees are clipped to 240 characters and redacted again, and a draft is redacted before it is saved. Nothing leaves the machine except what the classify run sends to the model you are already using. The ask data never goes in a request on its own.
 
 ## One server per machine, started for you
 
@@ -192,6 +218,7 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 | Health | API errors, compactions and notices per day; turn durations; recent errors; compactions. |
 | Engine | From the mod: TTFT and latency by model; tool latency; tool schema sizes; system prompt sections; rate limits; event counts. |
 | Advisor | Metric trends, findings, recommendations with their evidence grade and verdict, A/B trial controls ([above](#the-advisor)). |
+| Recurring | KPI cards, a sortable table of recurring asks (click a row for samples, weekly trend, the drafted automation with Copy, and status buttons), prompts per week before and after an ask was marked automated, and recurring vs one-off prompts per week ([above](#recurring-asks)). |
 | Mod impact | Per mod: holdout verdict, active vs holdout metrics with 95% intervals, the cost/savings ledger, nudge compliance, action counts, warnings. See [mod-impact.md](mod-impact.md). |
 | Savings | From budget-guard's ledgers: dollars saved by lever, per day against spend, and per profile. |
 | SQL | A read-only console with examples. ⌘/Ctrl+Enter runs the query. |
@@ -296,7 +323,7 @@ Environment: `CLAUDE_MODS_HOME` (above); `CLAUDE_USAGE_DIR` replaces `<mods home
 | `captureOtel` | true | also log Claude Code's own telemetry events |
 | `dashboard` | true | keep the one dashboard server running (started at session start and by `/analytics`) |
 | `port` | 8787 | dashboard port (127.0.0.1 only) |
-| `advisorModel` | `sonnet` | the model `/analytics advise bg` runs on |
+| `advisorModel` | `sonnet` | the model `/analytics advise bg` and `/analytics recurring classify bg` run on |
 | `advisorNotify` | true | toast (90s into an interactive session) when an applied recommendation gets a verdict |
 | `weeklyDigest` | true | once per ISO week, two minutes into an interactive session, a toast with last week's digest |
 | `gatewayMonths` | 12 | on a LiteLLM gateway: months of billed spend to copy the first time; 0 turns the sync off |
@@ -308,10 +335,11 @@ Environment: `CLAUDE_MODS_HOME` (above); `CLAUDE_USAGE_DIR` replaces `<mods home
 - `usage-analytics/bin/claude-usage`: ingest, report, sql, export and serve.
 - `usage-analytics/bin/dashboard_api.py`: the dashboard server and its queries.
 - `usage-analytics/bin/impact.py`: the mod impact analysis.
+- `usage-analytics/bin/recurring.py`: the recurring-ask detection, labels and statuses (`recurring.db`).
 - `usage-analytics/bin/advisor.py`: the advisor's metrics, findings, verdicts and store (`advisor.db`).
 - `usage-analytics/dashboard/index.html`: the page.
 - `usage-analytics/tests/usage-analytics.test.ts`: event paths, ordering, facets, and a check that no secret leaks.
-- Data lives in `<mods home>/usage-analytics/` (or `$CLAUDE_USAGE_DIR`): `usage.db`, `events/`, `pricing.json`, `config.json`, `profiles/<profile>.json` (registered config dirs), `advisor.db`, `advisor-runs/` (each research run's raw result), `dashboard.log`, `dashboard.lock`, `ingest.lock`, `live/<profile>.json` (activity pulses), `gateway/<profile>.json` (billed spend), `summaries/`, `cli-path`.
+- Data lives in `<mods home>/usage-analytics/` (or `$CLAUDE_USAGE_DIR`): `usage.db`, `events/`, `pricing.json`, `config.json`, `profiles/<profile>.json` (registered config dirs), `advisor.db`, `recurring.db`, `recurring-runs/`, `advisor-runs/` (each research run's raw result), `dashboard.log`, `dashboard.lock`, `ingest.lock`, `live/<profile>.json` (activity pulses), `gateway/<profile>.json` (billed spend), `summaries/`, `cli-path`.
 
 ## Secrets
 

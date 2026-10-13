@@ -190,6 +190,55 @@ describe('usage-analytics', () => {
     expect(args()).toEqual(['advise', 'reproduce', 'r2'])
   })
 
+  test('recurring asks: own tools, a hidden classifier, and /analytics recurring', async ($, on) => {
+    const runs: string[][] = []
+    const toasts: string[] = []
+    const spawns: any[] = []
+    const agents: any[] = []
+    const files = engine(on, ENV, runs, toasts, undefined, agents)
+    on('agent.spawn', ($: any, e: any) => (spawns.push(e), { model: 'sonnet', agentId: 'ag-2' }))
+    on('turn.complete', () => ({ text: '' }))
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const args = () => runs.filter(x => x[2] === 'recurring').at(-1)!.slice(2, -1)
+    const cmd = (a: string) => $.command.run({ command: 'analytics', args: a, origin: { kind: 'user' }, presentation: 'text' } as any)
+
+    // A second hidden agent that may only use the two recurring tools; the advisor keeps its own list.
+    const rec = agents.find(a => a.name === 'recurring')
+    expect(rec).toMatchObject({ permissionMode: 'dontAsk' })
+    expect(rec.tools).toEqual(['ToolSearch', 'mcp__usage-analytics__recurring_brief', 'mcp__usage-analytics__recurring_record'])
+    expect(agents.find(a => a.name === 'advisor').tools.some((t: string) => t.includes('recurring'))).toBe(false)
+    expect(await $.agent.offer({ agent: 'usage-analytics:recurring', description: '', source: 'plugin' } as any)).toEqual({ isOffered: false })
+
+    // The deterministic report and the statuses go through the CLI.
+    await cmd('recurring --days 30 --min 4')
+    expect(args()).toEqual(['recurring', '--ingest', '--days', '30', '--min', '4'])
+    await cmd('recurring automated ab12cd34 shipped as a skill')
+    expect(args()).toEqual(['recurring', '--ingest', 'set', 'ab12cd34', 'automated', '--note', 'shipped as a skill'])
+    await cmd('recurring dismiss ab12cd34')
+    expect(args()).toEqual(['recurring', '--ingest', 'set', 'ab12cd34', 'dismissed'])
+    await cmd('recurring show ab12cd34')
+    expect(args()).toEqual(['recurring', '--ingest', 'show', 'ab12cd34'])
+    expect(String(((await cmd('recurring bogus')) as any).text)).toMatch(/^Usage: \/analytics recurring/)
+
+    // The tools: a brief, and a record that is written to a file the CLI reads.
+    const b = await $.tool.call({ tool: 'mcp__usage-analytics__recurring_brief', tool_use_id: 'b1', agentId: 'ag-2', days: 60 } as any)
+    expect((b as any).isError).toBeFalsy()
+    expect(args()).toEqual(['recurring', 'brief', '--ingest', '--days', '60', '--limit', '25'])
+    const payload = { summary: 's', clusters: [{ id: 'ab12cd34', title: 'Cut a release', category: 'release/versioning', automation: { kind: 'skill', draft: 'Bump, tag.' } }] }
+    const w = await $.tool.call({ tool: 'mcp__usage-analytics__recurring_record', tool_use_id: 'r1', agentId: 'ag-2', ...payload } as any)
+    expect((w as any).result).toContain('/analytics recurring automated')
+    const a = args()
+    expect(a.slice(0, 2)).toEqual(['recurring', 'record'])
+    expect(JSON.parse(files.get(a[2]!)!)).toMatchObject(payload)
+
+    // classify bg starts the hidden agent; its turn ending after a record toasts the count.
+    expect(String(((await cmd('recurring classify bg')) as any).text)).toMatch(/background/)
+    expect(spawns[0]).toMatchObject({ subagent_type: 'usage-analytics:recurring', run_in_background: true })
+    await $.tool.call({ tool: 'mcp__usage-analytics__recurring_record', tool_use_id: 'r2', agentId: 'ag-2', ...payload } as any)
+    await $.turn.complete({ agentId: 'ag-2', isAborted: false, answer: 'done', reason: 'end' } as any)
+    expect(toasts.some(t => /Recurring asks: 1 labelled/.test(t))).toBe(true)
+  })
+
   test('the advisor\'s tools are still answered after a reload empties the registered-name map', async ($, on) => {
     const runs: string[][] = []
     // Registration fails, as when the module reloads after the engine already holds the tools.
