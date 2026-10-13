@@ -14,7 +14,7 @@ Enter a week's booked hours into Redmine (Worktime plugin, per day) and NetSuite
 ## Target systems
 
 ### Redmine (redmine_work_time plugin)
-Monthly report page with a daily report below it: issue rows grouped by Redmine project (e.g. `IL.NLP` → `Feature #9888`), each with WorkTime (hours), Activity (select, Hungarian names), Status (select) and Comment, and an **Update** button per day. A cell is identified by **date + issue ID + activity**. The adapter writes WorkTime and Activity only.
+Monthly report page with a daily report below it: issue rows grouped by Redmine project (e.g. `Acme Platform` → `Feature #4242`), each with WorkTime (hours), Activity (select, localized names), Status (select) and Comment, and an **Update** button per day. A cell is identified by **date + issue ID + activity**. The adapter writes WorkTime and Activity only.
 
 ### NetSuite (weekly timesheet)
 Rows: customer:project, task (case/task/event), service item, Mon–Sun hours; **Save** (not Submit). A cell is identified by **week + project + task + weekday**.
@@ -77,7 +77,7 @@ Redmine saves per day, so a week is several Update clicks. If day 3 fails verifi
 The selectors cannot be designed blind. First milestone: `browser.ts` + `timesheet submit inspect <system>` which, with the user logged in, saves a sanitized DOM snapshot (form structure, ids, names, labels; personal data such as other users' names stripped) and a screenshot of the relevant pages into `~/.timesheet/inspect/`. Adapters and test fixtures are built from those snapshots; the user reviews them before sharing.
 
 ## Error handling
-Every abort carries a human reason ("Redmine 2026-10-06: issue #9888 already has 2.00 h, plan says 3.00 h — nothing written"). Timeouts (navigation 30 s, login 5 min) abort. Browser closed by the user mid-run → abort, nothing pressed. Session expiry mid-run → abort before the next save.
+Every abort carries a human reason ("Redmine 2026-10-06: issue #4242 already has 2.00 h, plan says 3.00 h — nothing written"). Timeouts (navigation 30 s, login 5 min) abort. Browser closed by the user mid-run → abort, nothing pressed. Session expiry mid-run → abort before the next save.
 
 ## Testing
 - `plan.ts`, `diff.ts`: unit tests (unmapped, partial days, wildcard rules, noop, conflicts, float/rounding).

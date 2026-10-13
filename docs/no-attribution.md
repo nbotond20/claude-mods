@@ -2,6 +2,18 @@
 
 Claude never credits itself. That means no `Co-Authored-By: Claude …`, no `🤖 Generated with [Claude Code](…)`, no `Author: Claude`, no `noreply@anthropic.com`, and no commits with Claude as author. This covers commits, PR and issue bodies, code, docs and any tool call. Source: `no-attribution/hooks/register.ts`; tests: `no-attribution/tests/`.
 
+## On by default
+
+Layers 2 to 4 are always on and cannot be turned off or paused (`/mods pause` does not affect them). Only the git hooks and the settings entry are optional.
+
+| Feature | Default | How to change |
+| --- | --- | --- |
+| Empty engine commit trailer and PR footer (layer 2) | on | not switchable |
+| Authorship rule in the system prompt, attribution stripped from engine sections and skill prompts (layer 3) | on | not switchable |
+| Tool-call refusals: attribution, Claude as author, skipped hooks (layer 4) | on | not switchable |
+| Global git hooks (layer 5) | **on**: installed at the first session start and re-checked at every one, unless another global `core.hooksPath` is already set (then left alone, with a toast) | `gitHooks` in config, `/no-attribution hooks off` |
+| `attribution` / `includeCoAuthoredBy` entries in `settings.json` (layer 1) | not set by the mod | add them yourself |
+
 ## Layers
 
 Each layer works on its own; together they cover each other's gaps.
@@ -30,9 +42,26 @@ Ordinary mentions are kept, such as "Use the Claude API for summaries".
 
 It also reinstalls the hooks if they are missing. They are installed again at every session start.
 
-## Config: `<mods home>/no-attribution/config.json`
+## Managing it
 
-`{ "gitHooks": true }`. `/no-attribution setup` asks; `/no-attribution hooks off` removes the global hooks (only if they are this mod's) and keeps them off.
+| Command | What it does |
+| --- | --- |
+| `/no-attribution` or `/no-attribution status` | shows the layers, what was refused this session, the git hook state; reinstalls the hooks when `gitHooks` is on |
+| `/no-attribution setup` | asks whether to install the global git hooks and writes the config |
+| `/no-attribution hooks on` | sets `gitHooks` true and installs the hooks |
+| `/no-attribution hooks off` | sets `gitHooks` false and removes the global hooks (only if they are this mod's) |
+| `sh no-attribution/bin/install-git-hooks.sh [remove]` | the installer behind the above; prints `installed`, `ok`, `other:<path>`, `removed` or `absent` |
+| `/mods status`, `/mods doctor`, `/mods uninstall` | `doctor` checks the hooks; `uninstall` also unsets the hooks it installed |
+
+There is no pause. To stop the mod, uninstall it (`/mods uninstall`); to turn off only the git layer, use `hooks off`.
+
+### Config: `<mods home>/no-attribution/config.json`
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `gitHooks` | true | install the global git hooks (the global `core.hooksPath` setting) |
+
+`<mods home>` is `$CLAUDE_MODS_HOME`, else `~/.claude-shared` if that folder exists (older installs), else `~/.claude-mods`. The hooks are copied to `<mods home>/no-attribution/git-hooks`. The config file is created on first run.
 
 ## Limits and notes
 

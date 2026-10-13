@@ -40,6 +40,24 @@ Without Claude Code plugins:
 
 Manual equivalent: `npm install -g ./timesheet-<version>.tgz` (or `npm link` in a checkout), `timesheet install-skill`, `timesheet init` (or `timesheet init --web`). `timesheet doctor` checks everything afterwards.
 
+## On by default
+
+Right after install, with no setup:
+
+| | Default | Change it |
+| --- | --- | --- |
+| Claude Code sessions (every `~/.claude*` profile, including `history.jsonl`) | on | `claudeDirs`, `claudeHistory` |
+| OpenCode sessions | on when its data folder exists | `opencodeDirs: []` |
+| git commits (your global git email) | on | `authorEmails` |
+| Classification and daily summary (`claude -p`, Sonnet) | on (needs the `claude` CLI; without it days stay *partial*) | `classifier.enabled`, `classifier.model` |
+| Work scope | empty: activity shows as unassigned with a warning, nothing is booked until folders are marked work | `timesheet scope add work …`, the wizard |
+| Google Calendar | off | `timesheet auth`, Settings → Calendar |
+| GitHub activity | off | `timesheet github add <owner>`, Settings → GitHub |
+| Submission to Redmine / NetSuite | off; once a `url` is set, fill-only (you press Save) | `submit.<system>.url`, `fillOnly` |
+| Web app | not running; started by `timesheet serve` or `/timesheet open` | – |
+| Launcher `~/.local/bin/timesheet` (mod only) | installed at session start, unless a foreign file is there | `/timesheet install --force` |
+| Weekly toast about last week (mod only) | on | – |
+
 ## Use
 
 ```sh
@@ -103,8 +121,9 @@ Every option is editable three ways, all validated before saving:
 
 | key | default | |
 |---|---|---|
-| `claudeDirs`, `opencodeDirs` | `~/.claude/projects`, `~/.local/share/opencode` | session stores; empty list = off |
-| `authorEmails` | global git email | commits by these authors count |
+| `claudeDirs`, `opencodeDirs` | `~/.claude*/projects` (every profile, plus `$CLAUDE_CONFIG_DIR`), `$XDG_DATA_HOME/opencode` (`~/.local/share/opencode`) | session stores; globs allowed; empty list = off |
+| `claudeHistory`, `historyTailMinutes` | on, 10 | read each profile's `history.jsonl` for sessions whose transcripts were already deleted; minutes credited after such a prompt |
+| `authorEmails` | `[]` = your global git email | commits by these authors count |
 | `projects`, `defaultProject` | `Default` | NetSuite projects |
 | `scope.work` / `scope.personal` | – | globs; most specific wins; only work is booked. Personal and unassigned activity shows as "Other" (toggleable) but is never booked |
 | `target`, `weekdayTargets` | `8`, weekends = real hours | |
@@ -112,12 +131,13 @@ Every option is editable three ways, all validated before saving:
 | `idleMinutes` | 10 | assistant work longer than this after your last prompt (an agent left running) is not counted; real hours are recorded minutes only, split at quiet gaps longer than this, and never past now |
 | `rounding`, `decimalSeparator`, `dateFormat` | 0.25, `.`, `YYYY-MM-DD` | paste output |
 | `github` | off | `repos` to watch without a clone (`owner/name`, `owner/*`); `leadMinutes` (10) credited before each action |
-| `calendar` | off | calendars, project; which replies count (`includeTentative` on, `includeUnanswered` on, `includeDeclined` off); solo events; `maxMeetingHours` (4) ignores longer meetings |
-| `classifier` | `claude`, `sonnet` | `notes` adds team guidance to the prompt |
+| `calendar` | off | `calendarIds` (`primary`), `project`; which replies count (`includeTentative` on, `includeUnanswered` on, `includeDeclined` off); `skipWithoutAttendees` (on: solo events ignored); `maxMeetingHours` (4) ignores longer meetings, 0 = no limit |
+| `classifier` | on: `claude`, `sonnet`, 240 s timeout, 3 days at once | `enabled`, `command`, `model`, `timeoutSeconds`, `concurrency`; `notes` adds team guidance to the prompt |
 | `categories` | September 2026 task list | CAPEX flag, validity dates, classifier opt-out, color |
 | `holidays` | `[]` | dates (`YYYY-MM-DD`) off work: no target, real hours only |
 | `lowActivityRatio` | 0.5 | flag workdays with recorded work below this share of the target; 0 = off |
-| `timezone` | machine's | IANA zone (e.g. `Europe/Budapest`) days are cut in |
+| `timezone` | machine's | IANA zone (e.g. `Europe/Berlin`) days are cut in |
+| `submit.redmine`, `submit.netsuite` | off (`url` empty) | `url` (https only), `fillOnly` (on: fill and verify, you press Save), `rules` (see [Submitting](#submitting-to-redmine-and-netsuite-in-progress)) |
 
 Changing a setting that shapes days recomputes cached days the next time they are shown (locked days excepted). To apply it only from a date on, keeping earlier days as they were: `timesheet config set gapMinutes 45 --from 2026-10-01`.
 
@@ -167,6 +187,7 @@ There are no API keys, so the timesheet drives the real pages in a separate Chro
 timesheet config set submit.redmine.url https://redmine.example.com/work_time/index
 timesheet submit login redmine        # log in once in the window
 timesheet submit plan last            # what would be entered (read-only)
+timesheet submit week last --system redmine   # compare with the site, confirm, then enter the week (interactive)
 timesheet submit inspect netsuite     # save sanitized page snapshots for building the automation
 ```
 

@@ -15,8 +15,8 @@ const TEMPLATE = readFileSync(join(DIR, 'day.html'), 'utf8');
 const CAPTURE = readFileSync(join(DIR, 'capture-2026-10-01.html'), 'utf8');
 
 export const ACTIVITIES: [number, string][] = [
-  [15, 'Megbeszélés, egyeztetés'], [9, 'Fejlesztés'], [18, 'Tesztelés'], [12, 'Dokumentálás'], [13, 'Üzemeltetés támogatás'], [16, 'Hibaelhárítás'],
-  [10, 'Rezsi - tanulás'], [11, 'Rezsi - egyéb'], [14, 'Rezsi - hibajavítás'], [17, 'Rezsi - Presales'], [34, 'DI source - credit'],
+  [15, 'Meeting'], [9, 'Development'], [18, 'Testing'], [12, 'Documentation'], [13, 'Operations support'], [16, 'Troubleshooting'],
+  [10, 'Overhead - learning'], [11, 'Overhead - other'], [14, 'Overhead - bugfix'], [17, 'Overhead - Presales'], [34, 'Source - credit'],
 ];
 const STATUSES: [number, string][] = [[1, 'New'], [2, 'Assigned'], [9, 'In progress'], [4, 'Feedback'], [3, 'Resolved'], [5, 'Closed']];
 
@@ -82,13 +82,13 @@ export interface Recorded {
 export function defaultState(): FxState {
   return {
     loggedIn: true,
-    user: { id: 262, name: 'Nuszpl Botond', login: 'nuszpl.botond' },
+    user: { id: 42, name: 'Jane Doe', login: 'jane.doe' },
     today: '2026-10-01',
     issues: [
-      { id: 13, tracker: 'Support', subject: 'Belső megbeszélések', project: 'Collaborate', status: 9 },
-      { id: 31, tracker: 'Support', subject: 'Tanulás, oktatás', project: 'People development' },
-      { id: 9888, tracker: 'Feature', subject: 'Secondary Learning Platform Development', project: 'IL.NLP' },
-      { id: 10964, tracker: 'Feature', subject: 'DI nap, DI Talks', project: 'Céges rendezvények' },
+      { id: 101, tracker: 'Support', subject: 'Internal meetings', project: 'Teamwork', status: 9 },
+      { id: 102, tracker: 'Support', subject: 'Learning, training', project: 'People development' },
+      { id: 4242, tracker: 'Feature', subject: 'Checkout redesign', project: 'Acme Platform' },
+      { id: 103, tracker: 'Feature', subject: 'Company day, tech talks', project: 'Company events' },
     ],
     entries: [],
     private: {},

@@ -63,7 +63,7 @@ export interface Adapter<T, C> {
   catalogUser(catalog: C): string;
   /** Whether a mapping target is still offered by the site. */
   exists(catalog: C, target: T): boolean;
-  /** Human label of a target, e.g. "#9888 Secondary Learning Platform Development · Fejlesztés". */
+  /** Human label of a target, e.g. "#4242 Checkout redesign · Development". */
   label(catalog: C | null, target: T): string;
   /** All non-zero values in the week (any row); throws Abort on anything unexpected. */
   read(page: Page, catalog: C, week: string, signal?: AbortSignal): Promise<Snapshot<T>>;

@@ -8,7 +8,7 @@ import type { Cell, RedmineTarget, Snapshot } from './types.ts';
 /** An issue row listed on the Worktime page. */
 export interface RedmineIssue {
   id: number;
-  /** Subject, without the "Feature #9888: " prefix */
+  /** Subject, without the "Feature #4242: " prefix */
   title: string;
   /** Redmine project of the black header row above it */
   project: string;

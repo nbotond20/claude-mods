@@ -17,13 +17,37 @@ One central store for everything about how every profile spends tokens, with a t
 
 `bin/claude-usage ingest` folds both into **`<mods home>/usage-analytics/usage.db`** (SQLite, WAL). Ingest is incremental by byte offset and lock-protected; `--full` rebuilds. The dashboard server ingests within about a second of any activity (see *Live updates*). The mod also runs an ingest 45s after a session starts and then every 30 minutes, as a fallback when the server is not running.
 
+## On by default
+
+Active right after install, with no setup:
+
+| Feature | Default | How to change |
+| --- | --- | --- |
+| Event log (requests, tools, latency, `/context` breakdown, environment) | on, always | not switchable; sizes: `maxInputChars`, `maxResultChars`, `maxAnswerChars` |
+| Prompt text kept | **on** (`storePrompts` true) | `storePrompts: false` keeps length only |
+| Tool results kept | off (`maxResultChars` 0: size only) | `maxResultChars` |
+| Claude Code's own telemetry events logged | on (`captureOtel`) | `captureOtel: false` |
+| All profiles' transcripts imported | on: `~/.claude*` plus every config dir a session ran from | `profileDirs` |
+| Background ingest | on: 45s after session start, then every 30 min (`autoIngest`, `ingestEveryMin`) | config |
+| Dashboard server | **on**: started at session start and by every `/analytics` command, one per machine, `127.0.0.1:8787` | `dashboard: false`, `port` |
+| Dashboard at login | **off** | `claude-usage autostart on` (or `/analytics setup`) |
+| History backfill | on: runs when the server first starts | none |
+| Secret redaction | on, always | not switchable |
+| Weekly digest toast | on (`weeklyDigest`) | `weeklyDigest: false` |
+| Advisor verdict toast | on (`advisorNotify`) | `advisorNotify: false` |
+| Advisor research | **off**: runs only on `/analytics advise` or `advise bg` | n/a |
+| Gateway spend sync | on, but only when `ANTHROPIC_BASE_URL` is not anthropic.com and an auth token is set; 12 months back | `gatewayMonths: 0` |
+| Python 3 | required for the database and dashboard; without it events are still recorded | install it |
+
+`/mods pause` does not stop this mod (it only observes).
+
 ## Setup, backfill and the server
 
 Nothing is required: on first start the mod writes its config with defaults, registers the profile's config dir, starts the dashboard server and joins the one `/mods` toast of the session. **`/analytics setup`** first checks for python3 (and says how to install it when it is missing), then runs `claude-usage setup --json` (detected profiles with history, what is already imported, the port) and asks which profiles to track, whether to keep prompt text, and when the dashboard runs.
 
 **Backfill.** When the server starts it imports every transcript already on disk in the background, so the dashboard has your full history from day one. The page shows a progress bar (the stage — sessions, subagents, mod events — with the profile being read, files, requests, %, and a note that the numbers are partial until it finishes) and redraws as data arrives; an empty database shows a first-run screen instead of empty charts. `/api/meta` carries the same `progress`.
 
-**One server per machine, started when needed.** Every session start, every `/analytics` command and `/dashboard` start it if it is not running (a lock file keeps it to one), and replace one older than the installed mod. `claude-usage autostart on` also starts it at login (a launchd agent on macOS, a systemd user unit on Linux); `off` removes it. `"dashboard": false` keeps it off until you run `/dashboard`.
+**One server per machine, started when needed.** Every session start, every `/analytics` command and `/dashboard` start it if it is not running (a lock file keeps it to one), and replace one older than the installed mod. `claude-usage autostart on` also starts it at login and re-checks every 10 minutes (a launchd agent `dev.claude-mods.usage-dashboard` on macOS, a systemd user timer on Linux); `off` removes it. It is off until you turn it on. `"dashboard": false` keeps it off until you run `/dashboard`.
 
 ## Use it
 
@@ -31,7 +55,7 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 | --- | --- |
 | `/analytics setup` | the setup wizard |
 | `/dashboard [tab]` or `/analytics dashboard [tab]` | starts the dashboard in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, tools, agents, projects, prompts, health, engine, advisor, impact, savings, sql) |
-| `/analytics advise` | research how to use Claude cheaper, with fewer tokens, faster and more reliably, here in the conversation ([below](#the-advisor)) |
+| `/analytics advise` (or `advise now`) | research how to use Claude cheaper, with fewer tokens, faster and more reliably, here in the conversation ([below](#the-advisor)) |
 | `/analytics advise bg` · `show` | the same research in the background · the trends, findings and recommendations in the terminal |
 | `/analytics advise apply <id>` | shows the exact change, asks before making it, and starts measuring it |
 | `/analytics advise trial <id>` | runs a recommendation that is a model instruction as an A/B trial: a random half of new sessions get it |
@@ -41,11 +65,13 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 | `/analytics digest` | last week against the week before: spend, sessions, cache hit, top project and model, new advisor suggestions. The same comes as a toast once a week (`weeklyDigest`) |
 | `/analytics summary [--days N] [--format md\|html] [--no-projects] [--out F]` | a shareable summary (totals, by day, models, project names without paths, mod verdicts; no prompts or code), saved under `<mods home>/usage-analytics/summaries/`. The dashboard's **Share summary** button opens the same page for the period on screen (shift-click: Markdown) |
 | `/analytics status` · `/analytics ingest` · `/analytics stop` | data and dashboard status · ingest now · stop the dashboard |
-| `/analytics [overview\|daily\|models\|projects\|tools\|bash\|files\|agents\|sessions\|context\|hours\|cache\|prompts\|all] [--days N] [--profile P] [--project x]` | terminal report (ingests first) |
-| `claude-usage serve [--port 8787] [--daemon] [--open] [--tab T] [--quiet]` · `stop` · `status` · `impact [--json]` | the same from a shell |
+| `/analytics [overview\|profiles\|daily\|models\|projects\|tools\|bash\|files\|agents\|sessions\|context\|hours\|cache\|prompts\|gateway\|all] [--days N] [--profile P] [--project x] [--limit N]` | terminal report (ingests first; `--days` defaults to 30, 0 is all time) |
+| `claude-usage ingest [--full] [--quiet]` · `report [what]` | fold new data in (`--full` rebuilds) · the terminal report from a shell |
+| `claude-usage serve [--port N] [--daemon] [--open] [--tab T] [--quiet]` · `stop [--port N]` · `status` · `impact [--days N] [--profile P] [--json]` | the same from a shell |
 | `claude-usage setup [--json]` · `autostart on\|off\|status` | what was detected · start the server at login |
 | `claude-usage digest [--line\|--json]` · `summary [--days N] [--format md\|html] [--out F\|-]` | the weekly digest · a shareable summary (`GET /api/summary?days=&format=` on the dashboard) |
-| `claude-usage sql "SELECT …"` · `schema` · `export TABLE --format csv\|jsonl` · `reprice` · `path` | everything else |
+| `claude-usage advise [show\|brief\|record\|set\|get\|reproduce\|sql\|due\|notify\|fail]` | the advisor's store from a shell |
+| `claude-usage sql "SELECT …"` · `schema` · `export TABLE --format csv\|jsonl [--out F]` · `reprice` · `scrub` · `path` | query, tables, export, recompute cost after editing `pricing.json`, redact secrets in stored data, print the data dir |
 
 `claude-usage` lives at `usage-analytics/bin/claude-usage` (Python 3, stdlib only). An alias is handy:
 `alias claude-usage='python3 ~/Desktop/projects/claude-mods/usage-analytics/bin/claude-usage'`.
@@ -54,7 +80,7 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 
 A loop that keeps looking for ways to spend less on Claude Code, and checks whether its advice worked:
 
-1. **Measure.** Fifteen metrics per session, grouped by goal. *Cost*: cost per prompt, premium-model share, spend inside subagents. *Tokens*: tokens per prompt, main-loop context, cache hit rate, tool output per prompt, whole-file reads, output per request, share of prompts not in English, prompt length. *Speed*: requests per prompt, turn time. *Reliability*: tool error rate, API errors, compactions. For each one you get eight weekly values and the last 7 days against the 28 before, with a bootstrap 95% interval.
+1. **Measure.** Sixteen metrics per session, grouped by goal. *Cost*: cost per prompt, premium-model share, spend inside subagents. *Tokens*: tokens per prompt, main-loop context, cache hit rate, tool output per prompt, whole-file reads, output per request, share of prompts not in English, prompt length (eight). *Speed*: requests per prompt, turn time. *Reliability*: tool error rate, API errors, compactions. For each one you get eight weekly values and the last 7 days against the 28 before, with a bootstrap 95% interval.
 2. **Detect.** Deterministic findings, no model involved, each tied to the metric it moves: large contexts, a low cache hit rate, whole-file reads, heavy tool output, a failing tool, serial tool calls, premium models in subagents, non-English prompts, frequent compaction, API errors, and big always-loaded MCP schemas. It also diffs consecutive session starts to show your own setting changes (model, effort, plugins, version).
 3. **Research.** An agent (`usage-analytics:advisor`) reads all of the above. That includes every earlier recommendation with its measured verdict and evidence grade, a track record per goal and per kind of change, its earlier notes, each metric per project, profile and entrypoint, and a sample of prompts. It looks up current guidance on the web and records 3–6 recommendations, held to the rules below.
 4. **Apply or trial.** `/analytics advise apply <id>` shows the change and asks before making it. You can also make the change yourself and run `/analytics advise applied <id>`, or use the dashboard's buttons. A recommendation that is a model instruction (read ranges, batch calls, …) can instead run as an **A/B trial** (`/analytics advise trial <id>`, or *Start A/B trial*).
@@ -128,7 +154,7 @@ It is served only on 127.0.0.1. It answers only requests addressed to `127.0.0.1
 The filters (period, profiles, model, project) apply to every panel. Click any session id, or a dot in the session scatter, to open its drill-down.
 
 **Layout**
-- A sidebar groups the tabs: Now, Spend, Work, Quality, Mods, Data.
+- A sidebar groups the tabs: Now, Spend, Work, Quality, Improve, Data.
 - The filter bar is sticky.
 - The theme toggle switches between auto, light and dark.
 
@@ -163,6 +189,7 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 | Prompts | Prompts and commands per day; message kinds; prompt length; slash commands; the most expensive prompts (all requests until the next prompt); recent prompts. |
 | Health | API errors, compactions and notices per day; turn durations; recent errors; compactions. |
 | Engine | From the mod: TTFT and latency by model; tool latency; tool schema sizes; system prompt sections; rate limits; event counts. |
+| Advisor | Metric trends, findings, recommendations with their evidence grade and verdict, A/B trial controls ([above](#the-advisor)). |
 | Mod impact | Per mod: holdout verdict, active vs holdout metrics with 95% intervals, the cost/savings ledger, nudge compliance, action counts, warnings. See [mod-impact.md](mod-impact.md). |
 | Savings | From budget-guard's ledgers: dollars saved by lever, per day against spend, and per profile. |
 | SQL | A read-only console with examples. ⌘/Ctrl+Enter runs the query. |
@@ -185,15 +212,20 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 | `sessions` | Title, Claude Code's own cost, API/tool ms, lines added/removed |
 | `agents` | Subagent: type, description, parent, spawn depth |
 | `events` | Raw mod events, as JSON |
+| `gateway_spend` | Day and model billed by a LiteLLM gateway (see *Gateway spend*) |
 | `files`, `meta` | Ingest bookkeeping |
 
 **Views:** `v_requests` (adds `context_tokens` and `agent_type`), `v_mod_steps`, `v_mod_tools`, `v_context`, `v_measure`, `v_compactions`, `v_tool_schemas`, `v_system_prompt`.
 
 **Cost.** `cost_usd` is the list price from `<mods home>/usage-analytics/pricing.json`. Models are matched by substring, longest key first; fast mode is ×2. After editing the file, run `claude-usage reprice`. Gateway (LiteLLM) billing can differ, so it is kept next to it, never mixed in.
 
-**Gateway spend.** On a LiteLLM gateway (`ANTHROPIC_BASE_URL` not anthropic.com), the mod reads `/user/daily/activity` with the session's own token about 20s after session start. It writes what LiteLLM billed per day and model (spend, requests, tokens) to `<data>/gateway/<profile>.json`: back `gatewayMonths` (12) months the first time, then from the 1st of last month. Only the host is kept, never the token. The import loads it into `gateway_spend` (profile, day, model, spend_usd, requests, input, output, cache_read, cache_write). `claude-usage report gateway` compares it with the list-price estimate per day; the dashboard shows it as a "billed by the gateway" tile. Set `gatewayMonths` to 0 to turn it off.
+**Gateway spend.** On a LiteLLM gateway (`ANTHROPIC_BASE_URL` not anthropic.com), the mod reads `/user/daily/activity` with the session's own token about 20s after session start. It writes what LiteLLM billed per day and model (spend, requests, tokens) to `<data>/gateway/<profile>.json`: back `gatewayMonths` (12) months the first time, then from the 1st of last month. The session's token and `ANTHROPIC_CUSTOM_HEADERS` are sent only to that gateway; only the host is kept, never the token. The import loads it into `gateway_spend` (profile, day, model, spend_usd, requests, input, output, cache_read, cache_write). `claude-usage report gateway` compares it with the list-price estimate per day; the dashboard shows it as a "billed by the gateway" tile. Set `gatewayMonths` to 0 to turn it off.
 
 ## Config: `<mods home>/usage-analytics/config.json`
+
+`<mods home>` is `$CLAUDE_MODS_HOME`, else `~/.claude-shared` if that folder exists (older installs), else `~/.claude-mods`. The mod writes the file complete with defaults on first run and adds new keys later; edit it and the change applies from the next session (the CLI reads `port` at once).
+
+Environment: `CLAUDE_MODS_HOME` (above); `CLAUDE_USAGE_DIR` replaces `<mods home>/usage-analytics` as the data folder, for the CLI and the mod; `CLAUDE_USAGE_PORT` overrides `port` for the CLI. `claude-usage path` prints the data folder.
 
 | Key | Default | Meaning |
 | --- | --- | --- |
@@ -202,13 +234,14 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 | `maxResultChars` | 0 | tool result chars kept (0 = size only) |
 | `maxAnswerChars` | 2000 | assistant answer chars kept |
 | `breakdownEvery` | 3 | `/context` breakdown every N main turns |
-| `autoIngest`, `ingestEveryMin` | true, 30 | background ingest |
+| `autoIngest`, `ingestEveryMin` | true, 30 | background ingest: first 45s after session start, then every N minutes (minimum 5) |
 | `captureOtel` | true | also log Claude Code's own telemetry events |
 | `dashboard` | true | keep the one dashboard server running (started at session start and by `/analytics`) |
 | `port` | 8787 | dashboard port (127.0.0.1 only) |
 | `advisorModel` | `sonnet` | the model `/analytics advise bg` runs on |
-| `advisorNotify` | true | toast when an applied recommendation gets a verdict |
-| `weeklyDigest` | true | once a week, two minutes into an interactive session, a toast with last week's digest |
+| `advisorNotify` | true | toast (90s into an interactive session) when an applied recommendation gets a verdict |
+| `weeklyDigest` | true | once per ISO week, two minutes into an interactive session, a toast with last week's digest |
+| `gatewayMonths` | 12 | on a LiteLLM gateway: months of billed spend to copy the first time; 0 turns the sync off |
 | `profileDirs` | `[]` | config dirs to read transcripts from; empty = auto: `~/.claude*` plus every config dir a session registered under `profiles/` |
 
 ## Files
@@ -220,7 +253,7 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 - `usage-analytics/bin/advisor.py`: the advisor's metrics, findings, verdicts and store (`advisor.db`).
 - `usage-analytics/dashboard/index.html`: the page.
 - `usage-analytics/tests/usage-analytics.test.ts`: event paths, ordering, facets, and a check that no secret leaks.
-- Data lives in `<mods home>/usage-analytics/` (or `$CLAUDE_USAGE_DIR`): `usage.db`, `events/`, `pricing.json`, `config.json`, `profiles/<profile>.json` (registered config dirs), `advisor.db`, `advisor-runs/` (each research run's raw result), `dashboard.log`, `dashboard.lock`, `ingest.lock`, `live/<profile>.json` (activity pulses).
+- Data lives in `<mods home>/usage-analytics/` (or `$CLAUDE_USAGE_DIR`): `usage.db`, `events/`, `pricing.json`, `config.json`, `profiles/<profile>.json` (registered config dirs), `advisor.db`, `advisor-runs/` (each research run's raw result), `dashboard.log`, `dashboard.lock`, `ingest.lock`, `live/<profile>.json` (activity pulses), `gateway/<profile>.json` (billed spend), `summaries/`, `cli-path`.
 
 ## Secrets
 
@@ -229,7 +262,7 @@ Before anything is written, the mod (event files) and the ingester (`usage.db`) 
 ## Troubleshooting
 
 - **Dashboard shows old data:** click *Ingest now*, or run `claude-usage ingest`.
-- **Port in use:** set `port` in the config (or run `/analytics setup`).
+- **Port in use:** set `port` in the config (or run `/analytics setup`), or `CLAUDE_USAGE_PORT` for the CLI.
 - **Stop the dashboard:** `/analytics stop` or `claude-usage stop`. It comes back at the next session start unless `"dashboard": false`. After a mod update, the next session start replaces an older running server by itself.
 - **Sidebar says "reconnecting…":** the server stopped. Any `/analytics` command or new session starts it again, and the page reconnects on its own.
 - **Open on a tab:** `http://127.0.0.1:8787/#impact`.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.5
+- `bin/mods install` asks which mods to install when run in a terminal (Enter = all); `--except a,b` skips some, `--only` and `--yes` skip the question.
+- Docs: an "On by default" table, the full config reference (history import, classifier, calendar and submit keys) and `submit week`; test fixtures anonymized.
+
 ## 0.3.4
 - `timesheet serve` only reuses or stops a server after the OS confirms the process listening on the port runs timesheet; the pid in an HTTP reply is never trusted, so another local service cannot pose as timesheet or get an unrelated process killed.
 

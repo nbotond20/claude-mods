@@ -21,9 +21,18 @@ One command adds every mod to every Claude Code profile on this machine (`~/.cla
 
 ```sh
 git clone https://github.com/nbotond20/claude-mods && sh claude-mods/bin/mods install
-sh claude-mods/bin/mods install --only usage-analytics,budget-guard     # just some
+```
+
+In a terminal it lists the mods and asks which to install; press Enter for all of them, or type numbers or names (`1,3`, `lean-tools timesheet`). To skip the question:
+
+```sh
+sh claude-mods/bin/mods install --yes                                   # all mods
+sh claude-mods/bin/mods install --only usage-analytics,budget-guard     # just these
+sh claude-mods/bin/mods install --except timesheet                      # all but these
 sh claude-mods/bin/mods install --profiles ~/.claude-work               # just some profiles
 ```
+
+Run it again to add a mod later; it skips what a profile already has. `/mods install <mod…>` does the same from a session.
 
 Or by hand, per profile:
 
@@ -44,6 +53,21 @@ Start a new session. One toast lists what is on; `/mods setup` walks through eve
 | `/no-attribution setup` | whether to install the global git hooks |
 | `/timesheet setup` | the timesheet wizard (browser or terminal), Google Calendar, GitHub, work scope |
 
+### On by default
+
+Every mod works with no setup; the wizards only change defaults. Right after install:
+
+| Mod | On by default | Off until you turn it on |
+| --- | --- | --- |
+| **usage-analytics** | records every session (prompt text included), imports every profile's history, a dashboard on `127.0.0.1:8787` started with Claude Code, a weekly digest toast, LiteLLM gateway spend sync when a gateway is set | dashboard at login (`claude-usage autostart on`), advisor research (`/analytics advise`) |
+| **budget-guard** | the spend/context band, model routing by task (Haiku/Sonnet/Opus), Opus effort capped at medium, compaction at 200k, subagent cap 3, context warning at 150k and hold at 300k, build/test output trim, image and generated-file read guards | daily/monthly budgets (`/budget setup`); keep-alive and gateway polling only apply behind a LiteLLM gateway |
+| **lean-tools** | Bash output cap (24 KB / 400 lines), `git log -n 30`, a short prompt guide, batching/ranged-read/Edit nudges | – |
+| **lsp-first** | LSP tool loaded up front, a navigation guide, a grep-for-symbol nudge (at most every 10 min) | everything, if no language server plugin is installed |
+| **no-attribution** | engine attribution off, the prompt rule, refusing tool calls with attribution, global git hooks (unless a global `core.hooksPath` is already set) | – (`/no-attribution hooks off` removes the hooks) |
+| **timesheet** | the `~/.local/bin/timesheet` launcher, a weekly toast about last week; reports read Claude Code, OpenCode and git and classify with `claude -p` | work scope (nothing is booked until set), Google Calendar, GitHub, Redmine/NetSuite submission, the web app (`/timesheet open`) |
+
+Holdout is on too: budget-guard leaves 10% of sessions without its cost levers, lean-tools and lsp-first 20%, so `/analytics impact` can measure them ([mod-impact.md](docs/mod-impact.md)). Each mod's doc has the full table and how to change each item.
+
 On first start usage-analytics starts the dashboard server and imports every transcript already on disk in the background; the dashboard shows the progress and fills in as it goes.
 
 ### Several profiles
@@ -56,7 +80,7 @@ On first start usage-analytics starts the dashboard server and imports every tra
 
 ### Pausing and removing
 
-`/mods pause 2h` (or `30m`, `1d`, `session`) pauses every mod that changes what Claude does (budget-guard's routing and caps, lean-tools, lsp-first); budgets, analytics and no-attribution keep running. `/mods resume` ends it. Each mod pauses on its own too: `/lean off 1h`, `/lsp-first off session`, `/budget pause 2h`.
+`/mods pause 2h` (or `30m`, `1d`) pauses every mod that changes what Claude does (budget-guard's routing and caps, lean-tools, lsp-first); budgets, analytics and no-attribution keep running. `/mods resume` ends it. Each mod pauses on its own too: `/lean off 1h`, `/lsp-first off session`, `/budget pause 2h`.
 
 `/mods uninstall` shows what it would do; `/mods uninstall confirm` stops the dashboard and its login autostart, unsets no-attribution's global git hooks, removes timesheet's launcher and uninstalls the mods from every profile. `purge` also deletes the mods home (the usage database and configs). The same from a shell: `sh bin/mods uninstall [--purge] [--dry-run]`.
 

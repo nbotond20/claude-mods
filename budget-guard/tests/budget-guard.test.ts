@@ -5,11 +5,11 @@ const TRIVIAL = 'trivial: a greeting, a yes/no, run or start a command or server
 const usage = { input_tokens: 10, output_tokens: 2_000, cache_read_input_tokens: 40_000, cache_creation_input_tokens: 20_000 }
 
 // What the engine answers beneath the plugin in every test.
-function engine(on: any, extra: { classify?: string; agents?: any[]; holdout?: number } = {}) {
+function engine(on: any, extra: { classify?: string; agents?: any[]; holdout?: number; env?: Record<string, string>; now?: number } = {}) {
   on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
   on('command.register', () => ({ value: undefined }))
-  on('env.get', () => ({ value: undefined }))
-  on('clock.now', () => ({ value: 1_000_000 }))
+  on('env.get', ($: any, e: any) => ({ value: extra.env?.[e.name] }))
+  on('clock.now', () => ({ value: extra.now ?? 1_000_000 }))
   on('classic.Stop', () => ({}))
   on('session.measure', ($: any, e: any) => ({ changed: e.changed }))
   on('prompt.submit', ($: any, e: any) => ({ text: e.text }))
@@ -310,6 +310,38 @@ describe('budget-guard', () => {
 
     const sent = await $.prompt.submit({ text: 'keep going', wait: false, origin: { kind: 'composer' } } as any)
     expect((sent as any).drop).toBeUndefined()
+  })
+
+  test('on a LiteLLM gateway the band shows the last 24 hours and 7 days', async ($, on) => {
+    const now = Date.parse('2026-10-13T12:00:00')
+    const files = engine(on, { now, env: { ANTHROPIC_BASE_URL: 'https://gateway.example.com', ANTHROPIC_AUTH_TOKEN: 'test-token' } })
+    const byDay: Record<string, number> = { '2026-10-13': 2, '2026-10-12': 4, '2026-10-08': 10, '2026-10-05': 100 }
+    on('http.fetch', ($: any, e: any) => ({
+      value: String(e.url).includes('/key/info')
+        ? { ok: true, status: 200, text: JSON.stringify({ info: { spend: 57.5 } }) }
+        : { ok: true, status: 200, text: JSON.stringify({ results: Object.entries(byDay).map(([date, spend]) => ({ date, metrics: { spend } })) }) },
+    }))
+    const band = async () => {
+      const ui = await $.ui.mount({
+        plugin: 'budget-guard',
+        surface: 'terminal',
+        component: 'AbovePrompt',
+        props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 200 },
+      } as any)
+      const text = String((await ui.find({ type: 'Text', text: /LiteLLM/ }))?.text ?? '')
+      await ui.unmount()
+      return text
+    }
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.session.measure({ context: { tokens: 40_000, window: 1_000_000, percent: 4 }, rateLimits: [], cost: { usd: 1 }, changed: ['context', 'cost'] } as any)
+    await $.command.run({ command: 'budget', args: 'refresh' } as any)
+    // No reading from a day ago yet: 24h is today plus the second half of yesterday, marked as an estimate.
+    expect(await band()).toMatch(/24h ~\$4\.00 · 7d \$16\b/)
+
+    // With a reading from a day ago, 24h is exact.
+    files.set('/.claude-mods/budget-guard/key-history/claude.json', JSON.stringify([{ t: now - 86_400_000 - 60_000, spend: 50 }]))
+    await $.command.run({ command: 'budget', args: 'refresh' } as any)
+    expect(await band()).toMatch(/24h \$7\.50 · 7d \$16\b/)
   })
 
   test('in the holdout the cost levers are off (the effort cap stays) and every action is logged for comparison', async ($, on) => {

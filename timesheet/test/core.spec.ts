@@ -322,8 +322,8 @@ describe('claude profiles and history', async () => {
 
   it('expands ~/.claude*-style globs to every existing profile', () => {
     const home = mkdtempSync(join(tmpdir(), 'ts-home-'));
-    for (const p of ['.claude/projects', '.claude-db/projects', '.claude-infi/projects', '.claude-shared']) mkdirSync(join(home, p), { recursive: true });
-    assert.deepEqual(expandDirs([`${home}/.claude*/projects`]).map((d) => d.slice(home.length)), ['/.claude-db/projects', '/.claude-infi/projects', '/.claude/projects']);
+    for (const p of ['.claude/projects', '.claude-db/projects', '.claude-work/projects', '.claude-shared']) mkdirSync(join(home, p), { recursive: true });
+    assert.deepEqual(expandDirs([`${home}/.claude*/projects`]).map((d) => d.slice(home.length)), ['/.claude-db/projects', '/.claude-work/projects', '/.claude/projects']);
     assert.deepEqual(expandDirs([`${home}/missing`]), []);
   });
 

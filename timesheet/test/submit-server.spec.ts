@@ -53,7 +53,7 @@ async function serve(engine: Engine, submit = noBrowser()) {
   return { base, post, close: () => server.close() };
 }
 
-const rules = { url: 'https://redmine.example.com/work_time/index', fillOnly: true, rules: [{ project: 'Default', category: '*', target: { issueId: 42, activity: 'Fejlesztés' } }] };
+const rules = { url: 'https://redmine.example.com/work_time/index', fillOnly: true, rules: [{ project: 'Default', category: '*', target: { issueId: 42, activity: 'Development' } }] };
 
 describe('submit api', () => {
   it('reports the status of both systems without opening a browser', async () => {
@@ -156,7 +156,7 @@ describe('submit api', () => {
       const redmine = r.systems.find((s: any) => s.system === 'redmine');
       assert.equal(redmine.ok, true, JSON.stringify(redmine.reasons));
       assert.equal(redmine.plan.cells.length, 1);
-      assert.deepEqual({ ...redmine.plan.cells[0], hours: undefined }, { date: D, target: { issueId: 42, activity: 'Fejlesztés' }, label: '#42 · Fejlesztés', hours: undefined });
+      assert.deepEqual({ ...redmine.plan.cells[0], hours: undefined }, { date: D, target: { issueId: 42, activity: 'Development' }, label: '#42 · Development', hours: undefined });
       assert.ok(redmine.plan.cells[0].hours > 0);
     } finally {
       app.close();

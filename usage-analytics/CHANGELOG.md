@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.2
+- `bin/mods install` asks which mods to install when run in a terminal (Enter = all); `--except a,b` skips some, `--only` and `--yes` skip the question.
+- Docs: "On by default" table, every command, config key and env var.
+
 ## 0.9.1
 - Tests follow 0.9.0: the advisor test checks that nothing starts on its own and drives the background run through `/analytics advise bg`.
 

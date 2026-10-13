@@ -39,7 +39,7 @@ function engine(on: any, env: Record<string, string>, runs: string[][] = [], toa
 
 const ENV = {
   HOME: '/h',
-  CLAUDE_CONFIG_DIR: '/h/.claude-infi',
+  CLAUDE_CONFIG_DIR: '/h/.claude-work',
   ANTHROPIC_BASE_URL: 'https://gateway.example.com/v1',
   ANTHROPIC_AUTH_TOKEN: 'sk-secret-value',
 }
@@ -55,22 +55,22 @@ describe('usage-analytics', () => {
     const chunks = [...files.entries()].filter(([p]) => p.includes('/events/')).sort(([a], [b]) => (a < b ? -1 : 1))
     expect(chunks.length).toBeGreaterThan(0)
     const text = chunks.map(([, t]) => t).join('')
-    for (const [path] of chunks) expect(path).toMatch(/^\/h\/\.claude-mods\/usage-analytics\/events\/claude-infi\/\d{4}-\d\d-\d\d\/sess-1\./)
+    for (const [path] of chunks) expect(path).toMatch(/^\/h\/\.claude-mods\/usage-analytics\/events\/claude-work\/\d{4}-\d\d-\d\d\/sess-1\./)
     const evs = text.trim().split('\n').map(l => JSON.parse(l))
     expect(evs.map(e => e.ev)).toEqual(['session_start', 'tool', 'session_end'])
     expect(evs[0].gatewayHost).toBe('gateway.example.com')
     expect(evs[0].hasAuthToken).toBe(true)
     expect(evs[0].settings.plugins).toEqual(['a@b'])
-    expect(evs[1]).toMatchObject({ tool: 'Read', file: '/work/src/a.ts', ext: 'ts', resultChars: 5, resultLines: 3, profile: 'claude-infi' })
+    expect(evs[1]).toMatchObject({ tool: 'Read', file: '/work/src/a.ts', ext: 'ts', resultChars: 5, resultLines: 3, profile: 'claude-work' })
     expect(text.includes('sk-secret-value')).toBe(false)
     // A fresh machine: the generic data folder, the config written with defaults, one first-run notice.
     expect(JSON.parse(files.get('/h/.claude-mods/usage-analytics/config.json')!)).toMatchObject({ dashboard: true, port: 8787, profileDirs: [] })
     await new Promise(r => setTimeout(r, 0))
     expect(toasts.filter(t => /Mods on: usage-analytics \(importing your history/.test(t)).length).toBe(1)
     // The profile's config dir is registered so the CLI finds its transcripts wherever it lives.
-    expect(JSON.parse(files.get('/h/.claude-mods/usage-analytics/profiles/claude-infi.json')!)).toEqual({ profile: 'claude-infi', configDir: '/h/.claude-infi' })
+    expect(JSON.parse(files.get('/h/.claude-mods/usage-analytics/profiles/claude-work.json')!)).toEqual({ profile: 'claude-work', configDir: '/h/.claude-work' })
     // The live pulse the dashboard server watches.
-    expect(JSON.parse(files.get('/h/.claude-mods/usage-analytics/live/claude-infi.json')!)).toMatchObject({ profile: 'claude-infi', sid: 'sess-1' })
+    expect(JSON.parse(files.get('/h/.claude-mods/usage-analytics/live/claude-work.json')!)).toMatchObject({ profile: 'claude-work', sid: 'sess-1' })
   })
 
   test('uses an existing ~/.claude-shared, or CLAUDE_MODS_HOME, and passes the folder to the CLI', async ($, on) => {

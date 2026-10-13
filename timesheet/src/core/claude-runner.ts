@@ -6,7 +6,7 @@ import { delimiter, join } from 'node:path';
  * Runs Claude Code headlessly for classification.
  *
  * `command` may be a binary on PATH (`claude`), a path, or a shell function/alias such
- * as a profile wrapper (`claude-infi`) that exports CLAUDE_CONFIG_DIR and auth/routing
+ * as a profile wrapper (`claude-work`) that exports CLAUDE_CONFIG_DIR and auth/routing
  * variables before calling `claude`. Functions only exist in an interactive shell, so
  * those run through `$SHELL -ic` and set up auth exactly as when typed; timesheet never
  * reads or stores their credentials.

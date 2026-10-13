@@ -106,7 +106,7 @@ export interface SubmitStatus {
 export interface SubmitCell {
   date: string;
   target: object;
-  /** e.g. "#9888 · Fejlesztés" or "Acme:Project · Development" */
+  /** e.g. "#4242 · Development" or "Acme:Project · Development" */
   label: string;
   hours: number;
 }

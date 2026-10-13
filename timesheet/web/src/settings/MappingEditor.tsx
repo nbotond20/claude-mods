@@ -17,7 +17,7 @@ interface RowSpec {
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-/** "#9888 Secondary Learning Platform Development (IL.NLP)" */
+/** "#4242 Checkout redesign (Acme Platform)" */
 export const issueLabel = (i: { id: number; title: string; project: string }) => `#${i.id} ${i.title} (${i.project})`;
 
 /**

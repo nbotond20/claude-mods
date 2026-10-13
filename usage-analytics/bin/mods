@@ -1,7 +1,9 @@
 #!/bin/sh
 # my-mods: install, update or remove the mods in every Claude Code profile on this machine.
 #
-#   mods install [--only a,b] [--profiles dir,dir]   add the mods (skips what a profile already has)
+#   mods install [--only a,b] [--except a,b] [--profiles dir,dir] [--yes]
+#                                                    add the mods (skips what a profile already has); in a
+#                                                    terminal it asks which ones, Enter = all; --yes takes all
 #   mods update  [--profiles dir,dir]                pull the marketplace, update each installed mod
 #   mods uninstall [--yes] [--purge] [--dry-run]     stop the dashboard, remove autostart and git hooks,
 #                                                    uninstall the mods; --purge also deletes the data folder
@@ -16,6 +18,45 @@ set -u
 MARKETPLACE=my-mods
 REPO=nbotond20/claude-mods
 ALL_MODS="budget-guard lean-tools lsp-first no-attribution timesheet usage-analytics"
+
+about() {
+  case "$1" in
+    budget-guard) say "spend/context band, model routing, budgets, compaction, /budget" ;;
+    lean-tools) say "caps huge shell output, nudges toward batched calls and ranged reads" ;;
+    lsp-first) say "keeps the LSP tool loaded and steers symbol lookups to it" ;;
+    no-attribution) say "Claude never credits itself in commits, PRs or code" ;;
+    timesheet) say "NetSuite-ready timesheets from sessions, git, GitHub, calendar (Node 22.18+)" ;;
+    usage-analytics) say "logs every session, SQLite DB, /analytics and a live dashboard (python3)" ;;
+  esac
+}
+
+# Names or numbers (from the list) separated by commas or spaces -> mod names; empty when one is unknown.
+resolve_mods() {
+  out=""
+  for x in $(printf '%s' "$1" | tr ',' ' '); do
+    case "$x" in
+      all) out=$ALL_MODS; continue ;;
+      *[!0-9]*) m=$x ;;
+      *) m=$(printf '%s\n' $ALL_MODS | sed -n "${x}p") ;;
+    esac
+    case " $ALL_MODS " in *" $m "*) ;; *) warn "no mod named $x (there are: $ALL_MODS)"; return 1 ;; esac
+    case " $out " in *" $m "*) ;; *) out="${out:+$out }$m" ;; esac
+  done
+  printf '%s' "$out"
+}
+
+# Asks which mods to install when run in a terminal; Enter installs all of them.
+pick_mods() {
+  say "Mods (Enter installs all):" >&2
+  i=0
+  for m in $ALL_MODS; do i=$((i + 1)); printf '  %d) %-16s %s\n' "$i" "$m" "$(about "$m")" >&2; done
+  while :; do
+    printf 'Which ones? numbers or names, e.g. 1,3 or "all" [all]: ' >&2
+    read -r a || a=""
+    [ -z "$a" ] && { printf '%s' "$ALL_MODS"; return; }
+    picked=$(resolve_mods "$a") && [ -n "$picked" ] && { printf '%s' "$picked"; return; }
+  done
+}
 
 say() { printf '%s\n' "$*"; }
 warn() { printf '! %s\n' "$*" >&2; }
@@ -107,11 +148,15 @@ old_skill_hint() {
 
 cmd_install() {
   need_claude
-  only=$ALL_MODS
-  [ -n "${ONLY:-}" ] && only=$(printf '%s' "$ONLY" | tr ',' ' ')
-  for m in $only; do
-    case " $ALL_MODS " in *" $m "*) ;; *) warn "no mod named $m (there are: $ALL_MODS)"; exit 2 ;; esac
-  done
+  if [ -n "${ONLY:-}" ]; then only=$(resolve_mods "$ONLY") || exit 2
+  elif [ "$YES" = 0 ] && [ -z "${EXCEPT:-}" ] && [ -t 0 ] && [ -t 1 ]; then only=$(pick_mods)
+  else only=$ALL_MODS; fi
+  if [ -n "${EXCEPT:-}" ]; then
+    skip=$(resolve_mods "$EXCEPT") || exit 2
+    keep=""; for m in $only; do case " $skip " in *" $m "*) ;; *) keep="${keep:+$keep }$m" ;; esac; done; only=$keep
+  fi
+  [ -n "$only" ] || { say "No mods selected."; exit 0; }
+  say "Installing: $only"
   src=$(marketplace_source)
   for p in $(profiles); do
     say "$(profile_name "$p") ($p)"
@@ -217,11 +262,13 @@ cmd_uninstall() {
 
 cmd=${1:-help}
 [ $# -gt 0 ] && shift
-ONLY=""; PROFILES_ARG=""; YES=0; PURGE=0; DRY=0
+ONLY=""; EXCEPT=""; PROFILES_ARG=""; YES=0; PURGE=0; DRY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --only) ONLY=${2:-}; shift ;;
     --only=*) ONLY=${1#--only=} ;;
+    --except) EXCEPT=${2:-}; shift ;;
+    --except=*) EXCEPT=${1#--except=} ;;
     --profiles) PROFILES_ARG=${2:-}; shift ;;
     --profiles=*) PROFILES_ARG=${1#--profiles=} ;;
     --yes|-y) YES=1 ;;

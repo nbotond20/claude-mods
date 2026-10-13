@@ -978,7 +978,46 @@ async function loadHistory($: EngineInterface): Promise<History> {
 
 async function refreshSpend($: EngineInterface) {
   const s = await fetchLiteLLM($).catch(() => null)
+  if (s && !s.error) Object.assign(s, await spendWindows($, s).catch(() => ({})))
   await update($, litellm, prev => (s && prev && !prev.error && !s.error ? { ...s, baseline: prev.baseline } : s))
+}
+
+const SNAPSHOT_MS = 10 * 60_000
+
+/**
+ * Spend over the last 24 hours and 7 days. The key only reports a lifetime total, so each profile keeps
+ * a reading every 10 minutes for 8 days (<mods home>/budget-guard/key-history/<profile>.json); 24h is the
+ * total now minus the reading from a day ago. Until a day of readings exists (or after the key's budget
+ * reset its total), 24h is estimated from LiteLLM's per-day figures: today plus the part of yesterday
+ * still inside the window. 7 days is the sum of the last 7 days of those figures.
+ */
+async function spendWindows($: EngineInterface, s: Spend): Promise<Pick<Spend, 'last24h' | 'last7d'>> {
+  const now = s.at
+  const path = `${await modsHome($)}/budget-guard/key-history/${await profileName($)}.json`
+  let hist: { t: number; spend: number }[] = []
+  try {
+    hist = JSON.parse(String(await $.fs.read(path)))
+  } catch {
+    // no readings yet
+  }
+  const last = hist[hist.length - 1]
+  if (!last || now - last.t >= SNAPSHOT_MS || s.spend < last.spend) {
+    hist = [...hist.filter(h => now - h.t <= 8 * DAY_MS && h.spend <= s.spend), { t: now, spend: s.spend }]
+    await $.fs.write(path, JSON.stringify(hist))
+  }
+
+  const out: Pick<Spend, 'last24h' | 'last7d'> = {}
+  const dayAgo = hist.filter(h => h.t <= now - DAY_MS).pop()
+  if (dayAgo && now - dayAgo.t <= DAY_MS + 2 * SNAPSHOT_MS) out.last24h = { usd: s.spend - dayAgo.spend, exact: true }
+  if (s.byDay) {
+    const today = localDay(now)
+    const day = (back: number) => s.byDay![localDay(now - back * DAY_MS)] ?? 0
+    const midnight = Date.parse(`${today}T00:00:00`)
+    const elapsed = Number.isFinite(midnight) ? Math.min(1, Math.max(0, (now - midnight) / DAY_MS)) : 0.5
+    out.last24h ??= { usd: day(0) + day(1) * (1 - elapsed), exact: false }
+    out.last7d = [0, 1, 2, 3, 4, 5, 6].reduce((a, back) => a + day(back), 0)
+  }
+  return out
 }
 
 async function isGateway($: EngineInterface) {
@@ -1025,11 +1064,14 @@ async function fetchLiteLLM($: EngineInterface): Promise<Spend | null> {
   }
 }
 
-/** Spend per day since the 1st of the month from LiteLLM's /user/daily/activity (the numbers its UI and
+/** Spend per day since the 1st of the month (or 7 days back) from LiteLLM's /user/daily/activity (the numbers its UI and
  * usage-analytics show); undefined when the gateway does not serve it. */
 async function fetchKeyDays($: EngineInterface, base: string, headers: Record<string, string>, now: number): Promise<Record<string, number> | undefined> {
   const end = new Date(now + 86_400_000).toISOString().slice(0, 10)
-  const start = `${localDay(now).slice(0, 7)}-01`
+  // From the 1st of the month or 7 days back, whichever is earlier: the month gauge and the 7-day figure.
+  const monthStart = `${localDay(now).slice(0, 7)}-01`
+  const weekStart = localDay(now - 6 * 86_400_000)
+  const start = weekStart < monthStart ? weekStart : monthStart
   try {
     const r = await $.http.fetch(`${base.replace(/\/+$/, '')}/user/daily/activity?start_date=${start}&end_date=${end}&page_size=1000`, { headers })
     if (!r.ok) return undefined
@@ -1198,7 +1240,7 @@ function gauge(label: string, used: number, cap: number) {
   return { text: `${label} ${usd(used)}/${usd(cap)} ${pct}%`, color: pct >= 100 ? 'red' : pct >= 80 ? 'yellow' : undefined }
 }
 
-/** Limits by profile in one shared file: `{ "profiles": { "claude-infi": { "daily": 25, "monthly": 500 } } }`. */
+/** Limits by profile in one shared file: `{ "profiles": { "claude-work": { "daily": 25, "monthly": 500 } } }`. */
 async function budgetsPath($: EngineInterface) {
   return `${await modsHome($)}/budget-guard/budgets.json`
 }
@@ -1610,7 +1652,7 @@ export const register: Register = on => {
         `session cost ${cost == null ? 'n/a' : usd(cost)}  saved this session ~${usd(savedNow)}  (/budget savings for history)`,
         ...(hubPaused() ? [`PAUSED ${hubPausedUntil() === Infinity ? 'for this session' : `until ${hubClock(hubPausedUntil())}`}: levers, effort cap and compaction step aside (/budget resume)`] : []),
         trackOn() ? 'impact: this session is in the active arm (/analytics impact compares it with the holdout)' : 'impact: this session is in the HOLDOUT arm: cost levers are off so their effect can be measured (/budget route auto etc. still work)',
-        s ? (s.error ? `LiteLLM: ${s.error}` : `LiteLLM this session +${usd(s.spend - s.baseline)}, key total ${usd(s.spend)}${s.maxBudget ? ` / ${usd(s.maxBudget)}` : ' (no max_budget set)'}${s.resetAt ? `, resets ${s.resetAt.slice(0, 10)}` : ''}`) : 'LiteLLM: not in use',
+        s ? (s.error ? `LiteLLM: ${s.error}` : `LiteLLM this session +${usd(s.spend - s.baseline)}${s.last24h ? `, last 24h ${s.last24h.exact ? '' : '~'}${usd(Math.max(0, s.last24h.usd))}` : ''}${s.last7d !== undefined ? `, last 7 days ${usd(s.last7d)}` : ''}, key total ${usd(s.spend)}${s.maxBudget ? ` / ${usd(s.maxBudget)}` : ' (no max_budget set)'}${s.resetAt ? `, resets ${s.resetAt.slice(0, 10)}` : ''}`) : 'LiteLLM: not in use',
       ].join('\n'),
     }
   })
@@ -1666,7 +1708,10 @@ export const register: Register = on => {
     if (bill === 'gateway' && s && !s.error) {
       pay = (
         <Text color={sOver >= 0.9 ? 'red' : sOver >= 0.7 ? 'yellow' : undefined}>
-          LiteLLM +{usd(s.spend - s.baseline)}{keyRate !== null ? ` · key ${usd(Math.max(0, keyRate))}/h` : ''}
+          LiteLLM +{usd(s.spend - s.baseline)}
+          {s.last24h ? ` · 24h ${s.last24h.exact ? '' : '~'}${usd(Math.max(0, s.last24h.usd))}` : ''}
+          {s.last7d !== undefined ? ` · 7d ${usd(s.last7d)}` : ''}
+          {keyRate !== null ? ` · key ${usd(Math.max(0, keyRate))}/h` : ''}
           {s.maxBudget ? ` · ${Math.round(100 * sOver)}% of ${usd(s.maxBudget)}` : ''}
         </Text>
       )

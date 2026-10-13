@@ -18,6 +18,31 @@ Source: `lsp-first/hooks/register.ts`. Tests: `lsp-first/tests/`.
 
 `/lsp-first off 1h` (or `30m`, `1d`, `session`) steps aside for that long; `/lsp-first on` resumes. `/mods pause` pauses it with the other mods.
 
+## On by default
+
+On after install, with no setup, provided an LSP tool exists (see below). Without a language server plugin nothing is changed.
+
+| Feature | Default | How to change |
+| --- | --- | --- |
+| LSP schema up front (`upfront`) | on | config.json only |
+| System prompt guide (`guide`) | on | `/lsp-first guide on\|off` |
+| Nudges (`nudges`) | on, at most once every 10 minutes | `/lsp-first nudges on\|off` |
+| Whole mod (`enabled`) | on | `/lsp-first off` / `/lsp-first on` |
+| Holdout | 20% of sessions stay passive | `/lsp-first holdout <0-1>` |
+
+## Managing it
+
+| Command | Effect |
+| --- | --- |
+| `/lsp-first` or `/lsp-first status` | on/off/paused, this session's arm, settings, and this session's LSP calls, TS/JS symbol searches and nudges |
+| `/lsp-first setup` | checks for the LSP tool, asks about the options and writes config.json |
+| `/lsp-first off [30m\|2h\|1d\|session]` | with a duration, steps aside for that long (`session` is this session only). With no duration, sets `enabled` false until `/lsp-first on` |
+| `/lsp-first on` | sets `enabled` true and ends any pause |
+| `/lsp-first holdout <0-1>` | share of sessions that stay passive (0 = never; applies from the next session) |
+| `/lsp-first nudges\|guide on\|off` | switch that part |
+
+`/mods pause` pauses it with the other mods. Setting changes apply from the next session.
+
 ## The TypeScript language server
 
 lsp-first needs a language server plugin; without one it does nothing. For TypeScript/JavaScript:
@@ -29,11 +54,17 @@ npm i -g typescript-language-server typescript
 /plugin install typescript-lsp@claude-plugins-official
 ```
 
-Check it with `typescript-language-server --version`. In a session, the LSP tool should appear in `/context` under tools that are not deferred. `/lsp-first setup` checks for the LSP tool and walks through the options.
+Check it with `typescript-language-server --version`. In a session, the LSP tool should appear in `/context` under tools that are not deferred. `/mods doctor` also checks for `typescript-language-server`.
 
 ## Config: `<mods home>/lsp-first/config.json`
 
-`{ "enabled": true, "holdout": 0.2, "upfront": true, "guide": true, "nudges": true }`, or `/lsp-first [status|on|off|holdout <0-1>|nudges|guide on|off]`. In holdout sessions LSP stays deferred, and no guide or nudges are added.
+Written with these defaults on first start (`<mods home>` is `$CLAUDE_MODS_HOME` if set, else `~/.claude-shared` if it exists, else `~/.claude-mods`):
+
+```json
+{ "enabled": true, "holdout": 0.2, "upfront": true, "guide": true, "nudges": true }
+```
+
+`enabled` false turns the mod off; `holdout` is the share of passive sessions; `upfront` keeps the LSP schema loaded instead of deferred; `guide` adds the system prompt section; `nudges` adds the grep hints. In holdout sessions LSP stays deferred, and no guide or nudges are added.
 
 ## Measuring it
 

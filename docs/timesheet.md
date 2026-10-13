@@ -4,6 +4,10 @@ NetSuite-ready timesheets from your Claude Code and OpenCode sessions, git and G
 
 Needs Node 22.18 or newer (it uses `node:sqlite` and runs TypeScript directly).
 
+## On by default
+
+Installing the mod puts `~/.local/bin/timesheet` in place at the next session start and turns on the weekly toast below. Nothing is collected until you run a report. The CLI then reads Claude Code (every profile), OpenCode and git by default and classifies with `claude -p`. Work scope is empty until you set it, so nothing is booked yet. Google Calendar, GitHub and Redmine/NetSuite submission stay off until you connect them. The web app runs only after `/timesheet open` or `timesheet serve`. The full table is in [the manual](../timesheet/README.md#on-by-default).
+
 ## Commands
 
 | Command | What it does |
@@ -11,7 +15,7 @@ Needs Node 22.18 or newer (it uses `node:sqlite` and runs TypeScript directly).
 | `/timesheet` · `/timesheet status` | target hours per day, whether calendar and GitHub are connected, launcher warnings |
 | `/timesheet setup` | a guided setup through the skill |
 | `/timesheet doctor` | the CLI's own checks |
-| `/timesheet open` | starts the web app on port 4280 (log: `<mods home>/timesheet/web.log`) and opens it |
+| `/timesheet open` (also `serve`, `web`) | starts the web app on port 4280 (log: `<mods home>/timesheet/web.log`) and opens it |
 | `/timesheet day\|week\|month [date]` | the timesheet for that period, through the skill |
 | `/timesheet <anything else>` | handed to the skill as a request |
 | `/timesheet install [--force]` | (re)installs the `timesheet` launcher |

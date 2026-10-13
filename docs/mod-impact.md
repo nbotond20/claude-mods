@@ -1,12 +1,24 @@
 # Mod impact: are the mods saving money?
 
-Every mod that changes what the model sees or does (budget-guard, lean-tools, lsp-first) is measured. usage-analytics observes. It adds nothing to prompts, except while you trial or adopt an advisor instruction: that instruction goes into the trial's 'on' sessions only, and the advisor measures it against the rest. It makes no model calls, except the advisor runs you start or schedule.
+Every mod that changes what the model sees or does (budget-guard, lean-tools, lsp-first) is measured. usage-analytics observes. It adds nothing to prompts, except while you trial or adopt an advisor instruction: that instruction goes into the trial's 'on' sessions only, and the advisor measures it against the rest. It makes no model calls, except the advisor runs you start.
 
 ```
-/analytics impact [--days N] [--profile P]     terminal report
+/analytics impact [--days N] [--profile P]     terminal report (ingests first)
 /dashboard impact                              the "Mod impact" tab
-claude-usage impact [--json]                   from a shell
+claude-usage impact [--days N] [--profile P] [--json]   from a shell
 ```
+
+`--days` defaults to 30 (0 is all time).
+
+## On by default
+
+| Feature | Default | How to change |
+| --- | --- | --- |
+| Holdout experiment | **on** for budget-guard (10% of sessions), lean-tools (20%) and lsp-first (20%): those sessions run with the mod passive | `holdout` per mod, see [Holdout settings](#holdout-settings) |
+| Arm and action logging | on; the mods write events under usage-analytics' data folder, which needs usage-analytics to import them | n/a |
+| Ledger and compliance | computed from the logged events, nothing to enable | n/a |
+| Verdicts | wait for 30 sessions with prompts in each arm | n/a |
+| no-attribution, usage-analytics | not measured (no holdout) | n/a |
 
 ## How it is measured
 
@@ -23,7 +35,7 @@ claude-usage impact [--json]                   from a shell
 
 | Verdict | Meaning |
 | --- | --- |
-| collecting data | fewer than 30 sessions in one of the arms |
+| collecting data | fewer than 30 sessions (with at least one prompt) in one of the arms |
 | **saving X%** | cost per prompt is lower with the mod on, and the whole interval is below 0 |
 | **COSTING MORE** | cost per prompt is higher with the mod on, and the whole interval is above 0 |
 | no clear effect yet | the interval spans 0. With more sessions it narrows. |
@@ -58,7 +70,9 @@ The same rate is computed in holdout sessions for the moments a nudge *would* ha
 **Warnings:**
 - a nudge that is not changing behaviour;
 - lean-tools caps that are re-opened often, so the cap is too tight;
-- many budget-guard denials.
+- 5 or more budget-guard denials.
+
+The lean-tools warning fires when more than 30% of at least 5 capped outputs were re-opened. The nudge warning needs 20 or more nudges in each arm and a follow rate that is no higher with the nudge.
 
 ## Events
 
@@ -69,7 +83,7 @@ Mods write to `<mods home>/usage-analytics/events/<profile>/<day>/<sid>.<ts>.<mo
 | all | `arm` (with holdout share, version, settings), `session_summary` |
 | lean-tools | `cap`/`would_cap`, `cap_followup`, `gitlog_bound`/`would_gitlog_bound`, `guide`, `nudge`/`would_nudge`, `nudge_outcome` |
 | lsp-first | `schema_upfront`, `guide`, `lsp_call`, `symbol_search`, `nudge`/`would_nudge`, `nudge_outcome` |
-| budget-guard | `classify`, `route`, `agent_route`, `hold`, `resolve`, `force`, `deny`/`would_deny`, `trim`/`would_trim`, `keepalive` |
+| budget-guard | `classify`, `route`, `agent_route`, `reroute`, `hold`, `resolve`, `force`, `compact`, `deny`/`would_deny`, `trim`/`would_trim`, `keepalive` |
 
 ## Holdout settings
 
@@ -79,7 +93,7 @@ Mods write to `<mods home>/usage-analytics/events/<profile>/<day>/<sid>.<ts>.<mo
 | lean-tools | 20% | `/lean holdout 0.2` |
 | lsp-first | 20% | `/lsp-first holdout 0.2` |
 
-The value is stored in each mod's `config.json` under `<mods home>/<mod>/` and applies from the next session. `0` turns the experiment off (always active); `1` makes the mod fully passive.
+The value (0 to 1) is stored in each mod's `config.json` under `<mods home>/<mod>/` (`<mods home>` is `$CLAUDE_MODS_HOME`, else `~/.claude-shared` if it exists, else `~/.claude-mods`) and applies from the next session. Each mod's setup (`/mods setup`) asks about it. `0` turns the experiment off (always active); `1` makes the mod fully passive.
 
 **What budget-guard's holdout switches off:** routing, subagent routing, output trimming, keep-alive, the new-task check, the subagent cap, the image block, the generated-file block and the effort cap. The band, the budgets and the context hold at `block` stay on in both arms.
 

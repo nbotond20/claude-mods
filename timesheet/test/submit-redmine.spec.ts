@@ -20,7 +20,7 @@ const TODAY = '2026-10-01';
 
 describe('redmine addresses', () => {
   it('builds day URLs with exactly year, month, day and user', () => {
-    assert.equal(dayUrl('https://r.example.com', 262, '2026-09-05'), 'https://r.example.com/work_time/index?year=2026&month=9&day=5&user=262');
+    assert.equal(dayUrl('https://r.example.com', 42, '2026-09-05'), 'https://r.example.com/work_time/index?year=2026&month=9&day=5&user=42');
     assert.equal(redmineBase('https://r.example.com/work_time/index'), 'https://r.example.com');
     assert.equal(redmineBase('https://r.example.com/redmine/work_time/index?x=1'), 'https://r.example.com/redmine');
     assert.equal(redmineBase('https://r.example.com/'), 'https://r.example.com');
@@ -33,15 +33,15 @@ describe('redmine addresses', () => {
 
   it('accepts only the expected parameters (prj=false is the one harmless extra)', () => {
     const o = 'https://r.example.com';
-    assert.equal(dayUrlProblem(`${o}/work_time/index?day=1&month=10&prj=false&user=262&year=2026`, o, 262, '2026-10-01'), null);
-    assert.match(dayUrlProblem(`${o}/work_time/index?day=1&month=10&user=262&year=2026&ticket_del=closed`, o, 262, '2026-10-01')!, /unexpected parameter ticket_del/);
-    assert.match(dayUrlProblem(`${o}/work_time/index?day=1&month=10&prj=170&user=262&year=2026`, o, 262, '2026-10-01')!, /unexpected parameter prj/);
-    assert.match(dayUrlProblem(`${o}/work_time/index?day=2&month=10&user=262&year=2026`, o, 262, '2026-10-01')!, /day=2/);
-    assert.match(dayUrlProblem(`${o}/work_time/index?day=1&month=10&user=263&year=2026`, o, 262, '2026-10-01')!, /user=263/);
-    assert.match(dayUrlProblem(`${o}/work_time/index?day=1&month=10&year=2026`, o, 262, '2026-10-01')!, /user is missing/);
-    assert.match(dayUrlProblem(`${o}/work_time/index?day=1&day=1&month=10&user=262&year=2026`, o, 262, '2026-10-01')!, /twice/);
-    assert.match(dayUrlProblem(`https://evil.example.com/work_time/index?day=1&month=10&user=262&year=2026`, o, 262, '2026-10-01')!, /evil/);
-    assert.match(dayUrlProblem(`${o}/login?day=1&month=10&user=262&year=2026`, o, 262, '2026-10-01')!, /Worktime page/);
+    assert.equal(dayUrlProblem(`${o}/work_time/index?day=1&month=10&prj=false&user=42&year=2026`, o, 42, '2026-10-01'), null);
+    assert.match(dayUrlProblem(`${o}/work_time/index?day=1&month=10&user=42&year=2026&ticket_del=closed`, o, 42, '2026-10-01')!, /unexpected parameter ticket_del/);
+    assert.match(dayUrlProblem(`${o}/work_time/index?day=1&month=10&prj=170&user=42&year=2026`, o, 42, '2026-10-01')!, /unexpected parameter prj/);
+    assert.match(dayUrlProblem(`${o}/work_time/index?day=2&month=10&user=42&year=2026`, o, 42, '2026-10-01')!, /day=2/);
+    assert.match(dayUrlProblem(`${o}/work_time/index?day=1&month=10&user=43&year=2026`, o, 42, '2026-10-01')!, /user=43/);
+    assert.match(dayUrlProblem(`${o}/work_time/index?day=1&month=10&year=2026`, o, 42, '2026-10-01')!, /user is missing/);
+    assert.match(dayUrlProblem(`${o}/work_time/index?day=1&day=1&month=10&user=42&year=2026`, o, 42, '2026-10-01')!, /twice/);
+    assert.match(dayUrlProblem(`https://evil.example.com/work_time/index?day=1&month=10&user=42&year=2026`, o, 42, '2026-10-01')!, /evil/);
+    assert.match(dayUrlProblem(`${o}/login?day=1&month=10&user=42&year=2026`, o, 42, '2026-10-01')!, /Worktime page/);
   });
 });
 
@@ -54,9 +54,9 @@ function day(date: string, entries: [string, string, number][], status: DayStatu
 }
 
 const RULES: SubmitRule<RedmineTarget>[] = [
-  { project: 'NLP', category: 'Development', target: { issueId: 9888, activity: 'Fejlesztés' } },
-  { project: 'NLP', category: 'Team Meeting', target: { issueId: 13, activity: 'Megbeszélés, egyeztetés' } },
-  { project: 'NLP', category: 'Learning', target: { issueId: 31, activity: 'Rezsi - tanulás' } },
+  { project: 'NLP', category: 'Development', target: { issueId: 4242, activity: 'Development' } },
+  { project: 'NLP', category: 'Team Meeting', target: { issueId: 101, activity: 'Meeting' } },
+  { project: 'NLP', category: 'Learning', target: { issueId: 102, activity: 'Overhead - learning' } },
 ];
 
 /** A week with hours on four days (Thursday is today). */
@@ -75,7 +75,7 @@ const SMALL_REPORTS = [
   day('2026-10-01', [], 'today'),
 ];
 
-const ACT = { 'Fejlesztés': 9, 'Megbeszélés, egyeztetés': 15, 'Rezsi - tanulás': 10 } as const;
+const ACT = { 'Development': 9, 'Meeting': 15, 'Overhead - learning': 10 } as const;
 
 describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google Chrome not installed' }, () => {
   let session: SubmitSession;
@@ -113,7 +113,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
 
   /** After a stop, the tab shows the day freshly loaded: no filled-in values a later Update could save. */
   async function assertClean(page: Page, origin: string, date: string) {
-    assert.equal(dayUrlProblem(page.url(), origin, 262, date), null, `the tab shows ${page.url()}`);
+    assert.equal(dayUrlProblem(page.url(), origin, 42, date), null, `the tab shows ${page.url()}`);
     const filled = await page.$$eval('input[name^="new_time_entry["]', (els) => els.filter((e) => /\[hours\]$/.test(e.getAttribute('name') ?? '') && (e as HTMLInputElement).value !== '').map((e) => e.getAttribute('name')));
     assert.deepEqual(filled, []);
   }
@@ -133,20 +133,20 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       assert.equal(r.state, 'ok');
       const c = (r as { catalog: RedmineCatalog }).catalog;
       assert.equal(c.origin, t.fx.origin);
-      assert.equal(c.userId, 262);
-      assert.equal(c.user, 'Nuszpl Botond');
-      assert.deepEqual(c.issues.map((i) => i.id), [13, 31, 9888, 10964, 1270, 17475]);
-      const nlp = c.issues.find((i) => i.id === 9888)!;
-      assert.equal(nlp.title, 'Secondary Learning Platform Development');
-      assert.equal(nlp.project, 'IL.NLP');
-      assert.equal(c.issues.find((i) => i.id === 13)!.project, 'Collaborate');
-      assert.equal(c.issues.find((i) => i.id === 1270)!.title, 'Általános presales (régi, ne könyvelj rá)');
+      assert.equal(c.userId, 42);
+      assert.equal(c.user, 'Jane Doe');
+      assert.deepEqual(c.issues.map((i) => i.id), [101, 102, 4242, 103, 104, 105]);
+      const nlp = c.issues.find((i) => i.id === 4242)!;
+      assert.equal(nlp.title, 'Checkout redesign');
+      assert.equal(nlp.project, 'Acme Platform');
+      assert.equal(c.issues.find((i) => i.id === 101)!.project, 'Teamwork');
+      assert.equal(c.issues.find((i) => i.id === 104)!.title, 'General presales (old, do not book)');
       assert.ok(c.issues.every((i) => i.activities.length === 11));
-      assert.deepEqual(c.activities, ['Megbeszélés, egyeztetés', 'Fejlesztés', 'Tesztelés', 'Dokumentálás', 'Üzemeltetés támogatás', 'Hibaelhárítás', 'Rezsi - tanulás', 'Rezsi - egyéb', 'Rezsi - hibajavítás', 'Rezsi - Presales', 'DI source - credit']);
-      assert.ok(redmine.exists(c, { issueId: 9888, activity: 'Fejlesztés' }));
-      assert.ok(!redmine.exists(c, { issueId: 9888, activity: 'Fejlesztes' }));
-      assert.ok(!redmine.exists(c, { issueId: 42, activity: 'Fejlesztés' }));
-      assert.equal(redmine.label(c, { issueId: 9888, activity: 'Fejlesztés' }), '#9888 Secondary Learning Platform Development · Fejlesztés');
+      assert.deepEqual(c.activities, ['Meeting', 'Development', 'Testing', 'Documentation', 'Operations support', 'Troubleshooting', 'Overhead - learning', 'Overhead - other', 'Overhead - bugfix', 'Overhead - Presales', 'Source - credit']);
+      assert.ok(redmine.exists(c, { issueId: 4242, activity: 'Development' }));
+      assert.ok(!redmine.exists(c, { issueId: 4242, activity: 'Developent' }));
+      assert.ok(!redmine.exists(c, { issueId: 42, activity: 'Development' }));
+      assert.equal(redmine.label(c, { issueId: 4242, activity: 'Development' }), '#4242 Checkout redesign · Development');
       assert.deepEqual(t.store.submitCatalog('redmine')?.data, c);
       // Reading the real day: nothing entered, total 0.
       const snap = await redmine.read(await t.page(), c, WEEK);
@@ -164,7 +164,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       const r = await t.runner.discover('redmine');
       assert.equal(r.state, 'ok');
       const c = (r as { catalog: RedmineCatalog }).catalog;
-      assert.deepEqual(c.issues.map((i) => i.id), [13, 31, 9888, 10964]);
+      assert.deepEqual(c.issues.map((i) => i.id), [101, 102, 4242, 103]);
       const days = new Set(t.fx.rec.gets.map((g) => new URLSearchParams(g.split('?')[1] ?? '').get('day')).filter(Boolean));
       assert.equal(days.size, DISCOVER_DAYS + 1);
       assert.equal(t.fx.rec.posts.length, 0);
@@ -186,9 +186,9 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
     const t = await setup({
       state: {
         entries: [
-          { id: 1, issueId: 13, date: '2026-09-28', hours: 2, activityId: 15, comments: 'standup' },
-          { id: 2, issueId: 9888, date: '2026-10-03', hours: 1.5, activityId: 9, comments: '' },
-          { id: 3, issueId: 31, date: '2026-09-29', hours: 0, activityId: 10, comments: '' },
+          { id: 1, issueId: 101, date: '2026-09-28', hours: 2, activityId: 15, comments: 'standup' },
+          { id: 2, issueId: 4242, date: '2026-10-03', hours: 1.5, activityId: 9, comments: '' },
+          { id: 3, issueId: 102, date: '2026-09-29', hours: 0, activityId: 10, comments: '' },
         ],
       },
     });
@@ -197,12 +197,12 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       const c = (d as { catalog: RedmineCatalog }).catalog;
       const snap = await redmine.read(await t.page(), c, WEEK);
       assert.deepEqual(snap.cells, [
-        { date: '2026-09-28', target: { issueId: 13, activity: 'Megbeszélés, egyeztetés' }, hours: 2 },
-        { date: '2026-10-03', target: { issueId: 9888, activity: 'Fejlesztés' }, hours: 1.5 },
+        { date: '2026-09-28', target: { issueId: 101, activity: 'Meeting' }, hours: 2 },
+        { date: '2026-10-03', target: { issueId: 4242, activity: 'Development' }, hours: 1.5 },
       ]);
       // A wrong user in the heading stops the read.
       t.fx.state.headingName = 'Someone Else';
-      await assert.rejects(redmine.read(await t.page(), c, WEEK), /expected "Nuszpl Botond"/);
+      await assert.rejects(redmine.read(await t.page(), c, WEEK), /expected "Jane Doe"/);
       assert.equal(t.fx.rec.posts.length, 0);
     } finally {
       await t.close();
@@ -211,18 +211,18 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
 
   it('saves exactly the planned cells, day by day, touching nothing else', async () => {
     const t = await setup({
-      state: { entries: [{ id: 1, issueId: 13, date: '2026-09-28', hours: 2, activityId: 15, comments: 'standup' }], memo: { '2026-09-29': 'line one\nline two' } },
+      state: { entries: [{ id: 1, issueId: 101, date: '2026-09-28', hours: 2, activityId: 15, comments: 'standup' }], memo: { '2026-09-29': 'line one\nline two' } },
     });
     try {
       const prep = ready(await t.runner.prepare('redmine', WEEK));
       assert.equal(prep.fillOnly, false);
       assert.equal(prep.unchanged, 1);
       assert.deepEqual(prep.write.map((c) => `${c.date} ${c.label} ${c.hours}`), [
-        '2026-09-28 #9888 Secondary Learning Platform Development · Fejlesztés 6',
-        '2026-09-29 #9888 Secondary Learning Platform Development · Fejlesztés 8',
-        '2026-09-30 #9888 Secondary Learning Platform Development · Fejlesztés 7.25',
-        '2026-09-30 #31 Tanulás, oktatás · Rezsi - tanulás 0.75',
-        '2026-10-01 #9888 Secondary Learning Platform Development · Fejlesztés 4',
+        '2026-09-28 #4242 Checkout redesign · Development 6',
+        '2026-09-29 #4242 Checkout redesign · Development 8',
+        '2026-09-30 #4242 Checkout redesign · Development 7.25',
+        '2026-09-30 #102 Learning, training · Overhead - learning 0.75',
+        '2026-10-01 #4242 Checkout redesign · Development 4',
       ]);
       assert.equal(t.fx.rec.posts.length, 0, 'prepare never posts');
 
@@ -248,10 +248,10 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       }
       assert.deepEqual(t.fx.rec.posts[0].fields.filter(([k]) => k.startsWith('time_entry[1]')), [['time_entry[1][hours]', '2.00'], ['time_entry[1][activity_id]', '15'], ['time_entry[1][status_id]', '9'], ['time_entry[1][comments]', 'standup']]);
       assert.deepEqual(t.fx.rec.posts.map((p) => p.fields.filter(([k, v]) => k.endsWith('[hours]') && k.startsWith('new_') && v).map(([k, v]) => `${k}=${v}`)), [
-        ['new_time_entry[9888][0][hours]=6.00'],
-        ['new_time_entry[9888][0][hours]=8.00'],
-        ['new_time_entry[31][0][hours]=0.75', 'new_time_entry[9888][0][hours]=7.25'],
-        ['new_time_entry[9888][0][hours]=4.00'],
+        ['new_time_entry[4242][0][hours]=6.00'],
+        ['new_time_entry[4242][0][hours]=8.00'],
+        ['new_time_entry[102][0][hours]=0.75', 'new_time_entry[4242][0][hours]=7.25'],
+        ['new_time_entry[4242][0][hours]=4.00'],
       ]);
       assert.deepEqual(t.fx.rec.statusChanges, []);
       assert.deepEqual(t.fx.rec.deleted, []);
@@ -259,12 +259,12 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       assert.deepEqual(
         t.fx.state.entries.map((e) => `${e.date} #${e.issueId} ${e.activityId} ${e.hours} ${e.comments}`).sort(),
         [
-          '2026-09-28 #13 15 2 standup',
-          `2026-09-28 #9888 ${ACT['Fejlesztés']} 6 `,
-          `2026-09-29 #9888 ${ACT['Fejlesztés']} 8 `,
-          `2026-09-30 #31 ${ACT['Rezsi - tanulás']} 0.75 `,
-          `2026-09-30 #9888 ${ACT['Fejlesztés']} 7.25 `,
-          `2026-10-01 #9888 ${ACT['Fejlesztés']} 4 `,
+          '2026-09-28 #101 15 2 standup',
+          `2026-09-28 #4242 ${ACT['Development']} 6 `,
+          `2026-09-29 #4242 ${ACT['Development']} 8 `,
+          `2026-09-30 #102 ${ACT['Overhead - learning']} 0.75 `,
+          `2026-09-30 #4242 ${ACT['Development']} 7.25 `,
+          `2026-10-01 #4242 ${ACT['Development']} 4 `,
         ],
       );
       assertSafeGets(t.fx.rec.gets);
@@ -300,7 +300,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       const done = await t.runner.wait();
       assert.equal(done?.status, 'saved', done?.error ?? "");
       assert.equal(t.fx.rec.posts.length, 2);
-      assert.deepEqual(t.fx.state.entries.map((e) => `${e.date} #${e.issueId} ${e.hours}`).sort(), ['2026-09-29 #9888 8', '2026-09-30 #13 1.5']);
+      assert.deepEqual(t.fx.state.entries.map((e) => `${e.date} #${e.issueId} ${e.hours}`).sort(), ['2026-09-29 #4242 8', '2026-09-30 #101 1.5']);
     } finally {
       await t.close();
     }
@@ -313,7 +313,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       t.runner.execute('redmine', WEEK, prep.fingerprint);
       await waitFor(() => t.runner.progress()?.units[0]?.state === 'waiting');
       const page = await t.page();
-      await page.goto(`${t.fx.origin}/work_time/index?year=2026&month=9&day=1&user=262`);
+      await page.goto(`${t.fx.origin}/work_time/index?year=2026&month=9&day=1&user=42`);
       let done = await t.runner.wait();
       assert.equal(done?.status, 'aborted');
       assert.match(done!.error!, /left the page without saving 2026-09-29/);
@@ -342,11 +342,11 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
   });
 
   it('conflicting hours abort the week with zero posts', async () => {
-    const t = await setup({ state: { entries: [{ id: 7, issueId: 9888, date: '2026-09-29', hours: 3, activityId: 9, comments: '' }] } });
+    const t = await setup({ state: { entries: [{ id: 7, issueId: 4242, date: '2026-09-29', hours: 3, activityId: 9, comments: '' }] } });
     try {
       const prep = await t.runner.prepare('redmine', WEEK);
       assert.equal(prep.state, 'conflict');
-      assert.deepEqual((prep as { reasons: string[] }).reasons, ['2026-09-29 #9888 · Fejlesztés: 3.00 h already entered, plan says 8.00 h']);
+      assert.deepEqual((prep as { reasons: string[] }).reasons, ['2026-09-29 #4242 · Development: 3.00 h already entered, plan says 8.00 h']);
       t.runner.execute('redmine', WEEK, '0123456789abcdefs');
       const done = await t.runner.wait();
       assert.equal(done?.status, 'aborted');
@@ -360,8 +360,8 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
     const t = await setup({
       state: {
         entries: [
-          { id: 7, issueId: 9888, date: '2026-09-29', hours: 4, activityId: 9, comments: '' },
-          { id: 8, issueId: 9888, date: '2026-09-29', hours: 4, activityId: 9, comments: '' },
+          { id: 7, issueId: 4242, date: '2026-09-29', hours: 4, activityId: 9, comments: '' },
+          { id: 8, issueId: 4242, date: '2026-09-29', hours: 4, activityId: 9, comments: '' },
         ],
       },
     });
@@ -378,7 +378,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
     const t = await setup();
     try {
       const prep = ready(await t.runner.prepare('redmine', WEEK));
-      t.fx.state.entries.push({ id: 9, issueId: 10964, date: '2026-09-30', hours: 1, activityId: 15, comments: '' });
+      t.fx.state.entries.push({ id: 9, issueId: 103, date: '2026-09-30', hours: 1, activityId: 15, comments: '' });
       t.runner.execute('redmine', WEEK, prep.fingerprint);
       const done = await t.runner.wait();
       assert.equal(done?.status, 'aborted');
@@ -414,7 +414,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       t.runner.execute('redmine', WEEK, prep.fingerprint);
       const done = await t.runner.wait();
       assert.equal(done?.status, 'aborted');
-      assert.match(done!.error!, /does not look as expected after filling in \(new_time_entry\[13\]\[0\]\[status_id\] changed from "9" to "3"/);
+      assert.match(done!.error!, /does not look as expected after filling in \(new_time_entry\[101\]\[0\]\[status_id\] changed from "9" to "3"/);
       assert.equal(t.fx.rec.posts.length, 0);
       await assertClean(await t.page(), t.fx.origin, '2026-09-28');
     } finally {
@@ -440,7 +440,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
   it('a page script changing a field on Update is blocked before it reaches Redmine', async () => {
     const script = `document.addEventListener('click', function (e) {
       if (e.target.value !== 'Update') return;
-      var c = document.querySelector('input[name="new_time_entry[13][0][comments]"]'); c.value = 'sneaky';
+      var c = document.querySelector('input[name="new_time_entry[101][0][comments]"]'); c.value = 'sneaky';
     }, true);`;
     const t = await setup({ state: { script } });
     try {
@@ -448,7 +448,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       t.runner.execute('redmine', WEEK, prep.fingerprint);
       const done = await t.runner.wait();
       assert.equal(done?.status, 'aborted', done?.error ?? "");
-      assert.match(done!.error!, /blocked a submission with other values than the checked form \(new_time_entry\[13\]\[0\]\[comments\]\)/);
+      assert.match(done!.error!, /blocked a submission with other values than the checked form \(new_time_entry\[101\]\[0\]\[comments\]\)/);
       assert.equal(t.fx.rec.posts.length, 0);
       await assertClean(await t.page(), t.fx.origin, '2026-09-28');
     } finally {
@@ -458,13 +458,13 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
 
   it('an error banner after Update means failed: check by hand, nothing retried', async () => {
     let clock = Date.now();
-    const t = await setup({ state: { errorOnPost: 'Error: Issue9888: No Activities!' }, now: () => clock });
+    const t = await setup({ state: { errorOnPost: 'Error: Issue4242: No Activities!' }, now: () => clock });
     try {
       const prep = ready(await t.runner.prepare('redmine', WEEK));
       t.runner.execute('redmine', WEEK, prep.fingerprint);
       const done = await t.runner.wait();
       assert.equal(done?.status, 'failed');
-      assert.match(done!.error!, /2026-09-28: Redmine reported an error after Update: Error: Issue9888: No Activities!; check Redmine by hand/);
+      assert.match(done!.error!, /2026-09-28: Redmine reported an error after Update: Error: Issue4242: No Activities!; check Redmine by hand/);
       assert.equal(t.fx.rec.posts.length, 1, 'stops at the first failure');
       assert.deepEqual(done?.units.map((u) => u.state), ['failed', 'pending', 'pending', 'pending']);
       assert.equal(t.store.submitRuns('redmine', WEEK)[0].status, 'failed');
@@ -488,9 +488,9 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
 
   it('a duplicated issue row, a missing row or a missing activity aborts with zero posts', async () => {
     for (const [change, reason] of [
-      [(s: FxState) => (s.duplicateRow = 9888), /#9888 has 2 rows/],
-      [(s: FxState) => (s.hiddenIssues = [9888]), /#9888 is not listed/],
-      [(s: FxState) => (s.issues.find((i) => i.id === 9888)!.activities = [[15, 'Megbeszélés, egyeztetés'], [18, 'Tesztelés']]), /offers the activity "Fejlesztés" 0 times/],
+      [(s: FxState) => (s.duplicateRow = 4242), /#4242 has 2 rows/],
+      [(s: FxState) => (s.hiddenIssues = [4242]), /#4242 is not listed/],
+      [(s: FxState) => (s.issues.find((i) => i.id === 4242)!.activities = [[15, 'Meeting'], [18, 'Testing']]), /offers the activity "Development" 0 times/],
     ] as const) {
       const t = await setup();
       try {
@@ -513,7 +513,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
     const t = await setup();
     try {
       ready(await t.runner.prepare('redmine', WEEK));
-      t.fx.state.redirectExtra = 'ticket_pos=9888_1';
+      t.fx.state.redirectExtra = 'ticket_pos=4242_1';
       const prep = await t.runner.prepare('redmine', WEEK);
       assert.equal(prep.state, 'aborted');
       assert.match((prep as { reason: string }).reason, /blocked a request that would change Redmine: ticket_pos/);
@@ -525,7 +525,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
   });
 
   it('the month table colours Sundays like an error banner: only a real banner aborts', async () => {
-    const t = await setup({ state: { entries: [{ id: 1, issueId: 13, date: '2026-09-27', hours: 1, activityId: 15, comments: '' }] } });
+    const t = await setup({ state: { entries: [{ id: 1, issueId: 101, date: '2026-09-27', hours: 1, activityId: 15, comments: '' }] } });
     try {
       ready(await t.runner.prepare('redmine', WEEK));
       const page = await t.page();
@@ -541,7 +541,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
   });
 
   it('an entry whose activity Redmine no longer offers, or hours not as saved, abort the week', async () => {
-    const t = await setup({ state: { entries: [{ id: 41, issueId: 13, date: '2026-09-29', hours: 1, activityId: 99, comments: '' }] } });
+    const t = await setup({ state: { entries: [{ id: 41, issueId: 101, date: '2026-09-29', hours: 1, activityId: 99, comments: '' }] } });
     try {
       const prep = await t.runner.prepare('redmine', WEEK);
       assert.equal(prep.state, 'aborted', JSON.stringify(prep));
@@ -551,7 +551,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       t.fx.state.script = `document.addEventListener('DOMContentLoaded', function () { var i = document.querySelector('input[name="time_entry[41][hours]"]'); if (i) i.value = '1.5'; });`;
       const changed = await t.runner.prepare('redmine', WEEK);
       assert.equal(changed.state, 'aborted');
-      assert.match((changed as { reason: string }).reason, /entry 41 on #13 shows hours "1.5", not the saved "1.00"/);
+      assert.match((changed as { reason: string }).reason, /entry 41 on #101 shows hours "1.5", not the saved "1.00"/);
       assert.equal(t.fx.rec.posts.length, 0);
     } finally {
       await t.close();
@@ -640,7 +640,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       t.fx.state.headingName = 'Someone Else';
       const other = await t.runner.prepare('redmine', WEEK);
       assert.equal(other.state, 'blocked');
-      assert.match((other as { reasons: string[] }).reasons[0], /logged in as "Someone Else", but the mapping was read for "Nuszpl Botond"/);
+      assert.match((other as { reasons: string[] }).reasons[0], /logged in as "Someone Else", but the mapping was read for "Jane Doe"/);
       assert.equal(t.fx.rec.posts.length, 0);
     } finally {
       await t.close();

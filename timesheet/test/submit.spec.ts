@@ -28,10 +28,10 @@ describe('submit config', () => {
     const c = testConfig();
     c.submit.redmine.url = 'http://redmine.local';
     c.submit.redmine.rules = [
-      { project: 'Nope', category: 'Development', target: { issueId: 1, activity: 'Fejlesztés' } },
-      { project: 'Default', category: 'Bogus', target: { issueId: 2, activity: 'Fejlesztés' } },
+      { project: 'Nope', category: 'Development', target: { issueId: 1, activity: 'Development' } },
+      { project: 'Default', category: 'Bogus', target: { issueId: 2, activity: 'Development' } },
       { project: 'Default', category: '*', target: { issueId: 0, activity: '' } },
-      { project: 'Default', category: '*', target: { issueId: 3, activity: 'Fejlesztés' } },
+      { project: 'Default', category: '*', target: { issueId: 3, activity: 'Development' } },
     ];
     c.submit.netsuite.rules = [{ project: 'Default', category: 'Testing', target: { project: '', task: 'Testing' } }];
     const errors = validateConfig(c);
@@ -104,9 +104,9 @@ function day(date: string, entries: [string, string, number][], status: DayStatu
 }
 
 const RULES: SubmitRule<RedmineTarget>[] = [
-  { project: 'NLP', category: '*', target: { issueId: 9888, activity: 'Fejlesztés' } },
-  { project: 'NLP', category: 'Team Meeting', target: { issueId: 13, activity: 'Megbeszélés, egyeztetés' } },
-  { project: 'NLP', category: 'Testing', target: { issueId: 9888, activity: 'Fejlesztés' } },
+  { project: 'NLP', category: '*', target: { issueId: 4242, activity: 'Development' } },
+  { project: 'NLP', category: 'Team Meeting', target: { issueId: 101, activity: 'Meeting' } },
+  { project: 'NLP', category: 'Testing', target: { issueId: 4242, activity: 'Development' } },
 ];
 
 const plan = (reports: DayReport[], today = '2026-10-04', rules = RULES, exists?: (t: RedmineTarget) => boolean) =>
@@ -116,10 +116,10 @@ describe('submit plan', () => {
   it('maps exact rules before wildcards, sums cells that share a target, skips zero hours', () => {
     const r = plan([day('2026-09-28', [['NLP', 'Development', 5], ['NLP', 'Testing', 2.25], ['NLP', 'Team Meeting', 0.75], ['NLP', 'Requirements', 0]])], '2026-09-28');
     assert.ok(r.ok);
-    // Sorted by date, then by the target's key (activity before issueId): "Fejlesztés" < "Megbeszélés…".
+    // Sorted by date, then by the target's key (activity before issueId): "Development" < "Meeting…".
     assert.deepEqual(r.plan.cells, [
-      { date: '2026-09-28', target: { issueId: 9888, activity: 'Fejlesztés' }, hours: 7.25 },
-      { date: '2026-09-28', target: { issueId: 13, activity: 'Megbeszélés, egyeztetés' }, hours: 0.75 },
+      { date: '2026-09-28', target: { issueId: 4242, activity: 'Development' }, hours: 7.25 },
+      { date: '2026-09-28', target: { issueId: 101, activity: 'Meeting' }, hours: 0.75 },
     ]);
     assert.deepEqual(r.plan.notes, []);
   });
@@ -142,8 +142,8 @@ describe('submit plan', () => {
       '2026-09-29: day is partial (claude: failed); fix or recompute it first',
       '2026-09-30: not computed yet',
     ]);
-    const gone = plan([day('2026-09-28', [['NLP', 'Development', 8]])], '2026-09-28', RULES, (t) => t.issueId !== 9888);
-    assert.deepEqual(!gone.ok && gone.reasons, ['2026-09-28: NLP / Development maps to #9888 · Fejlesztés, which is no longer on redmine']);
+    const gone = plan([day('2026-09-28', [['NLP', 'Development', 8]])], '2026-09-28', RULES, (t) => t.issueId !== 4242);
+    assert.deepEqual(!gone.ok && gone.reasons, ['2026-09-28: NLP / Development maps to #4242 · Development, which is no longer on redmine']);
   });
 
   it('blocks on invalid hours and on more than 24 h a day', () => {
@@ -169,11 +169,11 @@ describe('submit plan', () => {
 
   it('blocks two activities on one Redmine issue on the same day', () => {
     const rules: SubmitRule<RedmineTarget>[] = [
-      { project: 'NLP', category: '*', target: { issueId: 9888, activity: 'Fejlesztés' } },
-      { project: 'NLP', category: 'Testing', target: { issueId: 9888, activity: 'Tesztelés' } },
+      { project: 'NLP', category: '*', target: { issueId: 4242, activity: 'Development' } },
+      { project: 'NLP', category: 'Testing', target: { issueId: 4242, activity: 'Testing' } },
     ];
     const r = plan([day('2026-09-28', [['NLP', 'Testing', 1], ['NLP', 'Development', 5]]), day('2026-09-29', [['NLP', 'Testing', 2]])], '2026-09-29', rules);
-    assert.deepEqual(!r.ok && r.reasons, ['2026-09-28: #9888 would get two activities (Fejlesztés, Tesztelés); Worktime has one row per issue a day, so map these categories to one activity or to different issues']);
+    assert.deepEqual(!r.ok && r.reasons, ['2026-09-28: #4242 would get two activities (Development, Testing); Worktime has one row per issue a day, so map these categories to one activity or to different issues']);
     assert.ok(plan([day('2026-09-28', [['NLP', 'Development', 5]]), day('2026-09-29', [['NLP', 'Testing', 2]])], '2026-09-29', rules).ok);
     const ns = buildPlan({
       system: 'netsuite', week: WEEK, today: '2026-09-28',
@@ -194,8 +194,8 @@ describe('submit plan', () => {
 });
 
 describe('submit diff', () => {
-  const dev = { issueId: 9888, activity: 'Fejlesztés' };
-  const meet = { issueId: 13, activity: 'Megbeszélés, egyeztetés' };
+  const dev = { issueId: 4242, activity: 'Development' };
+  const meet = { issueId: 101, activity: 'Meeting' };
   const p: Plan<RedmineTarget> = {
     system: 'redmine', week: WEEK, notes: [],
     cells: [{ date: '2026-09-28', target: dev, hours: 7.3 }, { date: '2026-09-29', target: meet, hours: 1 }],
@@ -206,7 +206,7 @@ describe('submit diff', () => {
   });
 
   it('is a no-op when everything is already there (rounding-safe), and writes only what is missing', () => {
-    assert.deepEqual(diff(p, { week: WEEK, cells: [{ date: '2026-09-28', target: { activity: 'Fejlesztés', issueId: 9888 }, hours: 7.1 + 0.2 }, p.cells[1]] }), { kind: 'noop' });
+    assert.deepEqual(diff(p, { week: WEEK, cells: [{ date: '2026-09-28', target: { activity: 'Development', issueId: 4242 }, hours: 7.1 + 0.2 }, p.cells[1]] }), { kind: 'noop' });
     assert.deepEqual(diff(p, { week: WEEK, cells: [p.cells[1]] }), { kind: 'write', cells: [p.cells[0]], unchanged: 1 });
   });
 
@@ -218,8 +218,8 @@ describe('submit diff', () => {
     assert.deepEqual(r, {
       kind: 'conflict',
       reasons: [
-        '2026-09-28 #9888 · Fejlesztés: 2.00 h already entered, plan says 7.30 h',
-        '2026-09-30 #13 · Megbeszélés, egyeztetés: 0.50 h entered that the timesheet does not book',
+        '2026-09-28 #4242 · Development: 2.00 h already entered, plan says 7.30 h',
+        '2026-09-30 #101 · Meeting: 0.50 h entered that the timesheet does not book',
       ],
     });
   });
@@ -230,10 +230,10 @@ describe('submit diff', () => {
   });
 
   it('refuses a plan with the same cell twice or invalid hours', () => {
-    const twice = { ...p, cells: [p.cells[0], { ...p.cells[0], target: { activity: 'Fejlesztés', issueId: 9888 } }] };
-    assert.deepEqual(diff(twice, { week: WEEK, cells: [] }), { kind: 'conflict', reasons: ['2026-09-28 #9888 · Fejlesztés is planned twice'] });
+    const twice = { ...p, cells: [p.cells[0], { ...p.cells[0], target: { activity: 'Development', issueId: 4242 } }] };
+    assert.deepEqual(diff(twice, { week: WEEK, cells: [] }), { kind: 'conflict', reasons: ['2026-09-28 #4242 · Development is planned twice'] });
     for (const hours of [Number.NaN, -1, 0])
-      assert.deepEqual(diff({ ...p, cells: [{ ...p.cells[0], hours }] }, { week: WEEK, cells: [] }), { kind: 'conflict', reasons: [`2026-09-28 #9888 · Fejlesztés: invalid planned hours (${hours})`] });
+      assert.deepEqual(diff({ ...p, cells: [{ ...p.cells[0], hours }] }, { week: WEEK, cells: [] }), { kind: 'conflict', reasons: [`2026-09-28 #4242 · Development: invalid planned hours (${hours})`] });
   });
 
   it('fingerprints plan + snapshot independently of order', () => {
@@ -247,9 +247,9 @@ describe('submit store', () => {
   it('keeps the latest catalog per system and runs newest first', () => {
     const s = new Store(':memory:');
     assert.equal(s.submitCatalog('redmine'), null);
-    s.saveSubmitCatalog('redmine', { user: 'Nuszpl Botond', issues: [] });
-    s.saveSubmitCatalog('redmine', { user: 'Nuszpl Botond', issues: [{ id: 13 }] });
-    assert.deepEqual(s.submitCatalog('redmine')?.data, { user: 'Nuszpl Botond', issues: [{ id: 13 }] });
+    s.saveSubmitCatalog('redmine', { user: 'Jane Doe', issues: [] });
+    s.saveSubmitCatalog('redmine', { user: 'Jane Doe', issues: [{ id: 101 }] });
+    assert.deepEqual(s.submitCatalog('redmine')?.data, { user: 'Jane Doe', issues: [{ id: 101 }] });
 
     const base = { system: 'redmine' as const, week: WEEK, fillOnly: true, screenshots: [], createdAt: '2026-10-01T10:00:00Z', updatedAt: '2026-10-01T10:00:00Z' };
     s.saveSubmitRun({ ...base, id: 'a', status: 'conflict', error: 'x' });
@@ -412,17 +412,17 @@ describe('submit browser', { skip: !chromeAvailable() && 'Google Chrome not inst
         <form action="/work_time/update" method="post">
           <input type="hidden" name="authenticity_token" value="SECRET-CSRF">
           <h2>Monthly Report (Test User) <span>someone@example.com</span></h2>
-          <a href="/issues/9888">Feature #9888</a>
+          <a href="/issues/4242">Feature #4242</a>
           <a href="/x.atom?key=SECRETKEY&amp;format=1">feed</a>
           <div data-csrf-token="SECRETDATA" data-row="5"></div>
           <a href="/cb#access_token=SECRETHASH">cb</a>
           <a href="/issues#top">top</a>
-          <input type="text" name="new_time_entry[9888][hours]" id="h9888" data-x="1" style="color:red">
+          <input type="text" name="new_time_entry[4242][hours]" id="h4242" data-x="1" style="color:red">
           <div style="background:#faa; --who: someone@example.com">Error</div>
-          <select name="act"><option value="1">Fejlesztés</option><option value="2">Megbeszélés</option></select>
+          <select name="act"><option value="1">Development</option><option value="2">Meeting</option></select>
           <!-- a comment -->
         </form>`);
-      await session.page.fill('#h9888', '7.5');
+      await session.page.fill('#h4242', '7.5');
       await session.page.selectOption('select', '2');
       const dir = mkdtempSync(join(tmpdir(), 'inspect-'));
       const files = await capture(session.page, 'redmine', 'Worktime Day!', dir);
@@ -438,10 +438,10 @@ describe('submit browser', { skip: !chromeAvailable() && 'Google Chrome not inst
       assert.match(html, /href="\/cb#…"/);
       assert.match(html, /href="\/issues#top"/);
       assert.match(html, /name="authenticity_token"/);
-      assert.match(html, /href="\/issues\/9888"/);
-      assert.match(html, /id="h9888"[^>]*value="7\.5"|value="7\.5"[^>]*id="h9888"/);
+      assert.match(html, /href="\/issues\/4242"/);
+      assert.match(html, /id="h4242"[^>]*value="7\.5"|value="7\.5"[^>]*id="h4242"/);
       assert.match(html, /data-x="1"/);
-      assert.match(html, /<option value="2" selected="">Megbeszélés<\/option>/);
+      assert.match(html, /<option value="2" selected="">Meeting<\/option>/);
       assert.match(html, /&lt;email&gt;|<email>/);
     } finally {
       await session.close();

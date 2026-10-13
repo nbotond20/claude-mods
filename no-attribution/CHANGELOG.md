@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+- `bin/mods install` asks which mods to install when run in a terminal (Enter = all); `--except a,b` skips some, `--only` and `--yes` skip the question.
+- Docs: "On by default" and "Managing it" sections.
+
 ## 0.3.0
 - Joins `/mods`: one combined toast for first runs and updates, `/mods status`, `setup`, `doctor` (checks the global git hooks) and `uninstall`, which also unsets the hooks it installed.
 
