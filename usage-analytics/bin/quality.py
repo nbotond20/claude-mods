@@ -238,9 +238,16 @@ RECHECK_H = 6        # a session still waiting for commits is looked at again af
 GIT_TIMEOUT = 10
 
 
+# Read-only lookups in repos Claude edited, which may be cloned from anywhere: a repo's own config must
+# not get a program run (fsmonitor, textconv and external diff drivers, pager, credential prompts).
+GIT_SAFE = ('-c', 'core.fsmonitor=false', '-c', 'core.pager=cat', '-c', 'diff.external=', '--no-pager')
+GIT_ENV = {**os.environ, 'GIT_TERMINAL_PROMPT': '0', 'GIT_PAGER': 'cat', 'GIT_EXTERNAL_DIFF': '', 'GIT_OPTIONAL_LOCKS': '0'}
+
+
 def _git(root, *args):
     try:
-        p = subprocess.run(['git', '-C', root, *args], capture_output=True, timeout=GIT_TIMEOUT)
+        p = subprocess.run(['git', *GIT_SAFE, '-C', root, *args], capture_output=True, stdin=subprocess.DEVNULL,
+                           env=GIT_ENV, timeout=GIT_TIMEOUT)
         return p.stdout.decode('utf-8', 'replace') if p.returncode == 0 else None
     except (OSError, subprocess.SubprocessError):
         return None
@@ -289,7 +296,7 @@ def outcome(con, sid, repos, now=None):
         rel = os.path.relpath(file, root)
         if rel.startswith('..'):
             continue
-        log = _git(root, 'log', '--all', '--format=%H %ct', f'--since={t}', f'--until={t + SETTLE_DAYS * 86400}', '--', rel)
+        log = _git(root, 'log', '--no-textconv', '--no-ext-diff', '--all', '--format=%H %ct', f'--since={t}', f'--until={t + SETTLE_DAYS * 86400}', '--', rel)
         if log is None:
             continue
         commits = [ln.split() for ln in log.splitlines() if ln.strip()]
@@ -303,7 +310,7 @@ def outcome(con, sid, repos, now=None):
             first = min(commits, key=lambda c: int(c[1]))[0]
             row['files_committed'] += 1
             row['commits'].add(first)
-            body = _git(root, 'show', f'{first}:{rel}') or ''
+            body = _git(root, 'show', '--no-textconv', '--no-ext-diff', f'{first}:{rel}') or ''
             have = {line_hash(ln.strip()) for ln in body.split('\n') if _line_ok(ln.strip())}
             row['lines_kept'] += len(f['hashes'] & have)
     state = 'pending' if pending else 'done' if row['files_edited'] else 'no_repo'
