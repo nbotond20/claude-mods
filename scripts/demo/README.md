@@ -13,6 +13,8 @@ HOME=/tmp/ua-demo python3 usage-analytics/bin/claude-usage stop --port 8799
 
 Overriding `HOME` keeps the CLI away from your real profiles and data folder.
 
+With the server up, `node scripts/demo/shoot-dashboard.mjs /tmp/shots` takes every dashboard screenshot at 900×625, 2x, in headless Chrome. Pass names to take only some, and `SID=<id>` to pick a session with subagents for the drill-down. Run `pngquant --quality 80-95 --ext .png --force` on the results before copying them to `docs/images/usage-analytics/`.
+
 ## timesheet web app
 
 ```sh

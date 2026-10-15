@@ -710,7 +710,7 @@ async function git($: EngineInterface, cwd: string, args: string[]) {
   }
 }
 
-const TABS = ['live', 'overview', 'cost', 'context', 'tools', 'agents', 'projects', 'prompts', 'mood', 'health', 'engine', 'advisor', 'recurring', 'impact', 'savings', 'sql']
+const TABS = ['live', 'overview', 'cost', 'context', 'background', 'tools', 'agents', 'projects', 'prompts', 'mood', 'health', 'engine', 'advisor', 'recurring', 'impact', 'savings', 'sql']
 /** Runs the claude-usage CLI (Python 3, standard library only) on the same data folder as this mod. */
 async function cli($: EngineInterface, args: string[], timeoutMs: number) {
   return $.process.run(['python3', `${$.plugin.root}/bin/claude-usage`, ...args], { timeoutMs, env: { CLAUDE_USAGE_DIR: root } })

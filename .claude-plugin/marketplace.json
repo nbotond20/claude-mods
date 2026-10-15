@@ -29,7 +29,7 @@
       "name": "usage-analytics",
       "source": "./usage-analytics",
       "description": "Records every model request, tool call, prompt, context breakdown, compaction and rate-limit reading from every profile into one store in the mods data folder, with a live dashboard, a weekly digest, shareable summaries, mod impact verdicts and a statistical advisor.",
-      "version": "0.12.0",
+      "version": "0.13.0",
       "author": {
         "name": "nbotond"
       },
@@ -98,7 +98,7 @@
       "name": "timesheet",
       "source": "./timesheet",
       "description": "NetSuite-ready timesheets from your Claude Code and OpenCode sessions, git and GitHub history and Google Calendar: the timesheet CLI and web app, the timesheet skill, and /timesheet.",
-      "version": "0.3.6",
+      "version": "0.3.7",
       "author": {
         "name": "nbotond"
       },

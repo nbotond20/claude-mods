@@ -802,7 +802,8 @@ function makePanel(p, grid, list = state.panels) {
 }
 function destroyChart(P) { if (P.chart) { P.chart.destroy(); P.chart = null } }
 function fill(P, d, opts) {
-  if (!d) { P.body.innerHTML = '<div class="err">query missing</div>'; return }
+  // The page is read from disk on every load, the queries when the server started: a newer page on an older server.
+  if (!d) { P.body.innerHTML = '<div class="err">The dashboard server is older than this page and has no query for this panel. Run /dashboard to restart it.</div>'; return }
   P.data = d
   if (P.p.kind === 'heatmap') { destroyChart(P); return heatmap(P.body, d, P.p) }
   if (P.view === 'table') return drawTable(P, opts)
@@ -915,7 +916,7 @@ function toggleMax(P) {
 $('#scrim').onclick = () => maxed && toggleMax(maxed)
 
 // ---------- tabs ----------
-const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context']], ['Work', ['tools', 'agents', 'projects', 'prompts']], ['Quality', ['mood', 'health', 'engine']], ['Improve', ['advisor', 'recurring', 'impact', 'savings']], ['Data', ['sql']]]
+const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context', 'background']], ['Work', ['tools', 'agents', 'projects', 'prompts']], ['Quality', ['mood', 'health', 'engine']], ['Improve', ['advisor', 'recurring', 'impact', 'savings']], ['Data', ['sql']]]
 const TABS = {
   live: { label: 'Live', sub: 'right now, pushed as you work', custom: renderLive, live: true, noKpis: true, filters: ['profiles'] },
   overview: { label: 'Overview', sub: 'spend, efficiency and where it goes', panels: [
@@ -985,6 +986,14 @@ const TABS = {
     { title: 'Slash commands', q: 'commands', kind: 'table' },
     { title: 'Most expensive prompts', q: 'expensive_prompts', kind: 'table', wide: true, info: 'A prompt’s cost is every request until the next prompt.' },
     { title: 'Recent prompts', q: 'recent_prompts', kind: 'table', wide: true },
+  ] },
+  background: { label: 'Mod spend', sub: 'what the mods themselves spend on models: classifiers, agents, pings', kpis: renderBgKpis,
+    about: ['Only the mods\u2019 own model calls, nothing you or your scripts ran: the timesheet classifier (claude -p), the usage-analytics advisor and recurring agents, and budget-guard\u2019s Haiku classifier (routing, new-task check) and keep-alive pings. The Haiku classifier logs only its input size, so its cost is an estimate at Haiku list price; everything else is from the transcripts or the call\u2019s own usage. A run is one claude -p session or one agent. A claude -p classifier that sends 15k+ tokens per call is mostly carrying Claude Code\u2019s own system prompt and tools: run it with no tools and a short system prompt, as timesheet does since 0.3.7. Your own claude -p and SDK scripts are under Cost \u2192 by entrypoint.'], panels: [
+    { title: 'Mod spend per day', q: 'bg_daily_caller', kind: 'stacked', x: 'day', series: 'caller', y: 'cost', money: true, wide: true, note: 'by caller' },
+    { title: 'By caller', q: 'bg_callers', kind: 'table', wide: true, note: 'most expensive first', info: 'usd per run: one claude -p session, one agent, or one in-session call.\navg context: tokens sent per request (input + cache read + cache write).' },
+    { title: 'Context per request', q: 'bg_context', kind: 'line', x: 'day', series: 'kind', y: 'context', note: 'average tokens sent, by kind of call' },
+    { title: 'By model', q: 'bg_models', kind: 'hbar', x: 'model', y: 'cost', money: true },
+    { title: 'Most expensive runs', q: 'bg_runs', kind: 'table', wide: true, note: 'claude -p sessions and agents; click an id for its timeline' },
   ] },
   mood: { label: 'Frustration', sub: 'how annoyed your prompts read, and when', kpis: renderMoodKpis,
     about: ['Every prompt gets a score from 0 (calm) to 100 (rage): swearing, insults, giving up, repeating yourself, blame, corrections, shouting, !!/???, plus an interrupt, a rejected call or the same ask again just before it. Levels: mild 1–24, annoyed 25–49, frustrated 50–74, rage 75+. A prompt counts against the model that answered the turn before it. The rules are in bin/frustration.py; nothing leaves your machine.'], panels: [
@@ -1159,6 +1168,29 @@ async function renderKpis(seq) {
 }
 
 /** The Frustration tab's tiles: the same tiles, sparklines and comparison as the spend row. */
+async function renderBgKpis(seq) {
+  try {
+    const pr = prevRange(), n = +state.days
+    const [cur, daily, prev] = await Promise.all([api('/api/bg_kpis'), api('/api/bg_daily'),
+      state.compare && pr && n > 1 ? api('/api/bg_kpis', { days: 0, from: pr.from, to: pr.to }) : null])
+    if (seq !== state.seq) return
+    const k = asObjs(cur)[0] || {}, p = prev ? asObjs(prev)[0] || {} : {}, dd = asObjs(daily), days = dd.map(r => r.day)
+    const label = `prev ${n}d`, mut = css('--muted')
+    const cards = [
+      ['cost', usd(k.cost), 'Mod spend', 'The mods\u2019 own model calls', p.cost, -1, dd.map(r => r.cost), css('--accent'), 'hero', 'usd'],
+      ['share_pct', pct(k.share_pct), 'Share of all spend', '', p.share_pct, -1, null, mut, '', 'pct'],
+      ['call_cost', k.call_cost == null ? '\u2013' : '$' + (+k.call_cost).toFixed(3), 'In-session calls', 'budget-guard\u2019s Haiku classifier and keep-alive pings', p.call_cost, -1, null, mut, '', 'usd4'],
+      ['runs', big(k.runs), 'Runs and calls', 'claude -p sessions, agents and in-session calls', p.runs, 0, dd.map(r => r.runs), mut, '', 'big'],
+      ['usd_per_run', k.usd_per_run == null ? '\u2013' : '$' + (+k.usd_per_run).toFixed(3), 'Per run', '', p.usd_per_run, -1, dd.map(r => r.usd_per_run), mut, '', 'usd4'],
+      ['avg_context', big(k.avg_context), 'Context per request', 'Tokens sent per request', p.avg_context, -1, dd.map(r => r.avg_context), mut, '', 'big'],
+    ]
+    $('#kpis').classList.remove('flat')
+    $('#kpis').innerHTML = cards.map(([key, v, l, title, prevV, sense, sp, color, cls, f]) =>
+      tile({ label: l, value: v, cls, title, sub: !pr && n > 1 && state.compare ? (cls ? deltaHtml(0, 0, 0, 'none') : '<span class="delta">&nbsp;</span>') : deltaHtml(k[key], prevV, sense, label),
+             extra: sp && dd.length > 1 && spark(sp, color, days, f) })).join('')
+  } catch (e) { $('#kpis').innerHTML = `<div class="err">${esc(e.message)}</div>` }
+}
+
 async function renderMoodKpis(seq) {
   try {
     const pr = prevRange(), n = +state.days

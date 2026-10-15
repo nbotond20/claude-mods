@@ -56,7 +56,7 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 | | |
 | --- | --- |
 | `/analytics setup` | the setup wizard |
-| `/dashboard [tab]` or `/analytics dashboard [tab]` | starts the dashboard in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, tools, agents, projects, prompts, mood, health, engine, advisor, recurring, impact, savings, sql) |
+| `/dashboard [tab]` or `/analytics dashboard [tab]` | starts the dashboard in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, background, tools, agents, projects, prompts, mood, health, engine, advisor, recurring, impact, savings, sql) |
 | `/analytics advise` (or `advise now`) | research how to use Claude cheaper, with fewer tokens, faster and more reliably, here in the conversation ([below](#the-advisor)) |
 | `/analytics advise bg` · `show` | the same research in the background · the trends, findings and recommendations in the terminal |
 | `/analytics advise apply <id>` | shows the exact change, asks before making it, and starts measuring it |
@@ -164,6 +164,12 @@ Every main-loop prompt gets a score from 0 (calm) to 100 (rage): the sum of the 
 Levels: calm 0, mild 1–24, annoyed 25–49, frustrated 50–74, rage 75+. Each prompt is tied to the model and effort that answered the turn before it, the one being reacted to. Scores live in the `mood` table; changing a rule bumps `VERSION` and every prompt is scored again at the next import.
 
 The **Frustration** tab (under Quality) shows KPI tiles, the score per day and per week, levels per day, a weekday×hour heatmap, signals over time, the score by model and effort and by project, the most heated prompts and sessions. `claude-usage report frustration [--days N] [--project X]` prints the same in a terminal. The advisor tracks the average score and the frustrated share, and the frustrated share is a guard: a recommendation that makes you angrier is not graded as *helped*.
+
+## Mod spend
+
+The mods call models on their own: the timesheet classifier, the advisor and recurring agents here, budget-guard's Haiku classifier (routing and the new-task check) and its keep-alive pings. The **Mod spend** tab (under Spend, `/dashboard background`) shows only that, nothing you or your own scripts ran: its total and share of all spend, in-session calls, cost per run, context sent per request, spend per day by caller, a table by caller with the models it uses, and the most expensive runs. It reads the `v_background` view: requests from the timesheet classifier's folder or from a mod's agent (`usage-analytics:advisor`, `usage-analytics:recurring`, …), plus budget-guard's `classify` and `keepalive` events. Those calls have no transcript of their own. A keep-alive ping logs its own cost. The Haiku classifier logs only its input size, so it is priced at Haiku 5.5 list price, with about 60 tokens of instructions and a 5-token answer added. Your own `claude -p` and Agent SDK runs are under Cost, by entrypoint.
+
+A caller is flagged when a mod's call sends more than 15k tokens of context for one or two requests. That is Claude Code's own system prompt and tool list riding along with a short classification. Timesheet 0.3.7 runs its classifier with no tools, MCP servers or skills and a one-line system prompt: about 3.5k tokens of context per day instead of 25–36k, around 7× cheaper on the same model. The classifiers in this mod (frustration, quality, recurring detection) are rules and cost nothing. Only the recurring labels and the advisor use a model, and only when you start them.
 
 ## Recurring asks
 
@@ -288,6 +294,10 @@ The screenshots use generated demo data (two profiles, 45 days, about 260 sessio
 
 ![Context tab](images/usage-analytics/context.png)
 
+**Mod spend.** What the mods themselves spend on models: the timesheet classifier, mod agents, budget-guard's Haiku classifier and keep-alive pings, by caller. Here the classifier's context per request drops once it runs lean.
+
+![Mod spend tab](images/usage-analytics/background.png)
+
 **Tools.** Where tool output comes from (Bash usually dominates), whole against ranged reads, Edit against Write, and LSP against grep.
 
 ![Tools tab](images/usage-analytics/tools.png)
@@ -311,6 +321,10 @@ The screenshots use generated demo data (two profiles, 45 days, about 260 sessio
 **Engine.** Time to first token and latency by model, tool latency, and the size of tool schemas and system prompt sections.
 
 ![Engine tab](images/usage-analytics/engine.png)
+
+**Frustration.** How annoyed the prompts read: the score per day and week, when it boils over, what sets it off, and by model and project.
+
+![Frustration tab](images/usage-analytics/frustration.png)
 
 **Mod impact.** The holdout comparison for each mod; see [mod-impact.md](mod-impact.md).
 
@@ -340,7 +354,7 @@ The screenshots use generated demo data (two profiles, 45 days, about 260 sessio
 | `gateway_spend` | Day and model billed by a LiteLLM gateway (see *Gateway spend*) |
 | `files`, `meta` | Ingest bookkeeping |
 
-**Views:** `v_requests` (adds `context_tokens` and `agent_type`), `v_mod_steps`, `v_mod_tools`, `v_context`, `v_measure`, `v_compactions`, `v_tool_schemas`, `v_system_prompt`.
+**Views:** `v_requests` (adds `context_tokens` and `agent_type`), `v_background` (the mods' own model calls: requests from their claude -p runs and agents plus budget-guard's in-session calls, with `caller`, `kind` and `run_id`), `v_mod_steps`, `v_mod_tools`, `v_context`, `v_measure`, `v_compactions`, `v_tool_schemas`, `v_system_prompt`.
 
 **Cost.** `cost_usd` is the list price from `<mods home>/usage-analytics/pricing.json`. Models are matched by substring, longest key first; fast mode is ×2. After editing the file, run `claude-usage reprice`. Gateway (LiteLLM) billing can differ, so it is kept next to it, never mixed in.
 

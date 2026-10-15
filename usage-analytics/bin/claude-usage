@@ -40,7 +40,7 @@ HOME = paths.HOME
 DATA = paths.DATA
 DB = os.path.join(DATA, 'usage.db')
 PRICING = os.path.join(DATA, 'pricing.json')
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # USD per million tokens. cache write = 1.25x input (5 minute TTL) or 2x input (1 hour TTL) unless given.
 DEFAULT_PRICING = {
@@ -145,6 +145,32 @@ CREATE VIEW IF NOT EXISTS v_system_prompt AS
   SELECT ts, day, profile, sid, json_extract(data,'$.model') model, json_extract(data,'$.chars') chars,
          json_extract(s.value,'$.id') section, json_extract(s.value,'$.chars') section_chars
   FROM events, json_each(events.data, '$.sections') s WHERE ev = 'system_prompt';
+-- Model spend that is not a person's own turn: the mods' own model calls (agents, the timesheet classifier) and claude -p / SDK runs.
+CREATE VIEW IF NOT EXISTS v_background AS
+  SELECT * FROM (SELECT r.msg_id, r.ts, r.day, r.profile, r.session_id, r.agent_id, r.project, r.model, r.cost_usd, r.output,
+         r.input + r.cache_read + r.cache_write AS context_tokens,
+         CASE WHEN r.cwd LIKE '%/.timesheet/classifier' THEN 'timesheet: classifier'
+              WHEN a.agent_type GLOB '[a-z]*:*' AND substr(a.agent_type, 1, instr(a.agent_type, ':') - 1)
+                   IN ('usage-analytics', 'budget-guard', 'timesheet', 'lean-tools', 'lsp-first', 'no-attribution') THEN a.agent_type END AS caller,
+         CASE WHEN r.cwd LIKE '%/.timesheet/classifier' THEN 'claude -p' ELSE 'agent' END AS kind,
+         COALESCE(r.agent_id, r.session_id) AS run_id
+  FROM requests r LEFT JOIN agents a ON a.agent_id = r.agent_id) WHERE caller IS NOT NULL
+  UNION ALL
+  -- Calls a mod makes inside a session (no transcript of their own), from its impact events. budget-guard's Haiku
+  -- classifier logs only its input size: priced at Haiku 5.5 list ($0.10 in, $0.50 out per Mtok), ~60 tokens of
+  -- instructions and a 5-token answer on top. Keep-alive pings log their own cost.
+  SELECT e.src || ':' || e.line, strftime('%Y-%m-%dT%H:%M:%fZ', e.ts / 1000.0, 'unixepoch'), e.day, e.profile, e.sid, NULL, s.project,
+         json_extract(e.data, '$.model'),
+         CASE json_extract(e.data, '$.kind') WHEN 'keepalive' THEN json_extract(e.data, '$.costUsd')
+              ELSE ((COALESCE(json_extract(e.data, '$.inputChars'), 0) / 4.0 + 60) * 0.10 + 5 * 0.50) / 1e6 END,
+         COALESCE(json_extract(e.data, '$.output'), 5),
+         CASE json_extract(e.data, '$.kind') WHEN 'keepalive' THEN json_extract(e.data, '$.tokens')
+              ELSE CAST(COALESCE(json_extract(e.data, '$.inputChars'), 0) / 4 + 60 AS INTEGER) END,
+         json_extract(e.data, '$.mod') || CASE json_extract(e.data, '$.kind') WHEN 'keepalive' THEN ': keep-alive pings'
+              ELSE ': Haiku classifier (' || COALESCE(json_extract(e.data, '$.purpose'), '?') || ')' END,
+         'in-session call', e.src || ':' || e.line
+  FROM events e LEFT JOIN sessions s ON s.session_id = e.sid
+  WHERE e.ev = 'mod' AND json_extract(e.data, '$.kind') IN ('classify', 'keepalive');
 CREATE VIEW IF NOT EXISTS v_mod_actions AS
   SELECT ts, day, profile, sid, json_extract(data,'$.mod') mod, json_extract(data,'$.kind') kind, json_extract(data,'$.arm') arm,
          json_extract(data,'$.nudge') nudge, json_extract(data,'$.chars') chars, json_extract(data,'$.bytesAll') bytes_all,
@@ -163,11 +189,23 @@ def connect():
     con = sqlite3.connect(DB, timeout=60)
     con.execute('PRAGMA journal_mode=WAL')
     con.execute('PRAGMA synchronous=NORMAL')
+    drop_old_views(con)
     con.executescript(DDL)
     con.executescript(frustration.DDL)
     migrate(con)
     con.execute("INSERT OR REPLACE INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
     return con
+
+
+def drop_old_views(con):
+    """Views are created only when missing: drop them when the schema changed so DDL makes them again."""
+    try:
+        v = con.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()
+    except sqlite3.OperationalError:
+        return
+    if v and int(v[0]) < SCHEMA_VERSION:
+        for (name,) in con.execute("SELECT name FROM sqlite_master WHERE type = 'view'").fetchall():
+            con.execute(f'DROP VIEW IF EXISTS "{name}"')
 
 
 def migrate(con):

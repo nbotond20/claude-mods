@@ -28,6 +28,7 @@ COLS = {
     'v_tool_schemas': ('profile',),
     'gateway_spend': ('day', 'profile', 'model'),
     'mood': ('day', 'profile', 'project', 'model'),
+    'v_background': ('day', 'profile', 'project', 'model'),
 }
 
 TOK = '''ROUND(SUM(cost_usd), 2) cost, COUNT(*) requests, SUM(input) input, SUM(output) output,
@@ -38,6 +39,10 @@ TOK = '''ROUND(SUM(cost_usd), 2) cost, COUNT(*) requests, SUM(input) input, SUM(
 MOOD = '''ROUND(AVG(score), 1) avg_score, MAX(score) peak, SUM(score >= 50) frustrated, SUM(score >= 75) rage,
   ROUND(100.0 * SUM(score >= 25) / COUNT(*), 1) annoyed_pct, ROUND(100.0 * SUM(score >= 50) / COUNT(*), 1) frustrated_pct,
   SUM(signals LIKE '%"swearing"%') swearing'''
+
+# Background spend: the mods' own model calls (v_background), next to all spend.
+BG = '''ROUND(SUM(cost_usd), 2) cost, COUNT(DISTINCT run_id) runs, COUNT(*) requests,
+  ROUND(SUM(cost_usd) / NULLIF(COUNT(DISTINCT run_id), 0), 4) usd_per_run, ROUND(AVG(context_tokens)) avg_context'''
 
 # name -> (source table for filters, sql). `{W}` is replaced by the filter clause (repeatable).
 Q = {
@@ -180,6 +185,20 @@ Q = {
         ROUND(AVG(message_count)) avg_messages FROM system_events WHERE {W} AND subtype = 'turn_duration' GROUP BY day ORDER BY day'''),
     'api_errors': ('system_events', "SELECT ts, profile, substr(data, 1, 300) error FROM system_events WHERE {W} AND subtype = 'api_error' ORDER BY ts DESC LIMIT 40"),
     # Frustration meter: one scored row per main-loop prompt (rules and weights in frustration.py).
+    'bg_kpis': ('v_background', f'''SELECT {BG}, ROUND(SUM(CASE WHEN kind <> 'in-session call' THEN cost_usd END), 2) run_cost,
+        ROUND(SUM(CASE WHEN kind = 'in-session call' THEN cost_usd END), 4) call_cost,
+        ROUND(100.0 * SUM(cost_usd) / NULLIF((SELECT SUM(cost_usd) FROM requests WHERE {{W}}), 0), 2) share_pct FROM v_background WHERE {{W}}'''),
+    'bg_daily': ('v_background', f'SELECT day, {BG} FROM v_background WHERE {{W}} GROUP BY day ORDER BY day'),
+    'bg_daily_caller': ('v_background', 'SELECT day, caller, ROUND(SUM(cost_usd), 4) cost FROM v_background WHERE {W} GROUP BY 1, 2 ORDER BY 1'),
+    'bg_callers': ('v_background', f'''SELECT caller, kind, {BG}, GROUP_CONCAT(DISTINCT model) models,
+        CASE WHEN kind = 'claude -p' AND AVG(context_tokens) > 15000
+             THEN 'mostly Claude Code''s own prompt: run it lean (no tools, short system prompt)' ELSE '' END hint
+        FROM v_background WHERE {{W}} GROUP BY caller, kind ORDER BY cost DESC LIMIT 60'''),
+    'bg_models': ('v_background', 'SELECT model, ROUND(SUM(cost_usd), 4) cost, COUNT(*) requests FROM v_background WHERE {W} GROUP BY 1 ORDER BY cost DESC'),
+    'bg_context': ('v_background', '''SELECT day, kind, ROUND(AVG(context_tokens)) context FROM v_background WHERE {W} GROUP BY 1, 2 ORDER BY 1'''),
+    'bg_runs': ('v_background', '''SELECT MIN(ts) ts, caller, kind, session_id, COUNT(*) requests, ROUND(AVG(context_tokens)) avg_context,
+        GROUP_CONCAT(DISTINCT model) models, ROUND(SUM(cost_usd), 4) cost FROM v_background WHERE {W} AND kind <> 'in-session call'
+        GROUP BY run_id ORDER BY cost DESC LIMIT 60'''),
     'mood_kpis': ('mood', f'''SELECT COUNT(*) prompts, {MOOD} FROM mood WHERE {{W}}'''),
     'mood_daily': ('mood', f'SELECT day, COUNT(*) prompts, {MOOD} FROM mood WHERE {{W}} GROUP BY day ORDER BY day'),
     'mood_weekly': ('mood', f'''SELECT date(day, 'weekday 0', '-6 days') week, COUNT(*) prompts, {MOOD}
@@ -557,6 +576,8 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
                         return self.send(200, query(con, name, qs))
                 finally:
                     con.close()
+                if u.path.startswith('/api/'):
+                    return self.send(404, {'error': f'no query {u.path[5:]!r} in this server ({version or "?"}): it may be older than the page; run /dashboard to restart it'})
                 self.send(404, {'error': 'not found'})
             except Exception as ex:
                 self.send(500, {'error': str(ex)})

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.0
+- Mod spend: a new tab under Spend with only what the mods themselves spend on models, nothing you or your own scripts ran. It covers the timesheet classifier (`claude -p`), the advisor and recurring agents, and budget-guard's Haiku classifier and keep-alive pings, which have no transcript and are read from its events. The Haiku classifier is priced from its input size at list price. It shows tiles with sparklines (total, share of all spend, in-session calls, runs, cost per run, context per request), spend per day by caller, a table by caller with its models, context per request by kind of call, spend by model and the most expensive runs. A `claude -p` caller that sends 15k+ tokens of context per call is flagged: that is Claude Code's own prompt riding along, and running it lean cuts it.
+- A new `v_background` view (`caller`, `kind`, `run_id`); `/dashboard background`. Views are made again when the schema version changes.
+- A dashboard server older than the page now says so (run `/dashboard` to restart it) instead of "not found" / "query missing".
+- Docs screenshots redone from the demo data, now with the Background and Frustration tabs. The demo has annoyed follow-ups, interrupts, rejected calls, timesheet classifier runs, a nightly SDK script and mod agents. `scripts/demo/shoot-dashboard.mjs` takes every screenshot.
+
 ## 0.12.0
 - Frustration meter: every main-loop prompt gets a score from 0 (calm) to 100 (rage), from swearing, insults, giving up, repeating yourself, blame, corrections, shouting, `!!`/`???` and elongated words, plus an interrupt, a rejected call or nearly the same ask just before it. Code blocks, pasted blocks, inline code, links and paths are left out, so pasted SQL or diffs do not count as shouting. Levels: mild 1-24, annoyed 25-49, frustrated 50-74, rage 75+. The rules and weights are in `bin/frustration.py`.
 - A new *Frustration* tab under Quality: tiles with sparklines and the previous-period comparison, score per day and per week, heated prompts per day by level, a weekday × hour heatmap, by hour, which signals fire, by model and effort (the model that answered the turn before the prompt), by project, and the most heated prompts and sessions.

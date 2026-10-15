@@ -50,6 +50,15 @@ PROMPTS = ['can you look at why the cart total flickers when quantity changes qu
            'bump terraform aws provider to 6.x and fix the plan diff', 'write a short post outline about WAL mode',
            'the e2e test is flaky on CI only, find out why', 'add a GPX importer that keeps elevation data']
 
+# Follow-ups from someone the last turn annoyed, mildest first: they feed the Frustration and Quality tabs.
+ANNOYED = ['no, use the existing formatMoney helper instead', 'that is not what I asked, keep the public API the same',
+           'it still flickers when I change the quantity', 'wait, revert that, the tests were passing before',
+           'the same error again, did you even run the tests?', 'why did you delete the proration test?',
+           'nooo, not the migration file', 'I already said: no new dependencies!!', 'how many times do I have to say it, the date picker needs PageUp too',
+           'WHY IS THE CHECKOUT TEST STILL FAILING', 'you broke the invoice PDF again??? undo it',
+           'wtf, the cart total is wrong now', 'forget it, I will do it myself', 'this is useless, stop changing the webhook sender']
+REJECTED = "The user doesn't want to proceed with this tool use. The tool use was rejected."
+
 # Asks a person types again and again, each with several wordings and a few details that change (paths, branches, numbers).
 RECURRING = [
     ('release', 0.035, ['bump the version to {ver}, update the changelog and tag the release',
@@ -224,14 +233,28 @@ def session(profile, start, proj, branch, arms, live=False):
             W.ev(profile, sid, t, 'mod', mod=mod, kind='guide', arm=arm, chars=rng.randint(600, 900))
         if arm == 'on' and mod == 'lsp-first':
             W.ev(profile, sid, t, 'mod', mod=mod, kind='schema_upfront', arm=arm, chars=1900)
+        if arm == 'on' and mod == 'budget-guard':   # its Haiku classifier and keep-alive pings: Mod spend
+            W.ev(profile, sid, t, 'mod', mod=mod, kind='classify', arm=arm, purpose='route', model='claude-haiku-5-5', inputChars=rng.randint(300, 4000))
+            if rng.random() < 0.4:
+                W.ev(profile, sid, t + timedelta(minutes=20), 'mod', mod=mod, kind='classify', arm=arm, purpose='new_task', model='claude-haiku-5-5', inputChars=rng.randint(400, 900))
+            if rng.random() < 0.15:
+                tok = rng.randint(60000, 140000)
+                W.ev(profile, sid, t + timedelta(minutes=40), 'mod', mod=mod, kind='keepalive', arm=arm, model=MODEL['opus'], tokens=tok, cacheRead=tok - 200,
+                     cacheWrite=200, input=16, output=4, costUsd=round(tok * 0.2e-6 + 200 * 5e-6, 4), hit=True)
     cats = [('System prompt', 3100), ('System tools', 14800), ('MCP tools', rng.choice([1200, 2600, 4100])), ('Custom agents', 650),
             ('Memory files', rng.randint(900, 2400)), ('Skills', 2300), ('Messages', 0)]
     W.ev(profile, sid, t, 'context', why='start', totalTokens=sum(c[1] for c in cats), rawMaxTokens=1000000,
          categories=[{'name': n, 'tokens': v} for n, v in cats])
     W.ev(profile, sid, t, 'system_prompt', model=MODEL[fam_main], chars=sum(c[1] for c in cats[:2]) * 4,
          sections=[{'id': s, 'chars': c} for s, c in [('identity', 1200), ('tone', 2600), ('tools', 6400), ('env', 900), ('claude_md', 5200), ('mods', 2100)]])
+    annoy = {'opus': 0.12, 'sonnet': 0.2, 'fable': 0.08}[fam_main] * (1.6 if start.astimezone().hour >= 17 else 1.0)
     for i in range(n_prompts):
         text = ask_text(proj, branch, t)
+        if i and rng.random() < annoy:
+            text = ANNOYED[min(len(ANNOYED) - 1, int(rng.random() ** 1.8 * len(ANNOYED)))]
+            if rng.random() < 0.3:
+                lines.append({**common, 'type': 'user', 'uuid': str(uuid.uuid4()), 'parentUuid': parent, 'timestamp': iso(t - timedelta(seconds=20)),
+                              'message': {'role': 'user', 'content': '[Request interrupted by user]'}})
         if i == 0 and rng.random() < 0.25:
             text = f'<command-name>/{rng.choice(["review", "budget", "analytics", "timesheet", "lean status"])}</command-name>'
         u = str(uuid.uuid4())
@@ -278,8 +301,10 @@ def session(profile, start, proj, branch, arms, live=False):
             for tid, name, inp, res in calls:
                 t += timedelta(seconds=rng.uniform(0.3, 6))
                 err = rng.random() < 0.04
+                no = name in ('Bash', 'Edit', 'Write') and rng.random() < annoy / 6
                 lines.append({**common, 'type': 'user', 'uuid': str(uuid.uuid4()), 'parentUuid': parent, 'timestamp': iso(t),
-                              'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': tid, 'is_error': err, 'content': 'r' * res}]}})
+                              'message': {'role': 'user', 'content': [{'type': 'tool_result', 'tool_use_id': tid, 'is_error': err or no,
+                                                                       'content': REJECTED if no else 'r' * res}]}})
                 tool_bytes += res
                 ctx += res // 4
                 W.ev(profile, sid, t, 'tool', tool=name, ms=rng.randint(40, 9000 if name == 'Bash' else 900), inChars=len(json.dumps(inp)), resultChars=res, isError=err)
@@ -358,6 +383,57 @@ def subagent(profile, pdir, sid, common, t, agent_type, tool_use_id, proj, cwd):
     return total
 
 
+def headless(profile, t, cwd, model, ctx, out, entry='sdk-cli', n=1, agent=None, sid=None):
+    """A run nobody typed a prompt for: claude -p / SDK (its own session) or a mod's agent (inside a session)."""
+    sid = sid or str(uuid.UUID(int=rng.getrandbits(128)))
+    pdir = os.path.join(OUT, '.' + profile, 'projects', '-' + cwd.strip('/').replace('/', '-').replace('.', '-'))
+    common = {'sessionId': sid, 'cwd': cwd, 'version': '2.3.7', 'entrypoint': entry, 'userType': 'external'}
+    lines, total = [{**common, 'type': 'user', 'uuid': str(uuid.uuid4()), 'timestamp': iso(t), 'message': {'role': 'user', 'content': 'Classify this work log.'}}], 0.0
+    for _ in range(n):
+        t += timedelta(seconds=rng.randint(3, 20))
+        cw = int(ctx * rng.uniform(0.85, 1.15))
+        o = int(out * rng.uniform(0.6, 1.4))
+        lines.append({**common, 'type': 'assistant', 'uuid': str(uuid.uuid4()), 'timestamp': iso(t), 'requestId': 'req_' + uuid.uuid4().hex[:20],
+                      'message': {'id': 'msg_' + uuid.uuid4().hex[:24], 'model': MODEL[model], 'role': 'assistant', 'content': [{'type': 'text', 'text': '{}'}],
+                                  'stop_reason': 'end_turn', 'usage': {'input_tokens': 4, 'output_tokens': o, 'cache_read_input_tokens': 0, 'cache_creation_input_tokens': cw}}})
+        total += cost(model, 4, o, 0, cw)
+    os.makedirs(pdir, exist_ok=True)
+    if agent:
+        d = os.path.join(pdir, sid, 'subagents')
+        os.makedirs(d, exist_ok=True)
+        aid = uuid.uuid4().hex[:17]
+        json.dump({'agentType': agent, 'description': agent, 'toolUseId': 'toolu_' + uuid.uuid4().hex[:22], 'spawnDepth': 1}, open(os.path.join(d, f'agent-{aid}.meta.json'), 'w'))
+        lines = [{**x, 'isSidechain': True, 'agentId': aid, 'entrypoint': 'cli'} for x in lines]
+        path = os.path.join(d, f'agent-{aid}.jsonl')
+    else:
+        path = os.path.join(pdir, sid + '.jsonl')
+    with open(path, 'w') as f:
+        f.write(''.join(json.dumps(x) + '\n' for x in lines))
+    return total
+
+
+def background(today):
+    """The timesheet classifier once a workday (sent Claude Code's whole prompt until 9 days ago), a nightly SDK script and the advisor now and then."""
+    for back in range(DAYS, 0, -1):
+        day = today - timedelta(days=back)
+        if day.weekday() < 5:
+            lean = back <= 9
+            headless('claude-work', day + timedelta(hours=18, minutes=rng.randint(0, 50)), f'{OUT}/.timesheet/classifier', 'sonnet',
+                     rng.randint(3200, 3900) if lean else rng.randint(26000, 36000), rng.randint(500, 1400))
+            if rng.random() < 0.5:   # a recompute after an edit
+                headless('claude-work', day + timedelta(hours=19, minutes=rng.randint(0, 50)), f'{OUT}/.timesheet/classifier', 'sonnet',
+                         rng.randint(3200, 3900) if lean else rng.randint(26000, 36000), rng.randint(500, 1400))
+        for _ in range(rng.randint(0, 2)):
+            headless('claude-work', day + timedelta(hours=2, minutes=rng.randint(0, 120)), f'{OUT}/code/billing-api', 'sonnet', rng.randint(20000, 45000),
+                     rng.randint(400, 2000), entry='sdk-py', n=rng.randint(3, 7))
+        if back % 7 == 3:
+            headless('claude-work', day + timedelta(hours=10), f'{OUT}/code/acme-web', 'sonnet', rng.randint(20000, 40000), rng.randint(800, 2500),
+                     entry='cli', n=rng.randint(6, 14), agent='usage-analytics:advisor')
+        if back % 11 == 5:
+            headless('claude-work', day + timedelta(hours=11), f'{OUT}/code/acme-web', 'sonnet', rng.randint(15000, 25000), rng.randint(1500, 3000),
+                     entry='cli', n=rng.randint(2, 4), agent='usage-analytics:recurring')
+
+
 def main():
     for profile in ('claude-work', 'claude-personal'):
         os.makedirs(os.path.join(OUT, '.' + profile, 'projects'), exist_ok=True)
@@ -379,6 +455,7 @@ def main():
             proj, branches, _ = rng.choices(projs, [p[2] for p in projs])[0]
             arms = {m: 'holdout' if rng.random() < h else 'on' for m, h in HOLDOUT.items()}
             session(profile, start, proj, rng.choice(branches), arms)
+    background(today)
     # sessions running right now, for the Live tab
     for proj, branch, mins in (('acme-web', 'feat/checkout-v2', 42), ('billing-api', 'feat/invoice-pdf', 18)):
         session('claude-work', NOW - timedelta(minutes=mins), proj, branch, {m: 'on' for m in HOLDOUT}, live=True)
