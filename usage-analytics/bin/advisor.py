@@ -35,8 +35,10 @@ Writes only <data>/advisor.db and <data>/advisor-trials.json; reads usage.db rea
 import fcntl, hashlib, json, math, os, random, re, sqlite3, time, uuid, zlib
 from datetime import datetime, timedelta
 
+import quality
 
-GOALS = ('cost', 'tokens', 'speed', 'reliability')
+
+GOALS = ('cost', 'tokens', 'speed', 'reliability', 'quality')
 # key, label, goal, numerator, denominator, scale, lower is better (None: a lever, no good direction), unit
 METRICS = [
     ('cost_per_prompt', 'Cost per prompt', 'cost', 'cost', 'prompts', 1, True, 'usd'),
@@ -55,12 +57,24 @@ METRICS = [
     ('tool_error_rate', 'Tool error rate', 'reliability', 'tool_errors', 'tool_calls', 100, True, 'pct'),
     ('api_errors', 'API errors per 100 requests', 'reliability', 'api_errors', 'requests', 100, True, 'num'),
     ('compactions', 'Compactions per 100 prompts', 'reliability', 'compactions', 'prompts', 100, True, 'num'),
+    ('idle_recache', 'Cache writes after an idle gap', 'cost', 'idle_rewrite', 'cw_main', 100, True, 'pct'),
+    # Quality: was the output right the first time? (rules in quality.py)
+    ('correction_rate', 'Corrections per 100 follow-ups', 'quality', 'corrections', 'followups', 100, True, 'num'),
+    ('interrupt_rate', 'Interrupts per 100 prompts', 'quality', 'interrupts', 'prompts', 100, True, 'num'),
+    ('rejection_rate', 'Rejected calls per 100 prompts', 'quality', 'rejections', 'prompts', 100, True, 'num'),
+    ('edit_churn', 'Edits redoing their own lines', 'quality', 'churn_edits', 'edits', 100, True, 'pct'),
+    ('verify_pass', 'Turns whose last check passed', 'quality', 'verify_pass', 'verify_turns', 100, False, 'pct'),
+    ('verify_coverage', 'Editing turns with a check', 'quality', 'verify_turns_edit', 'edit_turns', 100, None, 'pct'),
+    ('edit_survival', 'Lines kept at the next commit', 'quality', 'lines_kept', 'lines_written', 100, False, 'pct'),
+    ('files_shipped', 'Edited files committed', 'quality', 'files_committed', 'files_edited', 100, False, 'pct'),
 ]
 M = {m[0]: m for m in METRICS}
-GUARDS = ('cost_per_prompt', 'requests_per_prompt', 'tool_error_rate', 'turn_seconds', 'api_errors')
+# A cheaper or faster change that makes the output worse is not an improvement: the quality guards catch that.
+GUARDS = ('cost_per_prompt', 'requests_per_prompt', 'tool_error_rate', 'turn_seconds', 'api_errors', 'correction_rate', 'verify_pass', 'interrupt_rate')
 # A guard only counts as a side effect when it also got worse by at least this much in its own unit:
 # a rare event doubling (0.02 → 0.04 API errors per 100 requests) is not a cost.
-GUARD_FLOOR = {'cost_per_prompt': 0.02, 'requests_per_prompt': 0.5, 'tool_error_rate': 1.0, 'turn_seconds': 5.0, 'api_errors': 0.5}
+GUARD_FLOOR = {'cost_per_prompt': 0.02, 'requests_per_prompt': 0.5, 'tool_error_rate': 1.0, 'turn_seconds': 5.0, 'api_errors': 0.5,
+               'correction_rate': 2.0, 'verify_pass': 5.0, 'interrupt_rate': 2.0}
 STATUSES = ('proposed', 'accepted', 'trial', 'applied', 'dismissed', 'reverted')
 WINDOW_DAYS = 28        # before/after window around an applied recommendation
 MIN_AFTER = 8           # sessions on each side before any verdict
@@ -188,6 +202,8 @@ def sessions(con, since, until=None, profiles=None):
                 r['compactions'] = n
             else:
                 r['turns'], r['turn_ms'] = n, ms
+    for sid, qv in quality.session_quality(con, sids).items():
+        rows[sid].update(qv)
     return [r for r in rows.values() if r['prompts'] > 0]
 
 

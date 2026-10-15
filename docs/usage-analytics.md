@@ -86,11 +86,11 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 
 A loop that keeps looking for ways to spend less on Claude Code, and checks whether its advice worked:
 
-1. **Measure.** Sixteen metrics per session, grouped by goal. *Cost*: cost per prompt, premium-model share, spend inside subagents. *Tokens*: tokens per prompt, main-loop context, cache hit rate, tool output per prompt, whole-file reads, output per request, share of prompts not in English, prompt length (eight). *Speed*: requests per prompt, turn time. *Reliability*: tool error rate, API errors, compactions. For each one you get eight weekly values and the last 7 days against the 28 before, with a bootstrap 95% interval.
+1. **Measure.** Twenty-five metrics per session, grouped by goal. *Cost*: cost per prompt, premium-model share, spend inside subagents, cache writes after an idle gap (the cache had expired). *Tokens*: tokens per prompt, main-loop context, cache hit rate, tool output per prompt, whole-file reads, output per request, share of prompts not in English, prompt length (eight). *Speed*: requests per prompt, turn time. *Reliability*: tool error rate, API errors, compactions. *Quality*: corrections per 100 follow-ups, interrupts and rejected tool calls per 100 prompts, edits that redo Claude's own new lines, turns whose last check passed, editing turns with a check, lines kept at the next commit, edited files committed (see *Output quality*). For each one you get eight weekly values and the last 7 days against the 28 before, with a bootstrap 95% interval.
 2. **Detect.** Deterministic findings, no model involved, each tied to the metric it moves: large contexts, a low cache hit rate, whole-file reads, heavy tool output, a failing tool, serial tool calls, premium models in subagents, non-English prompts, frequent compaction, API errors, and big always-loaded MCP schemas. It also diffs consecutive session starts to show your own setting changes (model, effort, plugins, version).
 3. **Research.** An agent (`usage-analytics:advisor`) reads all of the above. That includes every earlier recommendation with its measured verdict and evidence grade, a track record per goal and per kind of change, its earlier notes, each metric per project, profile and entrypoint, and a sample of prompts. It looks up current guidance on the web and records 3–6 recommendations, held to the rules below.
 4. **Apply or trial.** `/analytics advise apply <id>` shows the change and asks before making it. You can also make the change yourself and run `/analytics advise applied <id>`, or use the dashboard's buttons. A recommendation that is a model instruction (read ranges, batch calls, …) can instead run as an **A/B trial** (`/analytics advise trial <id>`, or *Start A/B trial*).
-5. **Verify.** Each applied or trialled recommendation is measured on its own metric and on the guard metrics (cost per prompt, round trips, tool errors, API errors, turn time) for side effects. Verdicts:
+5. **Verify.** Each applied or trialled recommendation is measured on its own metric and on the guard metrics (cost per prompt, round trips, tool errors, API errors, turn time, and the quality guards: corrections, checks passing, interrupts) for side effects. A saving that makes the output worse is not graded as *helped*. Verdicts:
    - **helped**
    - **helped, with a cost**: a guard metric got worse by at least 10% and past a small absolute floor
    - **made it worse**
@@ -126,6 +126,21 @@ Confounders, meaning setting changes and other recommendations started within 7 
 The background agent can use only WebSearch, WebFetch and the mod's own four tools. The mod answers those four tools itself and never runs a shell for the agent. The agent runs with `dontAsk`, so anything else is refused instead of prompting, and it never edits files.
 
 **Where it lives.** Everything is stored in `<mods home>/usage-analytics/advisor.db`: runs, recommendations, verdict checks and research notes. Instructions on trial or adopted are in `advisor-trials.json`, which the mod reads at each new session. While one is active, it adds a short `usage-analytics:advisor` system-prompt section in that trial's 'on' sessions, and only there. `claude-usage advise show|brief|sql|set|…` reads and writes the same data from a shell.
+
+## Output quality
+
+Cost and token numbers alone can't tell a cheaper setup from a worse one. These signals, read from the transcripts and git, show whether the output held up. All of them are heuristics, and every rule is in `bin/quality.py`:
+
+| Signal | Rule |
+| --- | --- |
+| Correction | a follow-up prompt (not the session's first) that pushes back or asks for a redo: "no…", "still broken", "revert that", "are you sure", a bare "fix", a pasted error. Leading screenshots and pasted blocks are skipped. |
+| Interrupt | the turn was stopped (`[Request interrupted by user]`, prompt kind `interrupt`) |
+| Rejected call | you said no to a tool call (`tool_uses.flag = 'rejected'`; a rule or hook saying no is `denied` and is not counted) |
+| Redone edit | an edit that replaces lines Claude wrote earlier in the same turn, or a second Write of the same file |
+| Check | a test, typecheck, lint or build command (`tool_uses.verify`), found behind `cd`, env vars, `npx`, `uv run`, `python -m` and pipes. It fails when it errors **or** its output shows failure marks (`1 failed`, `FAIL`, `error TS…`, a traceback…), since `npm test \| tail` exits 0. A turn counts as passed when its last check passed. |
+| Lines kept | for each edited file in a git repo, the first commit (any branch) within 3 days after Claude's last edit, and the share of Claude's written lines found in it. Only line hashes are stored. A file without such a commit counts as not committed, once the 3 days are over. |
+
+`claude-usage report quality [--days N] [--project X]` prints the numbers, then cost and quality side by side per model, per model and effort, and per project. Use it to see whether a cheaper model, a lower effort or a smaller context did the same work. The advisor's A/B trials and before/after verdicts check the quality guards automatically.
 
 ## Recurring asks
 
@@ -290,13 +305,14 @@ The screenshots use generated demo data (two profiles, 45 days, about 260 sessio
 | Table | One row per |
 | --- | --- |
 | `requests` | API request (deduped by message id): profile, session, agent, ts/day/hour, project, branch, version, entrypoint, model, effort, stop reason, speed, token counts, `cost_usd` |
-| `tool_uses` | Tool call: tool, input chars, file/ext, `cmd` (first two words of the real command, wrappers unwrapped), pattern, subagent, skill, MCP server, detail, result chars/images, error |
-| `prompts` | User-side message, by `kind`: prompt, command, command_output, shell, notification, compact_summary, agent_prompt, meta. Text is kept. |
+| `tool_uses` | Tool call: tool, input chars, file/ext, `cmd` (first two words of the real command, wrappers unwrapped), pattern, subagent, skill, MCP server, detail, result chars/images, error, `verify` (test/typecheck/lint/build), `flag` (fail/rejected/denied), `lines_out`, `wrote` and `replaced` (hashes of the lines an edit writes and replaces) |
+| `prompts` | User-side message, by `kind`: prompt, interrupt, command, command_output, shell, notification, compact_summary, agent_prompt, meta. Text is kept. |
 | `attachments` | Injected context (reminders, skill listings, file snapshots…), with size |
 | `system_events` | turn_duration, compact_boundary, api_error, … |
 | `sessions` | Title, Claude Code's own cost, API/tool ms, lines added/removed |
 | `agents` | Subagent: type, description, parent, spawn depth |
 | `events` | Raw mod events, as JSON |
+| `git_outcomes` | Session with edits: state (done, pending, no_repo), repos, files edited and committed, lines written and kept at the next commit, commits |
 | `gateway_spend` | Day and model billed by a LiteLLM gateway (see *Gateway spend*) |
 | `files`, `meta` | Ingest bookkeeping |
 
@@ -326,6 +342,7 @@ Environment: `CLAUDE_MODS_HOME` (above); `CLAUDE_USAGE_DIR` replaces `<mods home
 | `advisorModel` | `sonnet` | the model `/analytics advise bg` and `/analytics recurring classify bg` run on |
 | `advisorNotify` | true | toast (90s into an interactive session) when an applied recommendation gets a verdict |
 | `weeklyDigest` | true | once per ISO week, two minutes into an interactive session, a toast with last week's digest |
+| `gitOutcomes` | true | the import runs `git log`/`git show` in the repos you edited, to see what was committed; false turns it off |
 | `gatewayMonths` | 12 | on a LiteLLM gateway: months of billed spend to copy the first time; 0 turns the sync off |
 | `profileDirs` | `[]` | config dirs to read transcripts from; empty = auto: `~/.claude*` plus every config dir a session registered under `profiles/` |
 

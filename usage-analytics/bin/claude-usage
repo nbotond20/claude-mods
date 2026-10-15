@@ -13,7 +13,7 @@ Commands:
   ingest  [--quiet] [--full]          fold new data in (lock-protected, incremental by byte offset)
   report  [what] [--days N] [--profile P[,P]] [--project S] [--limit N] [--ingest]
           what: overview (default) | profiles | daily | models | projects | tools | bash | files |
-                agents | sessions | context | hours | cache | prompts | gateway | all
+                agents | sessions | context | hours | cache | prompts | gateway | quality | all
   sql     "SELECT ..."                run any query (tables: see `schema`)
   schema                              list tables and views
   export  TABLE|VIEW [--format csv|jsonl] [--out FILE]
@@ -33,12 +33,13 @@ from datetime import datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import paths  # noqa: E402
+import quality  # noqa: E402
 
 HOME = paths.HOME
 DATA = paths.DATA
 DB = os.path.join(DATA, 'usage.db')
 PRICING = os.path.join(DATA, 'pricing.json')
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # USD per million tokens. cache write = 1.25x input (5 minute TTL) or 2x input (1 hour TTL) unless given.
 DEFAULT_PRICING = {
@@ -81,7 +82,8 @@ CREATE INDEX IF NOT EXISTS req_session_ts ON requests(session_id, ts);
 CREATE TABLE IF NOT EXISTS tool_uses (
   id TEXT PRIMARY KEY, msg_id TEXT, profile TEXT, session_id TEXT, agent_id TEXT, ts TEXT, day TEXT, project TEXT,
   tool TEXT, input_chars INTEGER, file TEXT, ext TEXT, cmd TEXT, pattern TEXT, subagent TEXT, skill TEXT, mcp_server TEXT,
-  detail TEXT, result_chars INTEGER, result_images INTEGER, is_error INTEGER, result_ts TEXT);
+  detail TEXT, result_chars INTEGER, result_images INTEGER, is_error INTEGER, result_ts TEXT,
+  verify TEXT, flag TEXT, lines_out INTEGER, wrote TEXT, replaced TEXT);
 CREATE INDEX IF NOT EXISTS tool_msg ON tool_uses(msg_id);
 CREATE INDEX IF NOT EXISTS tool_day ON tool_uses(day);
 CREATE INDEX IF NOT EXISTS tool_session ON tool_uses(session_id);
@@ -99,6 +101,8 @@ CREATE INDEX IF NOT EXISTS prompt_session ON prompts(session_id, ts);
 CREATE INDEX IF NOT EXISTS prompt_day ON prompts(day);
 CREATE INDEX IF NOT EXISTS sys_day ON system_events(day);
 CREATE INDEX IF NOT EXISTS att_day ON attachments(day);
+CREATE TABLE IF NOT EXISTS git_outcomes (session_id TEXT PRIMARY KEY, checked_at TEXT, state TEXT, repos TEXT, files_edited INTEGER,
+  files_committed INTEGER, lines_written INTEGER, lines_kept INTEGER, commits INTEGER);
 CREATE TABLE IF NOT EXISTS gateway_spend (profile TEXT, day TEXT, model TEXT, spend_usd REAL, requests INTEGER, input INTEGER, output INTEGER,
   cache_read INTEGER, cache_write INTEGER, PRIMARY KEY (profile, day, model));
 
@@ -159,8 +163,23 @@ def connect():
     con.execute('PRAGMA journal_mode=WAL')
     con.execute('PRAGMA synchronous=NORMAL')
     con.executescript(DDL)
+    migrate(con)
     con.execute("INSERT OR REPLACE INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
     return con
+
+
+def migrate(con):
+    """Bring a database from an earlier version up to this one; new columns are filled in by the next import."""
+    have = {r[1] for r in con.execute('PRAGMA table_info(tool_uses)')}
+    for col, kind in (('verify', 'TEXT'), ('flag', 'TEXT'), ('lines_out', 'INTEGER'), ('wrote', 'TEXT'), ('replaced', 'TEXT')):
+        if col not in have:
+            con.execute(f'ALTER TABLE tool_uses ADD COLUMN {col} {kind}')
+    v = con.execute("SELECT v FROM meta WHERE k = 'schema_version'").fetchone()
+    if v and int(v[0]) < 2:
+        # 2: interrupts are their own kind, not prompts; checks, failure marks and written lines need one more pass
+        con.execute("UPDATE prompts SET kind = 'interrupt' WHERE kind = 'prompt' AND text LIKE '[Request interrupted by user%'")
+        con.execute("INSERT OR REPLACE INTO meta VALUES ('backfill_quality', '1')")
+    con.commit()
 
 
 def load_pricing():
@@ -263,11 +282,17 @@ def result_size(content):
     return chars, imgs
 
 
+def result_text(content):
+    if isinstance(content, str):
+        return content
+    return '\n'.join(b.get('text') or '' for b in content or [] if isinstance(b, dict) and b.get('type') == 'text')
+
+
 def tool_facets(name, inp):
     inp = inp if isinstance(inp, dict) else {}
     s = lambda k: inp.get(k) if isinstance(inp.get(k), str) else None
     f = {'file': s('file_path') or s('notebook_path') or s('path'), 'ext': None, 'cmd': None, 'pattern': None,
-         'subagent': None, 'skill': None, 'mcp_server': None, 'detail': None}
+         'subagent': None, 'skill': None, 'mcp_server': None, 'detail': None, 'verify': None}
     if f['file']:
         m = re.search(r'\.([A-Za-z0-9]+)$', f['file'])
         f['ext'] = m.group(1).lower() if m else None
@@ -286,6 +311,7 @@ def tool_facets(name, inp):
         elif len(words) >= 2 and words[0] == 'cd' and words[1].endswith(';'):
             words = words[2:]
         f['cmd'] = ' '.join(words[:2])[:80] or None
+        f['verify'] = quality.verify_kind(cmd)
     elif name in ('Grep', 'Glob'):
         f['pattern'] = (s('pattern') or '')[:200]
         f['detail'] = s('output_mode') or s('glob')
@@ -316,6 +342,8 @@ def prompt_kind(text, is_meta, sidechain_root):
     if is_meta:
         return 'meta'
     t = text.lstrip()
+    if t.startswith('[Request interrupted by user'):
+        return 'interrupt'
     if t.startswith('<command-name>') or t.startswith('<command-message>'):
         return 'command'
     if t.startswith('<local-command-stdout>') or t.startswith('<local-command-stderr>'):
@@ -440,13 +468,17 @@ class Ingest:
             if isinstance(b, dict) and b.get('type') in ('tool_use', 'server_tool_use', 'mcp_tool_use'):
                 name = b.get('name') or '?'
                 f = {k: redact(v) for k, v in tool_facets(name, b.get('input')).items()}
+                lines_out, wrote = quality.written(name, b.get('input'))
+                repl = quality.replaced(name, b.get('input'))
                 self.con.execute('''INSERT INTO tool_uses (id, msg_id, profile, session_id, agent_id, ts, day, project, tool, input_chars,
-                    file, ext, cmd, pattern, subagent, skill, mcp_server, detail) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    file, ext, cmd, pattern, subagent, skill, mcp_server, detail, verify, lines_out, wrote, replaced) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(id) DO UPDATE SET msg_id=excluded.msg_id, tool=excluded.tool, input_chars=excluded.input_chars,
                     file=excluded.file, ext=excluded.ext, cmd=excluded.cmd, pattern=excluded.pattern, subagent=excluded.subagent,
-                    skill=excluded.skill, mcp_server=excluded.mcp_server, detail=excluded.detail, ts=excluded.ts, day=excluded.day''',
+                    skill=excluded.skill, mcp_server=excluded.mcp_server, detail=excluded.detail, ts=excluded.ts, day=excluded.day,
+                    verify=excluded.verify, lines_out=excluded.lines_out, wrote=excluded.wrote, replaced=excluded.replaced''',
                     (b.get('id'), mid, profile, d.get('sessionId'), aid, ts, day, project_of(cwd), name, size_of(b.get('input')),
-                     f['file'], f['ext'], f['cmd'], f['pattern'], f['subagent'], f['skill'], f['mcp_server'], f['detail']))
+                     f['file'], f['ext'], f['cmd'], f['pattern'], f['subagent'], f['skill'], f['mcp_server'], f['detail'],
+                     f['verify'], lines_out, wrote, repl))
                 self.n['tools'] += 1
 
     def user(self, d, profile, agent_id):
@@ -462,10 +494,11 @@ class Ingest:
                     continue
                 if b.get('type') == 'tool_result':
                     chars, imgs = result_size(b.get('content'))
-                    self.con.execute('''INSERT INTO tool_uses (id, profile, session_id, agent_id, result_chars, result_images, is_error, result_ts)
-                        VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET result_chars=excluded.result_chars,
-                        result_images=excluded.result_images, is_error=excluded.is_error, result_ts=excluded.result_ts''',
-                        (b.get('tool_use_id'), profile, d.get('sessionId'), aid, chars, imgs, 1 if b.get('is_error') else 0, ts))
+                    self.con.execute('''INSERT INTO tool_uses (id, profile, session_id, agent_id, result_chars, result_images, is_error, result_ts, flag)
+                        VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET result_chars=excluded.result_chars,
+                        result_images=excluded.result_images, is_error=excluded.is_error, result_ts=excluded.result_ts, flag=excluded.flag''',
+                        (b.get('tool_use_id'), profile, d.get('sessionId'), aid, chars, imgs, 1 if b.get('is_error') else 0, ts,
+                         quality.result_flag(result_text(b.get('content')))))
                 elif b.get('type') == 'text':
                     texts.append(b.get('text') or '')
             text = '\n'.join(texts)
@@ -517,6 +550,54 @@ class Ingest:
             n += 1
         self.n['events'] += n
         return end, n
+
+    def backfill_quality(self, budget_s=None):
+        """Once, after an upgrade to schema 2: read the transcripts again for the columns that version added
+        (checks, failure marks, written lines). Resumes where it stopped when the time budget runs out."""
+        con = self.con
+        if not con.execute("SELECT 1 FROM meta WHERE k = 'backfill_quality'").fetchone():
+            return
+        con.execute('CREATE TABLE IF NOT EXISTS quality_backfill (path TEXT PRIMARY KEY)')
+        t0 = time.time()
+        todo = [r[0] for r in con.execute("SELECT path FROM files WHERE kind = 'transcript' AND path NOT IN (SELECT path FROM quality_backfill)")]
+        log(self.args, f'quality backfill: {len(todo)} transcripts to read again')
+        for i, path in enumerate(todo):
+            if budget_s and time.time() - t0 > budget_s:
+                con.commit()
+                log(self.args, f'quality backfill: paused after {i} files, the next import goes on')
+                return
+            try:
+                with open(path, 'rb') as fh:
+                    for raw in fh:
+                        if b'"tool_use"' not in raw and b'"tool_result"' not in raw:
+                            continue
+                        try:
+                            d = json.loads(raw)
+                        except Exception:
+                            continue
+                        c = (d.get('message') or {}).get('content')
+                        for b in c if isinstance(c, list) else []:
+                            if not isinstance(b, dict):
+                                continue
+                            if b.get('type') == 'tool_use':
+                                lines_out, wrote = quality.written(b.get('name'), b.get('input'))
+                                verify = tool_facets(b.get('name') or '', b.get('input'))['verify']
+                                if verify or wrote is not None:
+                                    con.execute('UPDATE tool_uses SET verify = ?, lines_out = ?, wrote = ?, replaced = ? WHERE id = ?',
+                                                (verify, lines_out, wrote, quality.replaced(b.get('name'), b.get('input')), b.get('id')))
+                            elif b.get('type') == 'tool_result':
+                                flag = quality.result_flag(result_text(b.get('content')))
+                                if flag:
+                                    con.execute('UPDATE tool_uses SET flag = ? WHERE id = ?', (flag, b.get('tool_use_id')))
+            except OSError:
+                pass
+            con.execute('INSERT OR IGNORE INTO quality_backfill VALUES (?)', (path,))
+            if i % 200 == 199:
+                con.commit()
+        con.execute('DROP TABLE quality_backfill')
+        con.execute("DELETE FROM meta WHERE k = 'backfill_quality'")
+        con.commit()
+        log(self.args, f'quality backfill: done in {time.time() - t0:.0f}s')
 
     # ---- driver ------------------------------------------------------------
     def sources(self):
@@ -571,6 +652,7 @@ class Ingest:
         if full:
             for t in ('files', 'requests', 'tool_uses', 'prompts', 'attachments', 'system_events', 'sessions', 'agents', 'events'):
                 con.execute(f'DELETE FROM {t}')
+            con.execute("DELETE FROM meta WHERE k = 'backfill_quality'")
         known = {r[0]: r[1:] for r in con.execute('SELECT path, size, mtime, offset FROM files')}
         todo = []
         for kind, profile, path, aid in self.sources():
@@ -625,10 +707,20 @@ class Ingest:
                                     'stageTotal': stage_total[stage_of(kind, aid)]}, progress)
         self.gateway()
         con.commit()
+        self.backfill_quality(budget_s=240 if getattr(self.args, 'quiet', False) else None)
+        if git_outcomes_on():
+            try:
+                quality.refresh_git(con, budget_s=15)
+            except Exception as ex:  # git trouble must not fail the import
+                log(self.args, f'git outcomes: {ex}')
         if backfill:
             write_progress({**state, 'running': False, 'done': len(todo), 'requests': self.n['requests'], 'finishedAt': int(time.time())}, progress)
         log(self.args, f'ingested {self.n["files"]} files: {self.n["requests"]} request rows, {self.n["tools"]} tool calls, '
                        f'{self.n["prompts"]} prompts, {self.n["events"]} mod events in {time.time() - t0:.1f}s')
+
+
+def git_outcomes_on():
+    return paths.config().get('gitOutcomes', True) is not False
 
 
 def stage_of(kind, aid):
@@ -836,6 +928,27 @@ def cmd_report(args):
             GROUP BY tool, deferred ORDER BY chars DESC LIMIT ?''', [L])
         table(con, 'Compactions', f'''SELECT day, subtype, COUNT(*) n FROM system_events WHERE {W.replace("project LIKE ?", "1")}
             AND subtype IN ('compact_boundary', 'api_error') GROUP BY day, subtype ORDER BY day DESC LIMIT ?''', p + [L])
+    if want('quality'):
+        import advisor
+        profs = [x if x.startswith('claude') else f'claude-{x}' for x in args.profile.split(',')] if args.profile else None
+        rows = advisor.sessions(con, since, profiles=profs)
+        if args.project:
+            rows = [r for r in rows if args.project in (r['project'] or '')]
+        tot = lambda k: sum(r[k] for r in rows)
+        print(f"\n## Output quality ({len(rows)} sessions; git outcomes for {sum(1 for r in rows if r['files_edited'])} of them)")
+        for key in ('correction_rate', 'interrupt_rate', 'rejection_rate', 'edit_churn', 'verify_pass', 'verify_coverage',
+                    'edit_survival', 'files_shipped', 'idle_recache'):
+            m = advisor.M[key]
+            print(f'{m[1]:<40} {advisor.fmt_value(key, advisor.value(rows, key)):>10}   ({tot(m[3]):,.0f} / {tot(m[4]):,.0f})')
+        pend = con.execute("SELECT COUNT(*) FROM git_outcomes WHERE state = 'pending'").fetchone()[0]
+        print(f'git outcomes waiting for a commit: {pend} sessions' + ('' if git_outcomes_on() else '  (off: gitOutcomes is false in config.json)'))
+        fv = lambda rs, k: (lambda v: fmt(round(v, 3 if k == 'cost_per_prompt' else 1)) if v is not None else '-')(advisor.value(rs, k))
+        for title, by in (('By model (main loop)', lambda r: r['model']), ('By model and effort', lambda r: f"{r['model']} / {r['effort'] or '-'}"),
+                          ('By project', lambda r: r['project'])):
+            head, body = quality.compare_table(rows, by, fv, top=L)
+            print(f'\n## Cost vs quality: {title.lower()}\n' + ' | '.join(head))
+            for row in body:
+                print(' | '.join(str(x) for x in row))
     if want('hours'):
         table(con, 'By hour of day (local)', f'''SELECT printf('%02d:00', hour) hour, COUNT(*) requests, {TOK}
             FROM requests WHERE {W} GROUP BY hour ORDER BY hour''', p)
@@ -1310,7 +1423,7 @@ def main(argv=None):
     r = sub.add_parser('report')
     r.add_argument('what', nargs='?', default='overview',
                    choices=['overview', 'profiles', 'daily', 'models', 'projects', 'tools', 'bash', 'files', 'agents',
-                            'sessions', 'context', 'hours', 'cache', 'prompts', 'gateway', 'all'])
+                            'sessions', 'context', 'hours', 'cache', 'prompts', 'gateway', 'quality', 'all'])
     r.add_argument('--days', type=int, default=30, help='0 = all time')
     r.add_argument('--profile'); r.add_argument('--project'); r.add_argument('--limit', type=int, default=15)
     r.add_argument('--ingest', action='store_true', help='ingest new data first')

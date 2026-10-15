@@ -540,6 +540,8 @@ type Ev = Record<string, unknown>
 type Config = {
   /** keep the full text of each prompt (else its length only) */
   storePrompts: boolean
+  /** The import checks git for whether edited files were committed and how many written lines were kept. */
+  gitOutcomes: boolean
   /** characters of each tool call's input kept (0: none) */
   maxInputChars: number
   /** characters of each tool result kept (0: none) */
@@ -572,6 +574,7 @@ type Config = {
 
 const DEFAULTS: Config = {
   storePrompts: true,
+  gitOutcomes: true,
   maxInputChars: 4000,
   maxResultChars: 0,
   maxAnswerChars: 2000,
@@ -828,11 +831,11 @@ async function ingest($: EngineInterface) {
 // ---------- advisor: research → recommend → apply → verify, and back ----------
 
 /** The advisor's workflow, for the background agent (its system prompt) and for a run in the main loop. */
-export const ADVISOR_PROMPT = `You are the usage advisor for this person's Claude Code usage. Find the few changes that make it cheaper, use fewer tokens, faster or more reliable for this person, and learn from how earlier advice turned out. Every claim you make is checked: numbers against the database, sources against their dates, and every change you recommend is measured afterwards.
+export const ADVISOR_PROMPT = `You are the usage advisor for this person's Claude Code usage. Find the few changes that make it cheaper, use fewer tokens, faster or more reliable for this person without making the output worse, and learn from how earlier advice turned out. The quality goal (corrections, interrupts, rejected tool calls, rewritten edits, checks that pass, lines kept at the next commit, files committed) is the bar: a saving that moves those the wrong way is a tradeoff, not an improvement, and the verdicts count it so. Every claim you make is checked: numbers against the database, sources against their dates, and every change you recommend is measured afterwards.
 
 Tools (the usage-analytics mod's; load them with ToolSearch if they are deferred):
 - advisor_brief: the data. Metrics per goal with 8-week trends (Theil-Sen slope, Mann-Kendall p, the smallest change the data can detect: mde) and the last 7 days vs the 28 before (95% bootstrap intervals); segments (by project, profile and entrypoint: where each metric is high or low); deterministic findings; the setup per profile; setting changes; every earlier recommendation with status, measured verdict, evidence grade and method; the track record (success rate per goal and kind of change); earlier research notes (with checked dates; stale ones flagged); pace (sessions per day); top models, agents, tools, sessions; a sample of prompts.
-- advisor_sql: read-only SQL over the usage database (tables requests, tool_uses, prompts, sessions, agents, system_events, events; views v_requests, v_context, v_mod_steps, …).
+- advisor_sql: read-only SQL over the usage database (tables requests, tool_uses (verify: test|typecheck|lint|build; flag: fail|rejected|denied; wrote: hashes of written lines), prompts (kind interrupt for stopped turns), sessions, agents, system_events, events, git_outcomes (per session: files edited and committed, lines written and kept at the next commit); views v_requests, v_context, v_mod_steps, …).
 - WebSearch, WebFetch: current guidance.
 - advisor_record: stores the result. Call it once, at the end.
 
@@ -874,7 +877,7 @@ const ADVISOR_TOOLS = [
   },
   {
     name: 'advisor_record',
-    description: 'usage-analytics advisor: store a research run\'s summary, recommendations and notes. Each recommendation: title, goal (cost|tokens|speed|reliability), metric (a metricCatalog key), expected (words), expected_effect (relative change, e.g. -0.2), hypothesis, evidence ([{claim, sql}], re-run and stored), exposure_sql (one number in [0,1]), scope ({projects, profiles}, optional), instruction (system-prompt text, for an A/B trial; optional), action, rationale, counter_evidence, apply_kind (settings|claude_md|mod_config|env|habit|workflow|instruction|other), effort, risk, sources (urls), supersedes (an earlier id, optional). Notes: topic, finding, source, published, checked. Answers with each recommendation\'s grade, $/month at stake, sessions to a verdict and warnings.',
+    description: 'usage-analytics advisor: store a research run\'s summary, recommendations and notes. Each recommendation: title, goal (cost|tokens|speed|reliability|quality), metric (a metricCatalog key), expected (words), expected_effect (relative change, e.g. -0.2), hypothesis, evidence ([{claim, sql}], re-run and stored), exposure_sql (one number in [0,1]), scope ({projects, profiles}, optional), instruction (system-prompt text, for an A/B trial; optional), action, rationale, counter_evidence, apply_kind (settings|claude_md|mod_config|env|habit|workflow|instruction|other), effort, risk, sources (urls), supersedes (an earlier id, optional). Notes: topic, finding, source, published, checked. Answers with each recommendation\'s grade, $/month at stake, sessions to a verdict and warnings.',
     inputSchema: {
       type: 'object',
       required: ['summary', 'recommendations'],
@@ -887,7 +890,7 @@ const ADVISOR_TOOLS = [
             required: ['title', 'metric', 'action', 'expected_effect', 'evidence'],
             properties: {
               title: { type: 'string' },
-              goal: { type: 'string', enum: ['cost', 'tokens', 'speed', 'reliability'] },
+              goal: { type: 'string', enum: ['cost', 'tokens', 'speed', 'reliability', 'quality'] },
               metric: { type: 'string' },
               expected: { type: 'string' },
               expected_effect: { type: 'number', description: 'predicted relative change of the metric, e.g. -0.2' },

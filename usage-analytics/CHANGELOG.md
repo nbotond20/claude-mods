@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.0
+- Output quality, so a cheaper setup can be shown to give results that are as good or better. A new *Quality* goal in the advisor and on the dashboard: corrections per 100 follow-ups, interrupts, rejected tool calls, edits that redo Claude's own new lines, turns whose last test/typecheck/lint/build passed, editing turns with a check, lines kept at the next commit and edited files committed. Plus *Cache writes after an idle gap* under Cost.
+- Correction rate, check pass rate and interrupt rate are guard metrics now: a recommendation that saves money but makes one of them worse is graded *helped, with a cost*, not *helped*.
+- `claude-usage report quality`: the quality numbers, then cost and quality side by side per model, per model and effort, and per project.
+- The import records which shell commands are checks (`tool_uses.verify`), failure marks in their output (`flag`: a piped `npm test | tail` exits 0 even when tests fail), rejected and denied calls, and hashes of the lines each edit writes and replaces (never the code). A new `git_outcomes` table holds, per session, files edited and committed within 3 days and the written lines found in that commit. `gitOutcomes: false` in config.json turns the git lookups off.
+- `[Request interrupted by user]` is its own prompt kind (`interrupt`). It used to count as a prompt, which inflated prompts and lowered every per-prompt metric.
+- Upgrading reads the transcripts once more for the new columns (about a minute for 4 GB, resumed across imports when it runs out of time).
+
 ## 0.10.1
 - Dashboard redesign, same data and queries. Every view uses one set of components: one tile, one tag, one table look, one notes list, and the same change format (−12%).
 - Long explanations are folded under "How it works" at the top of the Advisor, Recurring, Mod impact, Savings and Engine tabs. Panel notes are one line; the details are in an ⓘ tooltip. Chart | Table is a switch in each panel header.

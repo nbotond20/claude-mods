@@ -1255,7 +1255,7 @@ async function renderAdvisor(view) {
     return tile({ label: m.label, value: advValue(m, m.current), sub, extra: (sp || '<div class="nospark"></div>') + trend(m) })
   }
   // Goals: each metric this week vs the four before, with eight weeks of history.
-  const goals = ['cost', 'tokens', 'speed', 'reliability'].map(g => [g, d.metrics.filter(m => m.goal === g)]).filter(([, ms]) => ms.length)
+  const goals = ['cost', 'tokens', 'speed', 'reliability', 'quality'].map(g => [g, d.metrics.filter(m => m.goal === g)]).filter(([, ms]) => ms.length)
   if (goals.length) {
     sect('Goals', 'last 7 days vs the 28 before')
     view.insertAdjacentHTML('beforeend', `<div class="goals">${goals.map(([g, ms]) => `<div class="goal"><h3>${g[0].toUpperCase() + g.slice(1)}</h3><div class="kpis auto">${ms.map(goalTile).join('')}</div></div>`).join('')}</div>`)
