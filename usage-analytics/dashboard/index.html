@@ -12,7 +12,11 @@
   --shadow: 0 1px 2px rgba(0,0,0,.04), 0 1px 1px rgba(0,0,0,.03); --shadow-lg: 0 18px 50px rgba(0,0,0,.18);
   --s1: #c96442; --s2: #3d6fb6; --s3: #2f7d4f; --s4: #8a5cb8; --s5: #b7791f; --s6: #4a9fa8; --s7: #b8457a; --s8: #7a7a70;
   --s9: #5f8f2f; --s10: #c2a23a; --s11: #4a5fa8; --s12: #a8634a;
-  --side: 224px; --radius: 10px;
+  --side: 216px; --radius: 10px; --r-sm: 6px;
+  /* one type scale and one spacing scale for every view */
+  --fs-xs: 11px; --fs-s: 12px; --fs: 13px; --fs-l: 15px;
+  --gap: 12px; --gap-l: 24px;
+  --mono: ui-monospace, Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #141413; --panel: #1d1d1b; --panel2: #191917; --ink: #ecebe6; --muted: #a3a29b; --faint: #75746e; --line: #302f2b; --line2: #262523;
@@ -28,7 +32,7 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-body { background: var(--bg); color: var(--ink); font: 13.5px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; -webkit-font-smoothing: antialiased; }
+body { background: var(--bg); color: var(--ink); font: var(--fs)/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; -webkit-font-smoothing: antialiased; }
 body.noscroll { overflow: hidden; }
 a { color: var(--accent); }
 select, input, button, textarea { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; }
@@ -36,16 +40,19 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 button { cursor: pointer; transition: background .15s, border-color .15s; }
 button:hover { background: var(--hover); }
 button:disabled { opacity: .55; cursor: default; }
-kbd { font: 11px ui-monospace, Menlo, monospace; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; color: var(--muted); background: var(--panel2); }
-code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+kbd { font: 11px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; color: var(--muted); background: var(--panel2); }
+code { font-family: var(--mono); font-size: var(--fs-s); }
+.muted { color: var(--muted); }
+/* Small uppercase label above a value or a block (tiles, fields, detail headings). */
+.eyebrow, .rfields dt, .rc-detail h5 { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; color: var(--faint); font-weight: 600; }
 
 /* ---------- layout ---------- */
 .app { display: grid; grid-template-columns: var(--side) minmax(0, 1fr); min-height: 100vh; }
 aside { position: sticky; top: 0; height: 100vh; border-right: 1px solid var(--line); background: var(--panel2); display: flex; flex-direction: column; padding: 14px 10px; gap: 6px; }
-.brand { display: flex; align-items: center; gap: 9px; padding: 2px 8px 10px; font-weight: 650; font-size: 15px; }
+.brand { display: flex; align-items: center; gap: 9px; padding: 2px 8px 10px; font-weight: 650; font-size: var(--fs-l); }
 .brand .logo { width: 24px; height: 24px; border-radius: 7px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 13px; font-weight: 700; }
 .brand span { color: var(--accent); }
-.search { display: flex; align-items: center; justify-content: space-between; color: var(--muted); border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 5px 9px; cursor: pointer; margin: 0 2px 6px; font-size: 12.5px; }
+.search { display: flex; align-items: center; justify-content: space-between; color: var(--muted); border: 1px solid var(--line); background: var(--panel); border-radius: 7px; padding: 5px 9px; cursor: pointer; margin: 0 2px 6px; font-size: var(--fs-s); }
 .search:hover { border-color: var(--faint); }
 nav { flex: 1; overflow: auto; }
 nav .group { font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint); padding: 12px 10px 4px; font-weight: 600; }
@@ -54,8 +61,8 @@ nav a svg { width: 15px; height: 15px; flex: none; opacity: .85; }
 nav a:hover { background: var(--hover); color: var(--ink); }
 nav a.on { background: var(--panel); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--shadow); font-weight: 550; }
 nav a.on svg { color: var(--accent); opacity: 1; }
-nav a .badge { margin-left: auto; font-size: 10px; color: var(--accent); }
-.sidefoot { border-top: 1px solid var(--line); padding: 10px 8px 0; display: grid; gap: 8px; font-size: 12px; color: var(--muted); }
+nav a .badge { margin-left: auto; font-size: 10px; color: var(--accent); font-weight: 600; }
+.sidefoot { border-top: 1px solid var(--line); padding: 10px 8px 0; display: grid; gap: 8px; font-size: var(--fs-s); color: var(--muted); }
 .live { display: flex; align-items: center; gap: 7px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
 .live.on .dot { background: var(--good); box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 60%, transparent); animation: breathe 2.4s infinite; }
@@ -64,88 +71,117 @@ nav a .badge { margin-left: auto; font-size: 10px; color: var(--accent); }
 @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 45%, transparent); } 50% { box-shadow: 0 0 0 4px transparent; } }
 @keyframes ping { 0% { transform: scale(1); box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 70%, transparent); } 60% { transform: scale(1.35); box-shadow: 0 0 0 8px transparent; } 100% { transform: scale(1); } }
 .sidefoot .row2 { display: flex; gap: 6px; }
-.sidefoot button { flex: 1; font-size: 12px; padding: 4px 6px; }
+.sidefoot button { flex: 1; font-size: var(--fs-s); padding: 4px 6px; }
 
 .main { min-width: 0; display: flex; flex-direction: column; }
-.topbar { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--line); padding: 10px 22px; }
-.titlerow { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.topbar { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px); border-bottom: 1px solid var(--line); padding: 10px 24px; }
+.titlerow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-height: 28px; }
 .titlerow h1 { font-size: 19px; margin: 0; font-weight: 650; letter-spacing: -.01em; }
-.titlerow .sub { color: var(--muted); font-size: 12.5px; }
-.status { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.titlerow { align-items: center; min-height: 28px; }
+.titlerow .sub { color: var(--muted); font-size: var(--fs-s); }
+.status { margin-left: auto; color: var(--faint); font-size: var(--fs-s); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .iconbtn { flex: none; width: 28px; height: 28px; padding: 0; display: grid; place-items: center; color: var(--muted); }
 .iconbtn:hover { color: var(--ink); }
 .iconbtn svg { width: 15px; height: 15px; }
 .iconbtn.spin svg { animation: spin .7s linear; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 9px; }
-.seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; }
-.seg button { border: 0; background: transparent; padding: 3px 9px; border-radius: 6px; color: var(--muted); font-size: 12.5px; }
+/* Segmented control: periods, chart/table, list filters. */
+.seg { display: inline-flex; align-items: center; height: 28px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; flex: none; }
+.seg button { border: 0; background: transparent; height: 22px; padding: 0 9px; border-radius: 6px; color: var(--muted); font-size: var(--fs-s); }
+.seg button:hover { color: var(--ink); }
 .seg button.on { background: var(--ink); color: var(--bg); }
+.seg button .n { margin-left: 5px; opacity: .65; font-variant-numeric: tabular-nums; }
+.seg.sm { height: 24px; } .seg.sm button { height: 18px; padding: 0 7px; font-size: var(--fs-xs); }
 .chips { display: flex; gap: 4px; flex-wrap: wrap; }
-.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; user-select: none; color: var(--muted); font-size: 12.5px; transition: all .12s; }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; user-select: none; color: var(--muted); font-size: var(--fs-s); transition: all .12s; }
 .chip i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .chip.on { color: var(--ink); border-color: var(--ink); }
-.toggle { display: inline-flex; height: 28px; padding: 0 2px; gap: 6px; align-items: center; color: var(--muted); font-size: 12.5px; cursor: pointer; user-select: none; }
+.toggle { display: inline-flex; height: 28px; padding: 0 2px; gap: 6px; align-items: center; color: var(--muted); font-size: var(--fs-s); cursor: pointer; user-select: none; }
 .toggle input { margin: 0; accent-color: var(--accent); }
 .filters .grow { flex: 1; }
-.filters select, .filters input { font-size: 12.5px; padding: 4px 8px; height: 28px; }
+.filters select, .filters input { font-size: var(--fs-s); padding: 4px 8px; height: 28px; }
 .filters select { max-width: 150px; }
 .filters #project { width: 130px; }
-.seg, .chip { height: 28px; }
-.seg button { height: 22px; padding-top: 0; padding-bottom: 0; }
-.filters .btn { font-size: 12.5px; padding: 4px 10px; }
+.btn { font-size: var(--fs-s); padding: 4px 11px; height: 28px; display: inline-flex; align-items: center; gap: 6px; }
 .btn.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.btn.primary:hover { background: color-mix(in srgb, var(--ink) 85%, var(--bg)); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.btn.ghost:hover { background: var(--hover); color: var(--ink); }
+.btn.sm { font-size: var(--fs-xs); padding: 3px 8px; height: 24px; }
 
-.content { padding: 18px 22px 70px; max-width: 1640px; width: 100%; }
-.tabnote { color: var(--muted); margin: 0 0 16px; max-width: 980px; }
-.tabnote b { color: var(--ink); font-weight: 600; }
+.content { padding: 20px 24px 72px; max-width: 1640px; width: 100%; }
 .topbar.nofilters .filters { display: none; }
 
-/* ---------- KPI cards ---------- */
-.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+/* "About this view": one line visible, the method behind a toggle. */
+.about { margin: 0 0 var(--gap-l); color: var(--muted); font-size: var(--fs-s); max-width: 980px; }
+.about summary { cursor: pointer; list-style: none; display: flex; gap: 8px; align-items: baseline; user-select: none; }
+.about summary::-webkit-details-marker { display: none; }
+.about summary > span:first-child { color: var(--ink); font-size: var(--fs); }
+.about summary .how { color: var(--accent); white-space: nowrap; flex: none; }
+.about summary .how::after { content: " ▸"; font-size: 10px; }
+.about[open] summary .how::after { content: " ▾"; }
+.about .body { margin-top: 10px; padding: 10px 14px; border-left: 2px solid var(--line); display: grid; gap: 6px; }
+.about .body p { margin: 0; }
+.about b { color: var(--ink); font-weight: 600; }
+
+/* ---------- tiles (KPIs and every stat block) ---------- */
+.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--gap); margin-bottom: var(--gap-l); }
+.kpis.auto { grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); }
 .kpi { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px 10px; box-shadow: var(--shadow); overflow: hidden; min-width: 0; display: flex; flex-direction: column; }
-.kpi small { color: var(--muted); font-size: 11.5px; font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.kpi b { display: block; font-size: 22px; line-height: 1.2; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin: 3px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .4s; }
-.kpi b .unit { font-size: 13px; color: var(--muted); font-weight: 500; letter-spacing: 0; margin-left: 1px; }
-.kpi b.bump { color: var(--accent); }
-.kpi .delta { font-size: 11.5px; line-height: 16px; min-height: 16px; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi > small { color: var(--muted); font-size: var(--fs-s); font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi > b { display: block; font-size: 22px; line-height: 1.2; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin: 3px 0 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color .4s; }
+.kpi > b .unit { font-size: 13px; color: var(--muted); font-weight: 500; letter-spacing: 0; margin-left: 1px; }
+.kpi > b.bump { color: var(--accent); }
+.kpi .delta { font-size: var(--fs-xs); line-height: 16px; min-height: 16px; font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi .delta .vs { color: var(--faint); }
-.kpi .delta.up.bad, .kpi .delta.down.bad { color: var(--bad); }
-.kpi .delta.up.good, .kpi .delta.down.good { color: var(--good); }
+.delta .good, .delta.good { color: var(--good); } .delta .bad, .delta.bad { color: var(--bad); }
 .kpi .sparkw { position: relative; margin-top: auto; border-top: 8px solid transparent; cursor: crosshair; }
 .kpi svg.spark { display: block; width: 100%; height: 26px; overflow: visible; }
 .sparkw .sline, .sparkw .sdot { position: absolute; opacity: 0; pointer-events: none; transition: opacity .1s; }
 .sparkw .sline { top: 0; bottom: 0; width: 1px; margin-left: -.5px; background: var(--faint); }
 .sparkw .sdot { width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: var(--panel); border: 2px solid; box-sizing: border-box; }
 .sparkw.hot .sline { opacity: .7; } .sparkw.hot .sdot { opacity: 1; }
-#tip { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity .08s; background: var(--ink); color: var(--bg); font-size: 11.5px; line-height: 1.45; font-variant-numeric: tabular-nums; padding: 6px 9px; border-radius: 7px; white-space: pre-line; max-width: 280px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
+.kpi .nospark { margin-top: auto; }
+.kpi.hero { grid-column: span 2; }
+.kpi.hero > b { font-size: 30px; }
+.kpi.hero svg.spark { height: 34px; }
+.kpis.flat .kpi.hero { grid-column: auto; }
+.kpi .meter { margin-top: auto; }
+/* Compact tiles inside cards and drawers: no shadow, tighter. */
+.kpis.compact { gap: 0; margin: 0; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); border: 1px solid var(--line2); border-radius: 8px; background: var(--panel2); overflow: hidden; }
+.kpis.compact .kpi { border: 0; border-left: 1px solid var(--line2); border-radius: 0; box-shadow: none; background: transparent; padding: 8px 12px; }
+.kpis.compact .kpi:first-child { border-left: 0; }
+.kpis.compact .kpi > b { font-size: 16px; margin: 1px 0 0; }
+.kpis.compact .kpi > b.warn { color: var(--warn); font-size: 14px; } .kpis.compact .kpi > b.bad { color: var(--bad); }
+.kpis.compact .kpi > small { font-size: var(--fs-xs); }
+.meter { height: 5px; background: var(--line2); border-radius: 9px; overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--accent); border-radius: 9px; transition: width .5s; }
+.meter > i.hot { background: var(--bad); } .meter > i.warm { background: var(--warn); }
+#tip { position: fixed; left: 0; top: 0; z-index: 1000; pointer-events: none; opacity: 0; transition: opacity .08s; background: var(--ink); color: var(--bg); font-size: 11.5px; line-height: 1.45; font-variant-numeric: tabular-nums; padding: 6px 9px; border-radius: 7px; white-space: pre-line; max-width: 300px; box-shadow: 0 6px 20px rgba(0,0,0,.18); }
 #tip.on { opacity: 1; }
 #tip::first-line { font-weight: 600; }
 .heat div[data-tip]:hover { outline: 2px solid var(--ink); outline-offset: -1px; }
-.kpi .nospark { height: 26px; margin-top: auto; padding-top: 8px; }
-.kpi.hero { grid-column: span 2; }
-.kpi.hero b { font-size: 30px; }
-.kpi.hero svg.spark { height: 34px; }
-.kpis.flat .kpi.hero { grid-column: auto; }
-.meter { height: 5px; background: var(--line2); border-radius: 9px; overflow: hidden; margin-top: auto; }
-.kpi .meter { margin-top: auto; position: relative; top: -3px; }
-.meter > i { display: block; height: 100%; background: var(--accent); border-radius: 9px; transition: width .5s; }
+.info { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1px solid var(--line); color: var(--faint); font-size: 10px; font-weight: 700; font-style: normal; cursor: help; vertical-align: 1px; margin-left: 4px; }
+.info:hover { color: var(--ink); border-color: var(--faint); }
 
-/* ---------- panels ---------- */
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 540px), 1fr)); gap: 14px; }
+/* ---------- sections and panels ---------- */
+h2.sec { margin: var(--gap-l) 0 var(--gap); font-size: var(--fs-l); font-weight: 640; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+h2.sec:first-child { margin-top: 0; }
+h2.sec small { color: var(--muted); font-weight: normal; font-size: var(--fs-s); }
+h2.sec .seg { margin-left: auto; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 540px), 1fr)); gap: var(--gap); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 14px 12px; min-width: 0; box-shadow: var(--shadow); display: flex; flex-direction: column; }
 .panel.wide { grid-column: 1 / -1; }
-.panel > header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.panel > header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; min-height: 24px; }
 .panel > header > div:first-child { flex: 1; min-width: 0; }
-.panel h3 { margin: 0; font-size: 13.5px; font-weight: 620; }
-.panel p.note { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
-.acts { display: flex; gap: 3px; align-items: center; opacity: .55; transition: opacity .15s; }
-.panel:hover .acts, .panel.max .acts { opacity: 1; }
-.acts button { border: 0; background: transparent; padding: 3px 5px; color: var(--muted); border-radius: 5px; display: grid; place-items: center; }
-.acts button:hover { background: var(--hover); color: var(--ink); }
-.acts button svg { width: 14px; height: 14px; }
-.acts input { width: 120px; font-size: 12px; padding: 2px 7px; }
+.panel h3 { margin: 0; font-size: var(--fs); font-weight: 620; line-height: 24px; }
+.panel p.note { margin: 0; color: var(--muted); font-size: var(--fs-s); }
+.acts { display: flex; gap: 4px; align-items: center; }
+.acts .ib { border: 0; background: transparent; width: 24px; height: 24px; padding: 0; color: var(--faint); border-radius: 5px; display: grid; place-items: center; opacity: 0; transition: opacity .15s; }
+.panel:hover .acts .ib, .panel.max .acts .ib, .acts .ib:focus-visible { opacity: 1; }
+.acts .ib:hover { background: var(--hover); color: var(--ink); }
+.acts .ib svg { width: 14px; height: 14px; }
+.acts input { width: 120px; font-size: var(--fs-s); padding: 2px 7px; height: 24px; }
 .panel.max { position: fixed; inset: 18px; z-index: 30; box-shadow: var(--shadow-lg); overflow: auto; }
 .panel.max .chart { height: calc(100vh - 120px) !important; }
 .panel.max .tbl { max-height: calc(100vh - 110px); }
@@ -154,45 +190,63 @@ nav a .badge { margin-left: auto; font-size: 10px; color: var(--accent); }
 .chart { position: relative; height: 280px; }
 .chart.tall { height: 400px; }
 .chart.short { height: 200px; }
-.tbl { overflow: auto; max-height: 470px; border-radius: 6px; }
-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+
+/* ---------- tables: one look everywhere ---------- */
+.tbl { overflow: auto; max-height: 470px; }
+table { border-collapse: collapse; width: 100%; font-size: var(--fs-s); }
 th, td { padding: 6px 10px; border-bottom: 1px solid var(--line2); text-align: left; white-space: nowrap; }
 td { position: relative; }
+th { position: sticky; top: 0; z-index: 2; background: var(--panel); color: var(--muted); font-weight: 600; font-size: var(--fs-xs); border-bottom: 1px solid var(--line); user-select: none; }
+th[data-i], th[data-k] { cursor: pointer; }
+th[data-i]:hover, th[data-k]:hover { color: var(--ink); }
+th .arrow { color: var(--accent); margin-left: 3px; font-size: 9px; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { padding-left: 2px; }
+th:last-child, td:last-child { padding-right: 2px; }
 td .b { position: absolute; right: 10px; bottom: 3px; height: 3px; background: color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 2px; pointer-events: none; }
 td:last-child .b { right: 2px; }
 td.num > span.v { position: relative; }
 td.path { max-width: 380px; overflow: hidden; text-overflow: ellipsis; }
-tbody tr:last-child td { border-bottom: 0; }
-th { position: sticky; top: 0; z-index: 2; background: var(--panel); cursor: pointer; color: var(--muted); font-weight: 600; font-size: 11.5px; border-bottom: 1px solid var(--line); user-select: none; }
-th:first-child, td:first-child { padding-left: 2px; }
-th:last-child, td:last-child { padding-right: 2px; }
-th .arrow { color: var(--accent); margin-left: 3px; font-size: 9px; }
-th:hover { color: var(--ink); }
-th.num { text-align: right; }
-td.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.long { white-space: normal; min-width: 240px; max-width: 520px; }
-td a { cursor: pointer; text-decoration: none; font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+td a { cursor: pointer; text-decoration: none; font-family: var(--mono); font-size: 11.5px; }
+tbody tr:last-child td { border-bottom: 0; }
 tbody tr { transition: background .1s; }
 tbody tr:hover td { background: var(--hover); }
 tr.new td { animation: flash 2.2s ease-out; }
 @keyframes flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } to { background: transparent; } }
-.more { color: var(--muted); font-size: 12px; padding: 6px 2px 0; }
+.more { color: var(--muted); font-size: var(--fs-s); padding: 6px 2px 0; }
 .gauge { display: inline-flex; align-items: center; gap: 7px; }
 .gauge .meter { width: 70px; margin: 0; }
-.gauge .meter > i.hot { background: var(--bad); }
-.gauge .meter > i.warm { background: var(--warn); }
-.pill { display: inline-block; padding: 0 7px; border-radius: 99px; font-size: 11px; border: 1px solid var(--line); color: var(--muted); }
-.pill.err { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
-.insights { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 2px 14px 3px; margin-bottom: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); column-gap: 28px; }
+/* Tables inside cards (evidence, per project) get a frame instead of a panel. */
+.minitbl { overflow-x: auto; margin-top: 6px; border: 1px solid var(--line2); border-radius: var(--r-sm); }
+table.mini th, table.mini td { padding: 4px 9px; }
+table.mini th { position: static; }
+
+/* ---------- tags: one pill for status, grade, verdict ---------- */
+.tag { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 8px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel); font-size: var(--fs-xs); font-weight: 600; color: var(--muted); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.tag.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 40%, transparent); }
+.tag.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); }
+.tag.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.tag.accent { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
+.tag.plain { font-weight: 500; background: var(--panel2); border-color: var(--line2); }
+code.tag { font-family: var(--mono); font-weight: 500; }
+
+/* ---------- notes lists (insights, findings, verdicts, warnings) ---------- */
+.insights { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 2px 14px 3px; margin-bottom: var(--gap-l); display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); column-gap: 28px; }
 .insights:empty { display: none; }
-.insight { display: flex; gap: 10px; align-items: baseline; padding: 9px 0; border-top: 1px solid var(--line2); font-size: 13px; line-height: 1.5; }
+.insight { display: flex; gap: 10px; align-items: baseline; padding: 9px 0; border-top: 1px solid var(--line2); font-size: var(--fs); line-height: 1.5; }
+.insights > .insight:first-child, .insights-head + .insight { border-top: 0; }
 .insight::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); position: relative; top: -1px; }
 .insight.good::before { background: var(--good); }
 .insight.warn::before { background: var(--warn); }
 .insight.bad::before { background: var(--bad); }
-.insights-head { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 0 8px; }
-.insights-head h3 { margin: 0; font-size: 13.5px; font-weight: 620; }
-.insights-head small { color: var(--faint); font-size: 11.5px; }
+.insight .k { font-weight: 600; }
+.insight .d { color: var(--muted); }
+.insight a[data-go] { cursor: pointer; color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.insight a[data-go]:hover { text-decoration: underline; }
+.insights-head { grid-column: 1 / -1; display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 0 2px; }
+.insights-head h3 { margin: 0; font-size: var(--fs); font-weight: 620; }
+.insights-head small { color: var(--faint); font-size: var(--fs-xs); }
 .empty { color: var(--muted); padding: 26px; text-align: center; }
 .err { color: var(--bad); }
 .skel { height: 240px; border-radius: 8px; background: linear-gradient(90deg, var(--line2) 0%, var(--hover) 40%, var(--line2) 80%); background-size: 300% 100%; animation: shimmer 1.3s infinite linear; }
@@ -201,19 +255,17 @@ tr.new td { animation: flash 2.2s ease-out; }
 .heat { display: grid; grid-template-columns: 34px repeat(24, 1fr); gap: 2px; font-size: 10px; color: var(--muted); }
 .heat div { height: 26px; border-radius: 4px; display: flex; align-items: center; justify-content: center; }
 .heat > div:nth-child(-n+25) { height: 18px; }
-h2.sec { margin: 26px 0 10px; font-size: 15px; font-weight: 640; display: flex; gap: 10px; align-items: baseline; }
-h2.sec small { color: var(--muted); font-weight: normal; font-size: 12px; }
-.banner { display: none; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 8px 10px 8px 14px; margin-bottom: 14px; font-size: 12.5px; }
+.banner { display: none; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 8px 10px 8px 14px; margin-bottom: 14px; font-size: var(--fs-s); }
 .banner.on { display: flex; }
 .banner > span:first-child { flex: 1; min-width: 0; }
 .banner .btn { flex: none; }
-.progress { display: none; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 11px 14px 12px; margin-bottom: 14px; }
-.progress.on { display: grid; }
-.progress .ptop { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; font-size: 12.5px; }
-.progress .ptop b { font-weight: 620; }
-.progress .ptop span { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.progress .meter { margin: 0; height: 6px; }
-.progress .meter > i { background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 70%, #fff)); }
+.importbar { display: none; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 11px 14px 12px; margin-bottom: 14px; }
+.importbar.on { display: grid; }
+.importbar .ptop { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; font-size: var(--fs-s); }
+.importbar .ptop b { font-weight: 620; }
+.importbar .ptop span { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.importbar .meter { height: 6px; }
+.importbar .meter > i { background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 70%, #fff)); }
 .onboard { max-width: 640px; margin: 48px auto; text-align: center; }
 .onboard .logo { width: 44px; height: 44px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font-size: 22px; font-weight: 700; margin: 0 auto 16px; }
 .onboard h2 { font-size: 20px; margin: 0 0 8px; letter-spacing: -.01em; }
@@ -221,67 +273,45 @@ h2.sec small { color: var(--muted); font-weight: normal; font-size: 12px; }
 .onboard ol { text-align: left; display: inline-grid; gap: 8px; margin: 0; padding-left: 20px; }
 .onboard code { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 5px; }
 
-/* ---------- advisor ---------- */
-.recs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); gap: 12px; margin-bottom: 16px; }
-.rec { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; min-width: 0; font-size: 12.5px; }
-.rec h4 { margin: 0; font-size: 13.5px; font-weight: 620; line-height: 1.35; }
-.rec .meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--muted); font-size: 11.5px; }
-.rec .act { background: var(--panel2); border: 1px solid var(--line2); border-radius: 6px; padding: 6px 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.rec p { margin: 0; color: var(--muted); overflow-wrap: anywhere; }
-.rec .row { margin: 2px 0 0; }
-.rec .row .btn { font-size: 12px; padding: 3px 9px; }
-.rec { gap: 10px; padding: 14px 16px 12px; }
+/* ---------- advisor: goals ---------- */
+.goals { display: grid; gap: var(--gap); margin-bottom: var(--gap-l); }
+.goal { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: var(--gap); align-items: start; }
+.goal > h3 { margin: 0; padding-top: 12px; font-size: var(--fs); font-weight: 620; }
+.goal .kpis { margin: 0; }
+.kpi .trend { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line2); font-size: var(--fs-xs); color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: help; }
+.kpi .trend .good { color: var(--good); } .kpi .trend .bad { color: var(--bad); }
+@media (max-width: 700px) { .goal { grid-template-columns: minmax(0, 1fr); } .goal > h3 { padding: 0; } }
+
+/* ---------- advisor: recommendation cards ---------- */
+.recs { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 460px), 1fr)); gap: var(--gap); margin-bottom: var(--gap-l); align-items: start; }
+.rec { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px 12px; display: flex; flex-direction: column; gap: 10px; min-width: 0; font-size: var(--fs-s); }
+.rec.st-trial { border-top: 2px solid var(--accent); }
 .rec-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .rec-tags { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.rec-id { color: var(--faint); font-size: 11px; flex: none; }
-.rec h4 { font-size: 14.5px; }
-.rec-sub { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; color: var(--muted); font-size: 12px; margin-top: -4px; }
-.rec-sub > span:not(.scope) + span:not(.scope)::before { content: "·"; margin-right: 8px; color: var(--faint); }
-.rec-sub .scope { padding: 0 7px; border-radius: 5px; background: var(--panel2); border: 1px solid var(--line2); font-size: 11px; line-height: 18px; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rc-kpis { margin-bottom: 4px; }
-table.rc { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-table.rc th { text-align: left; cursor: pointer; user-select: none; white-space: nowrap; padding: 6px 9px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line); background: var(--panel2); }
-table.rc th.num, table.rc td.num { text-align: right; font-variant-numeric: tabular-nums; }
-table.rc th.on::after { content: ' ▾'; } table.rc th.on.asc::after { content: ' ▴'; }
-table.rc td { padding: 6px 9px; border-bottom: 1px solid var(--line2); vertical-align: top; }
-table.rc tr.rc-row { cursor: pointer; } table.rc tr.rc-row:hover td { background: var(--panel2); }
-table.rc td.ask { max-width: 520px; } table.rc td.ask .t { font-weight: 600; } table.rc td.ask small { display: block; color: var(--muted); font-size: 11px; }
-.rc-wrap { border: 1px solid var(--line2); border-radius: 10px; background: var(--panel); overflow-x: auto; }
-.rc-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 12px 14px; background: var(--panel2); }
-@media (max-width: 800px) { .rc-detail { grid-template-columns: 1fr; } }
-.rc-detail h5 { margin: 0 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); }
-.rc-detail ul { margin: 0; padding-left: 16px; } .rc-detail li { margin: 2px 0; }
-.rc-detail pre { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; padding: 8px 10px; border: 1px solid var(--line2); border-radius: 6px; background: var(--panel); font-size: 12px; }
-.rc-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; grid-column: 1 / -1; }
-.rc-actions .btn { font-size: 12px; padding: 3px 9px; }
-
-.rstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); border: 1px solid var(--line2); border-radius: 8px; background: var(--panel2); overflow: hidden; }
-.rstat { padding: 8px 12px; min-width: 0; border-left: 1px solid var(--line2); }
-.rstat:first-child { border-left: 0; }
-.rstat small { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--faint); font-weight: 600; }
-.rstat b { display: block; font-size: 16px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; margin: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rstat span { display: block; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.rstat.bad b { color: var(--bad); } .rstat.warn b { color: var(--warn); font-size: 14px; }
-.rfields { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 7px 12px; margin: 0; }
+.rec-id { color: var(--faint); font-size: var(--fs-xs); flex: none; }
+.rec h4 { margin: 0; font-size: 14.5px; font-weight: 620; line-height: 1.35; }
+.rec-sub { color: var(--muted); font-size: var(--fs-s); margin-top: -6px; }
+.rec p { margin: 0; overflow-wrap: anywhere; }
+.rec .change { margin: 0; padding: 7px 10px; border-left: 2px solid var(--accent); background: var(--panel2); border-radius: 0 var(--r-sm) var(--r-sm) 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.rec .change .eyebrow { display: block; margin-bottom: 2px; }
+.rfields { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 7px 12px; margin: 10px 0 0; }
 .rfields:empty { display: none; }
-@media (max-width: 600px) { .rfields, .rchecks { grid-template-columns: minmax(0, 1fr); gap: 2px; } .rfields dd, .rchecks dd { margin-bottom: 6px; } .recs { grid-template-columns: minmax(0, 1fr); } }
-.rfields dt { color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 600; padding-top: 2px; }
+.rfields dt { padding-top: 2px; }
 .rfields dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; line-height: 1.5; }
-.rec .act { padding: 5px 9px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
-.rec .instr { margin: 0; padding: 5px 10px; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--panel2)); border-radius: 0 6px 6px 0; white-space: pre-wrap; }
-.rec .hint { display: block; color: var(--faint); font-size: 11px; margin-top: 3px; }
+.rfields pre, .rec pre { margin: 0; padding: 7px 9px; background: var(--panel2); border: 1px solid var(--line2); border-radius: var(--r-sm); font: 11.5px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; color: var(--muted); }
+@media (max-width: 600px) { .rfields { grid-template-columns: minmax(0, 1fr); gap: 2px; } .rfields dd { margin-bottom: 6px; } }
 .rresult { border: 1px solid var(--line2); border-left: 3px solid var(--faint); border-radius: 8px; padding: 10px 12px; display: grid; gap: 6px; }
 .rresult.good { border-left-color: var(--good); background: color-mix(in srgb, var(--good) 4%, var(--panel)); }
 .rresult.bad { border-left-color: var(--bad); background: color-mix(in srgb, var(--bad) 4%, var(--panel)); }
 .rresult.warn { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 5%, var(--panel)); }
 .rresult.pending { border-left-color: var(--accent); }
 .rresult-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-.rresult .verdict { font-weight: 650; font-size: 12.5px; }
+.rresult .verdict { font-weight: 650; font-size: var(--fs-s); }
 .rresult.good .verdict { color: var(--good); } .rresult.bad .verdict { color: var(--bad); } .rresult.warn .verdict { color: var(--warn); }
-.rresult .method { color: var(--muted); font-size: 11.5px; }
+.rresult .method { color: var(--muted); font-size: var(--fs-xs); }
 .rresult-main { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 14px; }
 .rresult-main b { font-size: 22px; font-weight: 680; letter-spacing: -.02em; font-variant-numeric: tabular-nums; min-width: 64px; }
-.rresult-sub, .rresult-note { margin: 0; color: var(--muted); font-size: 12px; }
+.rresult-sub { margin: 0; color: var(--muted); font-size: var(--fs-s); }
 .ci { position: relative; height: 14px; }
 .ci .zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--faint); }
 .ci .band { position: absolute; top: 4px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--muted) 45%, transparent); }
@@ -289,74 +319,60 @@ table.rc td.ask { max-width: 520px; } table.rc td.ask .t { font-weight: 600; } t
 .ci.bad .band { background: color-mix(in srgb, var(--bad) 55%, transparent); }
 .ci .pt { position: absolute; top: 2px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--panel); border: 2px solid var(--ink); }
 .ci-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; margin-top: 1px; }
-.rchecks { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 4px 12px; margin: 2px 0 0; padding-top: 7px; border-top: 1px solid var(--line2); font-size: 12px; }
-.rchecks dt { color: var(--muted); cursor: help; }
-.rchecks dd { margin: 0; font-variant-numeric: tabular-nums; }
-.rchecks small { color: var(--faint); margin-left: 4px; }
-.rchecks .bad { color: var(--bad); }
-.progress { height: 4px; border-radius: 2px; background: var(--line2); overflow: hidden; }
-.progress i { display: block; height: 100%; background: var(--accent); }
+.rfields .bad { color: var(--bad); }
+.rfields dd small { color: var(--faint); margin-left: 4px; }
+.pbar { height: 4px; border-radius: 2px; background: var(--line2); overflow: hidden; }
+.pbar i { display: block; height: 100%; background: var(--accent); }
+/* Disclosure: "Details", "Evidence", "Per project". */
 .rdisc { border-top: 1px solid var(--line2); padding-top: 8px; }
-.rresult .rdisc { margin-top: 2px; }
-.rdisc summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 12.5px; user-select: none; }
+.rdisc summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: var(--fs-s); user-select: none; color: var(--muted); }
+.rdisc summary:hover { color: var(--ink); }
 .rdisc summary::-webkit-details-marker { display: none; }
-.rdisc summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); transition: transform .15s; margin: 0 3px 0 1px; }
-.rdisc[open] summary::before { transform: rotate(45deg); }
-.rdisc summary small { color: var(--faint); font-weight: 400; font-size: 11.5px; margin-left: auto; }
+.rdisc summary::before { content: ""; width: 6px; height: 6px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); transition: transform .15s; margin: 0 3px 0 1px; }
+.rdisc[open] > summary { color: var(--ink); }
+.rdisc[open] > summary::before { transform: rotate(45deg); }
+.rdisc summary small { color: var(--faint); font-weight: 400; font-size: var(--fs-xs); margin-left: auto; }
 .rdisc .count { font-size: 10.5px; font-weight: 600; color: var(--muted); background: var(--panel2); border: 1px solid var(--line2); border-radius: 99px; padding: 0 6px; line-height: 16px; }
+.rdisc .rdisc { margin-top: 10px; }
 .rec .claim { margin: 10px 0 0; display: grid; gap: 5px; }
-.rec .claim p { color: var(--ink); }
-.rec pre { margin: 0; padding: 7px 9px; background: var(--panel2); border: 1px solid var(--line2); border-radius: 6px; font: 11.5px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow: auto; color: var(--muted); }
-.errline { color: var(--bad) !important; font-size: 12px; }
-.minitbl { overflow-x: auto; margin-top: 6px; border: 1px solid var(--line2); border-radius: 6px; }
-table.mini { font-size: 11.5px; width: 100%; }
-table.mini th, table.mini td { padding: 4px 9px; border-bottom: 1px solid var(--line2); white-space: nowrap; }
-table.mini tr:last-child td { border-bottom: 0; }
-table.mini th { position: static; background: var(--panel2); cursor: default; font-size: 11px; }
-table.mini th:first-child, table.mini td:first-child { padding-left: 9px; }
-table.mini th.num, table.mini td.num { text-align: right; font-variant-numeric: tabular-nums; }
-table.mini td.good { color: var(--good); } table.mini td.bad { color: var(--bad); }
-.callout { border-radius: 8px; padding: 8px 12px; font-size: 12px; border: 1px solid; }
-.callout.warn { border-color: color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 7%, var(--panel)); }
-.callout b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--warn); margin-bottom: 2px; }
-.callout ul { margin: 0; padding-left: 16px; color: var(--ink); }
+.errline { color: var(--bad) !important; font-size: var(--fs-s); }
+.callout { border-radius: 8px; padding: 7px 12px; font-size: var(--fs-s); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); background: color-mix(in srgb, var(--warn) 7%, var(--panel)); }
+.callout b { color: var(--warn); font-weight: 600; margin-right: 4px; }
+.callout ul { margin: 2px 0 0; padding-left: 16px; color: var(--ink); }
 .rsources { display: flex; flex-wrap: wrap; gap: 6px; }
-.src { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 8px; border: 1px solid var(--line); border-radius: 6px; font-size: 11.5px; background: var(--panel); }
+.src { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 2px 8px; border: 1px solid var(--line); border-radius: var(--r-sm); font-size: 11.5px; background: var(--panel); }
 .src a { text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .src a:hover { text-decoration: underline; }
 .src em { font-style: normal; font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; color: var(--good); }
 .rec-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--line2); }
 .rec-actions, .rec-copy { display: flex; gap: 6px; flex-wrap: wrap; }
-.rec .btn { font-size: 12px; padding: 4px 11px; height: 28px; }
-.rec .btn.sm { font-size: 11.5px; padding: 3px 8px; height: 26px; color: var(--muted); }
-.btn.ghost { background: transparent; border-color: transparent; }
-.btn.ghost:hover { background: var(--hover); color: var(--ink); }
-.btn.primary:hover { background: color-mix(in srgb, var(--ink) 85%, var(--bg)); }
-.rec .tagv { line-height: 18px; }
-.rec .tagv.st { background: var(--panel2); color: var(--ink); }
-.st-trial .tagv.st { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: color-mix(in srgb, var(--accent) 7%, var(--panel)); }
-.insight a[data-go] { cursor: pointer; color: var(--accent); font-weight: 600; text-decoration: none; white-space: nowrap; }
-.insight a[data-go]:hover { text-decoration: underline; }
-.kpi .trendline { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line2); font-size: 10.5px; line-height: 14px; color: var(--faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.kpi .trendline span { overflow: hidden; text-overflow: ellipsis; }
-.kpi .trendline .good { color: var(--good); } .kpi .trendline .bad { color: var(--bad); }
-.tagv { display: inline-block; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); font-size: 11px; font-weight: 600; color: var(--muted); white-space: nowrap; }
-.tagv.good { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
-.tagv.bad { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 45%, transparent); }
-.tagv.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 45%, transparent); }
-.advkpis { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+
+/* ---------- recurring asks ---------- */
+.rc-wrap { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); overflow-x: auto; padding: 4px 12px; }
+table.rc td { vertical-align: top; }
+table.rc tr.rc-row { cursor: pointer; }
+table.rc tr.rc-row.open td { background: var(--hover); }
+table.rc td.ask { max-width: 520px; white-space: normal; } table.rc td.ask .t { font-weight: 600; } table.rc td.ask small { display: block; color: var(--muted); font-size: var(--fs-xs); }
+table.rc tr.rc-detail-row:hover td { background: transparent; }
+.rc-detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; padding: 12px 4px 14px; white-space: normal; }
+@media (max-width: 800px) { .rc-detail { grid-template-columns: 1fr; } }
+.rc-detail h5 { margin: 0 0 4px; }
+.rc-detail * + h5 { margin-top: 12px; }
+.rc-detail ul { margin: 0; padding-left: 16px; } .rc-detail li { margin: 2px 0; }
+.rc-detail p { margin: 0; }
+.rc-detail pre { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow: auto; padding: 8px 10px; border: 1px solid var(--line2); border-radius: var(--r-sm); background: var(--panel2); font-size: var(--fs-s); }
+.rc-actions { display: flex; gap: 6px; flex-wrap: wrap; grid-column: 1 / -1; padding-top: 10px; border-top: 1px solid var(--line2); }
 
 /* ---------- drawer, palette, toast ---------- */
 .drawer { position: fixed; inset: 0; background: rgba(0,0,0,.38); z-index: 40; opacity: 0; pointer-events: none; transition: opacity .2s; }
 .drawer.open { opacity: 1; pointer-events: auto; }
-.drawer > div { position: absolute; right: 0; top: 0; bottom: 0; width: min(1120px, 100%); background: var(--bg); overflow: auto; padding: 18px 22px; transform: translateX(30px); transition: transform .22s ease-out; box-shadow: var(--shadow-lg); }
+.drawer > div { position: absolute; right: 0; top: 0; bottom: 0; width: min(1120px, 100%); background: var(--bg); overflow: auto; padding: 18px 24px; transform: translateX(30px); transition: transform .22s ease-out; box-shadow: var(--shadow-lg); }
 .drawer.open > div { transform: none; }
-.drawer .dhead { display: flex; gap: 10px; align-items: center; margin-bottom: 4px; }
-.drawer .dhead h3 { margin: 0; font-size: 16px; }
+.drawer .dhead { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.drawer .dhead h3 { margin: 0; font-size: 16px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawer .dhead .btn { flex: none; width: 30px; height: 30px; padding: 0; justify-content: center; }
 .drawer .grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); }
-.drawer .dhead h3 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.drawer .dhead .btn { flex: none; width: 30px; height: 30px; padding: 0; display: grid; place-items: center; }
-.facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 14px; }
+.facts { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 var(--gap); }
 .palette { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.3); display: none; align-items: flex-start; justify-content: center; padding-top: 12vh; }
 .palette.open { display: flex; }
 .palette > div { width: min(560px, calc(100% - 32px)); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-lg); overflow: hidden; }
@@ -365,23 +381,22 @@ table.mini td.good { color: var(--good); } table.mini td.bad { color: var(--bad)
 .palette li { padding: 7px 10px; border-radius: 7px; cursor: pointer; display: flex; justify-content: space-between; gap: 10px; }
 .palette li small { color: var(--faint); }
 .palette li.on { background: var(--hover); }
-.palette .foot { border-top: 1px solid var(--line); padding: 7px 14px; color: var(--faint); font-size: 11.5px; display: flex; gap: 14px; }
-.toast { position: fixed; bottom: 18px; right: 18px; z-index: 60; background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; box-shadow: var(--shadow-lg); font-size: 12.5px; opacity: 0; transform: translateY(8px); transition: all .2s; pointer-events: none; }
+.palette .foot { border-top: 1px solid var(--line); padding: 7px 14px; color: var(--faint); font-size: var(--fs-xs); display: flex; gap: 14px; flex-wrap: wrap; }
+.toast { position: fixed; bottom: 18px; right: 18px; z-index: 60; background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; box-shadow: var(--shadow-lg); font-size: var(--fs-s); opacity: 0; transform: translateY(8px); transition: all .2s; pointer-events: none; }
 .toast.on { opacity: 1; transform: none; }
-.sql textarea { width: 100%; min-height: 130px; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+.sql textarea { width: 100%; min-height: 130px; font-family: var(--mono); font-size: var(--fs-s); }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0; }
 .fade { animation: fadein .25s ease-out; }
 @keyframes fadein { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
 
 @media (max-width: 1180px) and (min-width: 901px) {
-  .kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
-  .kpi b { font-size: 19px; }
-  .kpi.hero b { font-size: 24px; }
+  .kpi > b { font-size: 19px; }
+  .kpi.hero > b { font-size: 24px; }
 }
 @media (max-width: 900px) {
   .app { grid-template-columns: minmax(0, 1fr); }
-  .status { flex: 1 1 0; }
   .acts input { width: 80px; }
+  .acts .ib { opacity: 1; }
   aside { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 8px 12px; border-right: 0; border-bottom: 1px solid var(--line); }
   .brand { padding: 0 6px 0 0; }
   .search { display: none; }
@@ -392,13 +407,14 @@ table.mini td.good { color: var(--good); } table.mini td.bad { color: var(--bad)
   .sidefoot .row2 { display: none; }
   .topbar { position: static; padding: 10px 16px; }
   .content { padding: 14px 16px 60px; }
-  .status { margin-left: 0; }
+  .status { margin-left: 0; flex: 1 1 0; }
+  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .kpis.flat .kpi.hero { grid-column: span 2; }
-  .kpi b { font-size: 20px; }
-  .kpi.hero b { font-size: 26px; }
+  .kpi > b { font-size: 20px; }
+  .kpi.hero > b { font-size: 26px; }
   .filters select, .filters input:not([type]) { flex: 1 1 140px; min-width: 0; max-width: none; }
   .titlerow .sub { flex-basis: 100%; }
   .panel { padding: 12px; }
@@ -408,6 +424,7 @@ table.mini td.good { color: var(--good); } table.mini td.bad { color: var(--bad)
   .heat div { height: 20px; border-radius: 2px; }
   .heat > div:nth-child(-n+25) { height: 14px; }
   .drawer > div { padding: 14px 16px; }
+  .recs { grid-template-columns: minmax(0, 1fr); }
 }
 .preload * { transition: none !important; }
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -437,7 +454,7 @@ table.mini td.good { color: var(--good); } table.mini td.bad { color: var(--bad)
       </div>
     </div>
     <div class="content">
-      <div class="progress" id="progress"><div class="ptop"><b id="progressTitle">Importing your history</b><span id="progressText"></span></div><div class="meter"><i id="progressBar" style="width:0"></i></div></div>
+      <div class="importbar" id="progress"><div class="ptop"><b id="progressTitle">Importing your history</b><span id="progressText"></span></div><div class="meter"><i id="progressBar" style="width:0"></i></div></div>
       <div class="banner" id="banner"><span id="bannerText">New data is in.</span><button class="btn" id="bannerBtn">Update this view</button></div>
       <div class="kpis" id="kpis"></div>
       <div id="view"></div>
@@ -489,6 +506,27 @@ const human = c => HEADS[c] ?? String(c).replace(/_pct$/, ' %').replace(/_/g, ' 
 const prettyTool = t => { const m = /^mcp__(.+?)__(.+)$/.exec(String(t)); if (!m) return String(t)
   return `${m[1].replace(/^plugin_[^_]+_/, '').replace(/^claude_ai_/, '').replace(/_/g, ' ')} · ${m[2]}` }
 const shortPath = (p, n = 38) => { p = String(p); return p.length <= n ? p : '…' + p.slice(-(n - 1)).replace(/^[^/]*\//, '/') }
+
+// ---------- shared pieces: every view builds its tiles, tags, notes and explanations from these ----------
+/** A stat tile: label, value, one line under it (a delta or a short fact), optional sparkline or extra html. */
+const tile = ({ label, value, sub = '', cls = '', title = '', vcls = '', extra = '' }) =>
+  `<div class="kpi ${cls}"${title ? ` title="${esc(title)}"` : ''}><small>${esc(label)}</small><b class="${vcls}">${value}</b>${sub.startsWith('<span class="delta') ? sub : `<span class="delta">${sub || '&nbsp;'}</span>`}${extra || '<div class="nospark"></div>'}</div>`
+/** A pill for a status, grade or verdict. tone: good | warn | bad | accent | plain. */
+const tag = (text, tone = '', title = '') => `<span class="tag ${tone}"${title ? ` title="${esc(title)}"` : ''}>${text}</span>`
+/** An ⓘ that shows its text on hover: for explanations that would otherwise sit as a paragraph. */
+const info = text => text ? `<i class="info" data-tip="${esc(text)}">i</i>` : ''
+/** A view's explanation: one line always visible, the method behind "How it works". */
+const about = (lead, ...paras) => `<details class="about"><summary><span>${lead}</span>${paras.length ? '<span class="how">How it works</span>' : ''}</summary>${paras.length ? `<div class="body">${paras.map(p => `<p>${p}</p>`).join('')}</div>` : ''}</details>`
+/** A list of notes with a tone dot: insights, findings, verdicts, warnings. Items are [tone, html]. */
+const notes = (items, head = '', sub = '') => `<div class="insights">${head ? `<div class="insights-head"><h3>${head}</h3>${sub ? `<small>${sub}</small>` : ''}</div>` : ''}${items.map(([c, t]) => `<div class="insight ${c}"><span>${t}</span></div>`).join('')}</div>`
+const sec = (title, small = '', extra = '') => `<h2 class="sec">${title}${small ? ` <small>${small}</small>` : ''}${extra}</h2>`
+const gridIn = view => { const g = document.createElement('div'); g.className = 'grid'; view.appendChild(g); return g }
+/** One change format everywhere: "+12%" coloured by whether it is good, then "vs …". sense: -1 lower is better, 1 higher is better, 0 neutral. */
+const deltaSpan = (rel, sense, vs = '', title = '') => {
+  if (rel == null) return `<span class="delta">${vs ? `<span class="vs">${vs}</span>` : '&nbsp;'}</span>`
+  const tone = Math.abs(rel) < .02 || !sense ? '' : (rel > 0) === (sense > 0) ? 'good' : 'bad'
+  return `<span class="delta"${title ? ` title="${esc(title)}"` : ''}><span class="${tone}">${chg(rel)}</span>${vs ? ` <span class="vs">${vs}</span>` : ''}</span>`
+}
 
 // ---------- icons ----------
 const I = p => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`
@@ -716,17 +754,21 @@ function makePanel(p, grid, list = state.panels) {
   const el = document.createElement('section')
   el.className = 'panel fade' + (p.wide ? ' wide' : '')
   const chartable = p.kind !== 'table' && p.kind !== 'heatmap'
-  el.innerHTML = `<header><div><h3>${esc(p.title)}</h3>${p.note ? `<p class="note">${p.note}</p>` : ''}</div><div class="acts">
+  // Title, then at most one short line; anything longer sits behind the ⓘ. Charts get a visible Chart | Table switch.
+  const topNote = p.top ? `top ${p.top}; Table lists all` : ''
+  el.innerHTML = `<header><div><h3>${esc(p.title)}${info([p.info, topNote].filter(Boolean).join('\n'))}</h3>${p.note ? `<p class="note">${p.note}</p>` : ''}</div><div class="acts">
     ${p.kind === 'table' ? '<input class="tfilter" placeholder="Filter…">' : ''}
-    ${chartable ? `<button data-a="view" title="Chart / table">${ICON.table}</button>` : ''}
-    <button data-a="csv" title="Download CSV">${ICON.csv}</button><button data-a="max" title="Expand (esc closes)">${ICON.max}</button></div></header>
+    <button class="ib" data-a="csv" title="Download CSV">${ICON.csv}</button><button class="ib" data-a="max" title="Expand (esc closes)">${ICON.max}</button>
+    ${chartable ? '<div class="seg sm"><button data-v="chart" class="on">Chart</button><button data-v="table">Table</button></div>' : ''}</div></header>
     <div class="body"><div class="skel ${p.kind === 'table' ? 's' : ''}"></div></div>`
   grid.appendChild(el)
   const P = { p, el, body: el.querySelector('.body'), chart: null, data: null, view: p.kind === 'table' ? 'table' : 'chart', sort: { col: -1, asc: false }, filter: '' }
   el.querySelector('[data-a="max"]').onclick = () => toggleMax(P)
   el.querySelector('[data-a="csv"]').onclick = () => P.data && csv(p.title, P.data)
-  const v = el.querySelector('[data-a="view"]')
-  if (v) v.onclick = () => { P.view = P.view === 'chart' ? 'table' : 'chart'; v.innerHTML = P.view === 'chart' ? ICON.table : ICON.chart; fill(P, P.data) }
+  el.querySelectorAll('[data-v]').forEach(b => b.onclick = () => {
+    if (P.view === b.dataset.v) return
+    P.view = b.dataset.v; el.querySelectorAll('[data-v]').forEach(x => x.classList.toggle('on', x === b)); fill(P, P.data)
+  })
   const f = el.querySelector('.tfilter')
   if (f) f.oninput = () => { P.filter = f.value.toLowerCase(); drawTable(P) }
   list.push(P)
@@ -831,90 +873,90 @@ const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context']], [
 const TABS = {
   live: { label: 'Live', sub: 'right now, pushed as you work', custom: renderLive, live: true, noKpis: true, filters: ['profiles'] },
   overview: { label: 'Overview', sub: 'spend, efficiency and where it goes', panels: [
-    { title: 'Spend per day by profile', q: 'daily_profile', kind: 'stacked', x: 'day', series: 'profile', y: 'cost', money: true, wide: true },
-    { title: 'Where the money goes (token kind)', q: 'cost_kinds', kind: 'doughnut', x: 'kind', y: 'cost', money: true, note: 'Cache reads are the whole context re-read on every request; cache writes are new or changed context.' },
+    { title: 'Spend per day', q: 'daily_profile', kind: 'stacked', x: 'day', series: 'profile', y: 'cost', money: true, wide: true, note: 'by profile' },
+    { title: 'Spend by token kind', q: 'cost_kinds', kind: 'doughnut', x: 'kind', y: 'cost', money: true, info: 'Cache reads: the whole context re-read on every request.\nCache writes: new or changed context.' },
     { title: 'Profiles', q: 'by_profile', kind: 'table' },
-    { title: 'When you work (spend by weekday × hour)', q: 'heatmap', kind: 'heatmap', wide: true },
+    { title: 'When you work', q: 'heatmap', kind: 'heatmap', wide: true, note: 'spend by weekday and hour' },
   ] },
   cost: { label: 'Cost & tokens', sub: 'models, tokens, cache and efficiency', panels: [
-    { title: 'Spend per day by model', q: 'daily_model', kind: 'stacked', x: 'day', series: 'model', y: 'cost', money: true, wide: true },
+    { title: 'Spend per day', q: 'daily_model', kind: 'stacked', x: 'day', series: 'model', y: 'cost', money: true, wide: true, note: 'by model' },
     { title: 'Models', q: 'by_model', kind: 'table', wide: true },
-    { title: 'Tokens per day', q: 'daily_tokens', kind: 'area', x: 'day', y: ['cache_read', 'cache_write', 'input', 'output'], wide: true },
-    { title: 'Efficiency per day', q: 'daily_efficiency', kind: 'line', x: 'day', y: ['cost_per_1k_req'], money: true, note: 'Cost per 1,000 requests: falls when context is kept small or cheaper models take the work.' },
-    { title: 'Cache hit rate & subagent share per day', q: 'daily_efficiency', kind: 'line', x: 'day', y: ['hit_pct', 'subagent_pct'], pct: true },
-    { title: 'Requests per day by model family', q: 'model_mix_daily', kind: 'stacked', x: 'day', series: 'family', y: 'requests' },
+    { title: 'Tokens per day', q: 'daily_tokens', kind: 'area', x: 'day', y: ['cache_read', 'cache_write', 'input', 'output'], wide: true, note: 'by token kind' },
+    { title: 'Cost per 1,000 requests', q: 'daily_efficiency', kind: 'line', x: 'day', y: ['cost_per_1k_req'], money: true, note: 'per day', info: 'Falls when context is kept small or cheaper models take the work.' },
+    { title: 'Cache hit rate and subagent share', q: 'daily_efficiency', kind: 'line', x: 'day', y: ['hit_pct', 'subagent_pct'], pct: true, note: 'per day' },
+    { title: 'Requests per day', q: 'model_mix_daily', kind: 'stacked', x: 'day', series: 'family', y: 'requests', note: 'by model family' },
     { title: 'Spend by hour of day', q: 'hours', kind: 'bar', x: 'hour', y: 'cost', money: true },
-    { title: 'By effort level', q: 'by_effort', kind: 'table' },
-    { title: 'By entrypoint (cli, sdk, ide…)', q: 'by_entrypoint', kind: 'table' },
+    { title: 'Effort levels', q: 'by_effort', kind: 'table' },
+    { title: 'Entrypoints', q: 'by_entrypoint', kind: 'table', note: 'cli, sdk, ide…' },
     { title: 'Stop reasons', q: 'stop_reasons', kind: 'table' },
     { title: 'Claude Code versions', q: 'by_version', kind: 'table' },
   ] },
   context: { label: 'Context', sub: 'how big requests get, and what fills them', panels: [
-    { title: 'Requests by context size', q: 'ctx_buckets', kind: 'bar', x: 'bucket', y: ['requests'], note: 'Context = input + cache read + cache write of one request.' },
-    { title: 'Spend by context size', q: 'ctx_buckets', kind: 'stacked', x: 'bucket', y: ['main_cost', 'subagent_cost'], money: true },
+    { title: 'Requests by context size', q: 'ctx_buckets', kind: 'bar', x: 'bucket', y: ['requests'], info: 'Context = input + cache read + cache write of one request.' },
+    { title: 'Spend by context size', q: 'ctx_buckets', kind: 'stacked', x: 'bucket', y: ['main_cost', 'subagent_cost'], money: true, note: 'main loop vs subagents' },
     { title: 'Main-loop context per day', q: 'ctx_daily', kind: 'line', x: 'day', y: ['avg_context', 'max_context'], wide: true },
-    { title: 'Tool calls per request (parallelism)', q: 'parallelism', kind: 'bar', x: 'tools_in_request', y: 'requests', note: 'Requests with 0–1 tool calls each re-send the full context for one step. Parallel calls amortise it.' },
-    { title: 'Context composition (latest /context breakdown, from the mod)', q: 'mod_context', kind: 'table' },
-    { title: 'Context categories over time (mod)', q: 'mod_context_daily', kind: 'stacked', x: 'day', series: 'category', y: 'tokens' },
-    { title: 'Injected attachments (reminders, listings, file snapshots…)', q: 'attachments', kind: 'table', wide: true },
+    { title: 'Tool calls per request', q: 'parallelism', kind: 'bar', x: 'tools_in_request', y: 'requests', note: 'parallelism', info: 'Requests with 0–1 tool calls each re-send the full context for one step. Parallel calls amortise it.' },
+    { title: 'Context composition', q: 'mod_context', kind: 'table', note: 'latest /context breakdown', info: 'From the usage-analytics mod: sessions that ran with it installed.' },
+    { title: 'Context categories per day', q: 'mod_context_daily', kind: 'stacked', x: 'day', series: 'category', y: 'tokens', info: 'From the usage-analytics mod: sessions that ran with it installed.' },
+    { title: 'Injected attachments', q: 'attachments', kind: 'table', wide: true, note: 'reminders, listings, file snapshots…' },
   ] },
   tools: { label: 'Tools', sub: 'what fills the context, call by call', panels: [
-    { title: 'Tools by output (chars into context)', q: 'tools', kind: 'hbar', x: 'tool', y: 'result_chars', tall: true, top: 15, note: 'The chart shows the top 15; the table view (top right) lists all, with every column.' },
-    { title: 'Result size distribution', q: 'result_sizes', kind: 'stacked', x: 'tool', series: 'size', y: 'calls' },
-    { title: 'Tool output per day', q: 'tool_daily', kind: 'stacked', x: 'day', series: 'tool', y: 'result_chars', wide: true },
+    { title: 'Tools by output', q: 'tools', kind: 'hbar', x: 'tool', y: 'result_chars', tall: true, top: 15, note: 'chars into context' },
+    { title: 'Result sizes', q: 'result_sizes', kind: 'stacked', x: 'tool', series: 'size', y: 'calls', note: 'calls per tool, by size' },
+    { title: 'Tool output per day', q: 'tool_daily', kind: 'stacked', x: 'day', series: 'tool', y: 'result_chars', wide: true, note: 'chars into context' },
     { title: 'Bash programs by output', q: 'bash_programs', kind: 'hbar', x: 'program', y: 'result_chars', tall: true },
     { title: 'Read: whole file vs ranged', q: 'read_ranges', kind: 'table' },
-    { title: 'Bash commands', q: 'bash', kind: 'table', wide: true, note: '<code>capped</code> = cut by lean-tools / budget-guard.' },
-    { title: 'Edit vs Write (input chars)', q: 'edit_vs_write', kind: 'table' },
+    { title: 'Bash commands', q: 'bash', kind: 'table', wide: true, info: 'capped = cut by lean-tools or budget-guard.' },
+    { title: 'Edit vs Write', q: 'edit_vs_write', kind: 'table', note: 'input chars' },
     { title: 'Files by traffic', q: 'files', kind: 'table', wide: true },
-    { title: 'Files read 3+ times in one session', q: 'rereads', kind: 'table', wide: true },
-    { title: 'By file extension', q: 'extensions', kind: 'table' },
+    { title: 'Files re-read in a session', q: 'rereads', kind: 'table', wide: true, note: '3 or more reads' },
+    { title: 'File extensions', q: 'extensions', kind: 'table' },
     { title: 'LSP vs text search per day', q: 'search_vs_lsp', kind: 'bar', x: 'day', y: ['lsp', 'text_search'] },
     { title: 'LSP operations', q: 'lsp', kind: 'table' },
     { title: 'MCP servers', q: 'mcp', kind: 'table' },
     { title: 'Skills', q: 'skills', kind: 'table' },
-    { title: 'Web fetch / search', q: 'web', kind: 'table' },
+    { title: 'Web fetch and search', q: 'web', kind: 'table' },
     { title: 'Tool errors', q: 'tool_errors', kind: 'table' },
   ] },
   agents: { label: 'Agents', sub: 'subagents: who, which model, what it cost', panels: [
-    { title: 'Spend by agent type', q: 'by_agent_type', kind: 'hbar', x: 'agent_type', y: 'cost', money: true, note: 'The table view (top right) has calls, tokens and models per type.' },
-    { title: 'Which model each agent type ran on', q: 'agent_model', kind: 'stacked', x: 'agent_type', series: 'model', y: 'cost', money: true },
-    { title: 'Spawns (Agent tool calls) by type and model parameter', q: 'agent_spawns', kind: 'table', wide: true },
+    { title: 'Spend by agent type', q: 'by_agent_type', kind: 'hbar', x: 'agent_type', y: 'cost', money: true, info: 'Table has calls, tokens and models per type.' },
+    { title: 'Models per agent type', q: 'agent_model', kind: 'stacked', x: 'agent_type', series: 'model', y: 'cost', money: true, note: 'spend' },
+    { title: 'Spawns', q: 'agent_spawns', kind: 'table', wide: true, note: 'Agent tool calls by type and model parameter' },
     { title: 'Most expensive subagents', q: 'top_agents', kind: 'table', wide: true },
   ] },
   projects: { label: 'Projects & sessions', sub: 'where the work happened', panels: [
-    { title: 'Spend per day by project (top 8)', q: 'project_daily', kind: 'stacked', x: 'day', series: 'project', y: 'cost', money: true, wide: true },
-    { title: 'Spend by project', q: 'by_project', kind: 'hbar', x: 'project', y: 'cost', money: true, tall: true, top: 15, note: 'The chart shows the top 15; the table view (top right) lists all, with every column.' },
-    { title: 'Session cost vs peak context', q: 'session_scatter', kind: 'scatter', x: 'max_context', y: 'cost', series: 'profile', xLabel: 'peak context (tokens)', yLabel: 'session cost', logY: true, tall: true, note: 'Each dot is a session; click one for its timeline. Top right = long sessions that grew huge.' },
-    { title: 'Session cost distribution', q: 'session_sizes', kind: 'bar', x: 'size', y: ['sessions'], note: 'Click a session id in any table for its timeline.' },
+    { title: 'Spend per day', q: 'project_daily', kind: 'stacked', x: 'day', series: 'project', y: 'cost', money: true, wide: true, note: 'top 8 projects' },
+    { title: 'Spend by project', q: 'by_project', kind: 'hbar', x: 'project', y: 'cost', money: true, tall: true, top: 15 },
+    { title: 'Session cost vs peak context', q: 'session_scatter', kind: 'scatter', x: 'max_context', y: 'cost', series: 'profile', xLabel: 'peak context (tokens)', yLabel: 'session cost', logY: true, tall: true, note: 'click a dot for its timeline', info: 'Each dot is a session. Top right: long sessions that grew huge.' },
+    { title: 'Session cost distribution', q: 'session_sizes', kind: 'bar', x: 'size', y: ['sessions'] },
     { title: 'Branches', q: 'by_branch', kind: 'table' },
-    { title: 'Sessions, most expensive first', q: 'sessions', kind: 'table', wide: true },
+    { title: 'Sessions', q: 'sessions', kind: 'table', wide: true, note: 'most expensive first · click an id for its timeline' },
   ] },
   prompts: { label: 'Prompts', sub: 'what you asked, and what each ask cost', panels: [
-    { title: 'Prompts and commands per day', q: 'prompts_daily', kind: 'stacked', x: 'day', y: ['prompts', 'commands', 'agent_prompts'], wide: true },
+    { title: 'Prompts per day', q: 'prompts_daily', kind: 'stacked', x: 'day', y: ['prompts', 'commands', 'agent_prompts'], wide: true, note: 'prompts, commands and agent prompts' },
     { title: 'Message kinds', q: 'prompt_kinds', kind: 'table' },
     { title: 'Prompt length', q: 'prompt_lengths', kind: 'bar', x: 'length', y: 'prompts' },
     { title: 'Slash commands', q: 'commands', kind: 'table' },
-    { title: 'Most expensive prompts (all requests until the next prompt)', q: 'expensive_prompts', kind: 'table', wide: true },
+    { title: 'Most expensive prompts', q: 'expensive_prompts', kind: 'table', wide: true, info: 'A prompt’s cost is every request until the next prompt.' },
     { title: 'Recent prompts', q: 'recent_prompts', kind: 'table', wide: true },
   ] },
   health: { label: 'Health', sub: 'errors, compactions, turn times', panels: [
-    { title: 'API errors, compactions, notices per day', q: 'system_daily', kind: 'stacked', x: 'day', series: 'subtype', y: 'n', wide: true },
+    { title: 'Events per day', q: 'system_daily', kind: 'stacked', x: 'day', series: 'subtype', y: 'n', wide: true, note: 'API errors, compactions, notices' },
     { title: 'Turn duration per day', q: 'turn_durations', kind: 'line', x: 'day', y: ['avg_s', 'max_s'] },
     { title: 'Turns per day', q: 'turn_durations', kind: 'bar', x: 'day', y: 'turns' },
     { title: 'Recent API errors', q: 'api_errors', kind: 'table', wide: true },
-    { title: 'Compactions (mod)', q: 'mod_compactions', kind: 'table', wide: true },
+    { title: 'Compactions', q: 'mod_compactions', kind: 'table', wide: true, info: 'From the usage-analytics mod: sessions that ran with it installed.' },
   ] },
-  engine: { label: 'Engine', sub: 'latency, schemas, system prompt (mod sessions only)', note: 'From the usage-analytics mod’s own event log: only sessions that ran with the mod installed.', panels: [
-    { title: 'Request latency by model', q: 'mod_latency', kind: 'table', note: 'ttft = time to first token.' },
+  engine: { label: 'Engine', sub: 'latency, schemas, system prompt', about: ['Only sessions that ran with the usage-analytics mod installed: these numbers come from its own event log.'], panels: [
+    { title: 'Request latency by model', q: 'mod_latency', kind: 'table', info: 'ttft = time to first token.' },
     { title: 'Tool latency', q: 'mod_tool_latency', kind: 'table' },
-    { title: 'Tool schemas in the prompt (chars)', q: 'mod_tool_schemas', kind: 'hbar', x: 'tool', y: 'chars', tall: true, top: 20, note: 'Deferred tools sit behind ToolSearch and cost nothing until loaded. The chart shows the top 20; the table view (top right) lists all, with every column.' },
+    { title: 'Tool schemas in the prompt', q: 'mod_tool_schemas', kind: 'hbar', x: 'tool', y: 'chars', tall: true, top: 20, note: 'chars', info: 'Deferred tools sit behind ToolSearch and cost nothing until loaded.' },
     { title: 'System prompt sections', q: 'mod_system_prompt', kind: 'table' },
     { title: 'Rate limits seen', q: 'mod_rate_limits', kind: 'table' },
     { title: 'Mod events', q: 'mod_events', kind: 'table' },
   ] },
-  advisor: { label: 'Advisor', sub: 'how to use Claude cheaper, leaner, faster and more reliably, and whether each change worked', custom: renderAdvisor, noKpis: true, filters: ['period', 'profiles'] },
-  recurring: { label: 'Recurring asks', sub: 'the prompts you keep typing, and which could be automated', custom: renderRecurring, noKpis: true, filters: ['period', 'profiles'] },
+  advisor: { label: 'Advisor', sub: 'what to change, and whether it worked', custom: renderAdvisor, noKpis: true, filters: ['period', 'profiles'] },
+  recurring: { label: 'Recurring asks', sub: 'prompts you keep typing, and which to automate', custom: renderRecurring, noKpis: true, filters: ['period', 'profiles'] },
   impact: { label: 'Mod impact', sub: 'are the mods saving money or costing more?', custom: renderImpact, noKpis: true, filters: ['period', 'profiles'] },
   savings: { label: 'Savings', sub: 'what budget-guard’s levers avoided', custom: renderSavings, noKpis: true, filters: [] },
   sql: { label: 'SQL', sub: 'read-only console on the database', custom: renderSql, noKpis: true, quiet: true, filters: [] },
@@ -952,7 +994,7 @@ async function render() {
   document.title = `${tab.label} · Claude Usage`
   $('#banner').classList.remove('on'); state.stale = false
   const view = $('#view')
-  view.innerHTML = tab.note ? `<p class="tabnote">${tab.note}</p>` : ''
+  view.innerHTML = tab.about ? about(...tab.about) : ''
   $('#kpis').style.display = tab.noKpis ? 'none' : ''
   if (!tab.noKpis) $('#kpis').innerHTML = '<div class="kpi hero"><div class="skel s" style="height:88px"></div></div>' + Array(8).fill('<div class="kpi"><div class="skel s" style="height:88px"></div></div>').join('')
   if (tab.custom) { await refresh(); return }
@@ -1002,10 +1044,8 @@ function spark(vals, color, labels = [], fmt = 'big') {
 function deltaHtml(cur, prev, sense, label) {
   if (label === 'none') return '<span class="delta"><span class="vs">no full previous period</span></span>'
   if (cur == null || prev == null || !state.compare) return '<span class="delta">&nbsp;</span>'
-  if (!prev) return `<span class="delta">new vs ${esc(label || 'previous')}</span>`
-  const d = (cur - prev) / Math.abs(prev), up = d > 0
-  const cls = Math.abs(d) < .02 ? '' : `${up ? 'up' : 'down'} ${sense === 0 ? '' : (up === (sense > 0)) ? 'good' : 'bad'}`
-  return `<span class="delta ${cls}">${up ? '▲' : '▼'} ${Math.abs(100 * d).toFixed(Math.abs(d) < .1 ? 1 : 0)}% <span class="vs">vs ${esc(label || 'prev')}</span></span>`
+  if (!prev) return `<span class="delta">new <span class="vs">vs ${esc(label || 'previous')}</span></span>`
+  return deltaSpan((cur - prev) / Math.abs(prev), sense, `vs ${esc(label || 'prev')}`)
 }
 let lastKpis = {}
 async function renderKpis(seq) {
@@ -1023,28 +1063,34 @@ async function renderKpis(seq) {
     const label = n === 1 ? 'yesterday by now' : `prev ${n}d`
     if (n > 1 && !pr && state.compare) Object.assign(p, { _none: true })
     const acc = css('--accent'), mut = css('--muted')
+    // [key, value, label, hover explanation, previous, sense, daily series, colour, class]
+    const perDay = k.cost_per_day != null && n !== 1 ? `${usd(k.cost_per_day)} per active day` : ''
     const cards = [
-      ['cost', usd(k.cost), `spend at list price${k.cost_per_day != null && n !== 1 ? ` · ${usd(k.cost_per_day)} per active day` : ''}`, n === 1 ? live?.today.yesterdaySameTime : p.cost, -1, series(r => r.cost), acc, 'hero'],
-      ['sessions', big(k.sessions), 'sessions', p.sessions, 0, series(r => r.sessions), mut],
-      ['cost_per_session', usd(k.cost_per_session), 'per session', p.cost_per_session, -1, series(r => r.sessions ? r.cost / r.sessions : null), mut],
-      ['requests', big(k.requests), 'requests', p.requests, 0, series(r => r.requests), mut],
-      ['hit_pct', pct(k.hit_pct), 'cache hit', p.hit_pct, 1, series(r => r.hit_pct), mut],
-      ['avg_context', big(k.avg_context), 'avg context', p.avg_context, -1, series(r => r.avg_context), mut],
-      ['output', big(k.output), 'output tokens', p.output, 0, series(r => r.output), mut],
-      ['subagent_cost', usd(k.subagent_cost), 'in subagents', p.subagent_cost, -1, series(r => r.subagent_cost), mut],
-      ['tool_calls', big(k.tool_calls), 'tool calls', p.tool_calls, 0, series(r => r.tool_calls), mut],
+      ['cost', usd(k.cost), 'Spend', `At list price${perDay ? '\n' + perDay : ''}`, n === 1 ? live?.today.yesterdaySameTime : p.cost, -1, series(r => r.cost), acc, 'hero'],
+      ['sessions', big(k.sessions), 'Sessions', '', p.sessions, 0, series(r => r.sessions), mut],
+      ['cost_per_session', usd(k.cost_per_session), 'Cost per session', '', p.cost_per_session, -1, series(r => r.sessions ? r.cost / r.sessions : null), mut],
+      ['requests', big(k.requests), 'Requests', '', p.requests, 0, series(r => r.requests), mut],
+      ['hit_pct', pct(k.hit_pct), 'Cache hit rate', '', p.hit_pct, 1, series(r => r.hit_pct), mut],
+      ['avg_context', big(k.avg_context), 'Avg context', 'Tokens per request: input + cache read + cache write', p.avg_context, -1, series(r => r.avg_context), mut],
+      ['output', big(k.output), 'Output tokens', '', p.output, 0, series(r => r.output), mut],
+      ['subagent_cost', usd(k.subagent_cost), 'Subagent spend', '', p.subagent_cost, -1, series(r => r.subagent_cost), mut],
+      ['tool_calls', big(k.tool_calls), 'Tool calls', '', p.tool_calls, 0, series(r => r.tool_calls), mut],
     ]
     const g = gw ? asObjs(gw)[0] || {} : {}
     if (g.billed != null) {
       const gd = Object.fromEntries(asObjs(gwDaily).map(r => [r.day, r.billed]))
       k.billed = g.billed
-      cards.splice(1, 0, ['billed', usd(g.billed), `billed by the gateway (LiteLLM)${g.list ? ` · ${(g.billed / g.list).toFixed(2)}× list price on those days` : ''}`, null, -1, series(r => gd[r.day] ?? null), acc])
+      cards.splice(1, 0, ['billed', usd(g.billed), 'Billed', `Billed by the gateway (LiteLLM)${g.list ? `\n${(g.billed / g.list).toFixed(2)}× list price on those days` : ''}`, null, -1, series(r => gd[r.day] ?? null), acc, 'hero'])
     }
     const FMT = { billed: 'usd', cost: 'usd', cost_per_session: 'usd', subagent_cost: 'usd', hit_pct: 'pct' }, days = dd.map(r => r.day)
-    $('#kpis').innerHTML = cards.map(([key, v, l, prevV, sense, sp, color, cls]) => {
+    // Nine tiles plus a wide spend tile fill two rows of five; with the billed tile all ten go narrow to keep the same two rows.
+    $('#kpis').classList.toggle('flat', g.billed != null)
+    $('#kpis').innerHTML = cards.map(([key, v, l, title, prevV, sense, sp, color, cls]) => {
       const curV = key === 'cost' ? k.cost : k[key]
-      const bump = lastKpis[key] != null && lastKpis[key] !== curV ? ' bump' : ''
-      return `<div class="kpi ${cls || ''}"><small title="${esc(l)}">${esc(l)}</small><b class="${bump}">${v}</b>${deltaHtml(curV, n === 1 && key !== 'cost' ? null : prevV, sense, p._none ? (key === 'cost' ? 'none' : '') : label)}${(sp && dd.length > 1 && spark(sp, color, days, FMT[key] || 'big')) || '<div class="nospark"></div>'}</div>`
+      const bump = lastKpis[key] != null && lastKpis[key] !== curV ? 'bump' : ''
+      const sub = key === 'billed' && g.list ? `<span class="delta"><span class="vs">${(g.billed / g.list).toFixed(2)}× list price</span></span>`
+        : deltaHtml(curV, n === 1 && key !== 'cost' ? null : prevV, sense, p._none ? (key === 'cost' ? 'none' : '') : label)
+      return tile({ label: l, value: v, sub, cls, title, vcls: bump, extra: sp && dd.length > 1 && spark(sp, color, days, FMT[key] || 'big') })
     }).join('')
     lastKpis = Object.fromEntries(cards.map(([key]) => [key, k[key]]))
     setTimeout(() => document.querySelectorAll('.kpi b.bump').forEach(b => b.classList.remove('bump')), 900)
@@ -1058,20 +1104,20 @@ async function insights(seq) {
   if (seq !== state.seq) return
   const k = asObjs(d.kpis)[0] || {}, total = k.cost || 0, out = []
   const m = live.month
-  if (m.mtd) out.push([m.projected && m.previous && m.projected > m.previous * 1.1 ? 'warn' : '', `This month so far <b>${usd(m.mtd)}</b> (${m.elapsedPct}% of the month)${m.projected ? `, on pace for <b>${usd(m.projected)}</b>` : ''}${m.previous ? `; last month ${usd(m.previous)}` : ''}.`])
+  if (m.mtd) out.push([m.projected && m.previous && m.projected > m.previous * 1.1 ? 'warn' : '', `<span class="k">Month to date ${usd(m.mtd)}</span> <span class="d">${m.projected ? `on pace for ${usd(m.projected)}` : `${m.elapsedPct}% of the month`}${m.previous ? ` · last month ${usd(m.previous)}` : ''}</span>`])
   const days = asObjs(d.kpi_daily).filter(r => r.cost != null)
   if (days.length >= 7) {
     const xs = days.map(r => r.cost), mean = xs.reduce((a, b) => a + b, 0) / xs.length, sd = Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / xs.length)
     const spikes = days.filter(r => r.cost > mean + 2 * sd && r.cost > mean * 1.5).sort((a, b) => b.cost - a.cost).slice(0, 3)
-    if (spikes.length) out.push(['warn', `Spend spike${spikes.length > 1 ? 's' : ''}: ${spikes.map(r => `<b>${r.day}</b> ${usd(r.cost)}`).join(', ')} (typical day ${usd(mean)}). Check Projects & sessions for those days.`])
+    if (spikes.length) out.push(['warn', `<span class="k">Spend spike${spikes.length > 1 ? 's' : ''}</span> <span class="d">${spikes.map(r => `${r.day} ${usd(r.cost)}`).join(', ')} · typical day ${usd(mean)}</span>`])
   }
   const ew = Object.fromEntries(asObjs(d.edit_vs_write).map(r => [r.tool, r]))
-  if (ew.Write && ew.Edit && ew.Write.input_chars > ew.Edit.input_chars) out.push(['warn', `Write sent ${big(ew.Write.input_chars)} chars vs Edit ${big(ew.Edit.input_chars)}: whole-file rewrites dominate. Edit the changed part instead.`])
-  if (total) out.push([k.hit_pct > 90 ? 'good' : 'warn', `Cache hit rate <b>${pct(k.hit_pct)}</b>; ${usd(k.subagent_cost)} (${pct(100 * (k.subagent_cost || 0) / total)}) spent inside subagents.`])
+  if (ew.Write && ew.Edit && ew.Write.input_chars > ew.Edit.input_chars) out.push(['warn', `<span class="k">Whole-file rewrites dominate</span> <span class="d">Write ${big(ew.Write.input_chars)} chars vs Edit ${big(ew.Edit.input_chars)}</span>`])
+  if (total) out.push([k.hit_pct > 90 ? 'good' : 'warn', `<span class="k">Cache hit ${pct(k.hit_pct)}</span> <span class="d">${pct(100 * (k.subagent_cost || 0) / total)} of spend in subagents</span>`])
   const lsp = asObjs(d.search_vs_lsp).reduce((a, r) => [a[0] + r.lsp, a[1] + r.text_search], [0, 0])
-  if (lsp[1]) out.push([lsp[0] ? 'good' : 'warn', `LSP calls: <b>${big(lsp[0])}</b> vs ${big(lsp[1])} grep/rg/find searches.`])
-  out.push(['', `Levers worth changing (large contexts, whole-file reads, heavy tool output, serial tool calls, model choice) are measured and verified in <a data-go="advisor">Advisor →</a>`])
-  el.innerHTML = `<div class="insights-head"><h3>Insights</h3><small>for the selected period and filters</small></div>` + out.map(([c, t]) => `<div class="insight ${c}"><span>${t}</span></div>`).join('')
+  if (lsp[1]) out.push([lsp[0] ? 'good' : 'warn', `<span class="k">LSP ${big(lsp[0])} calls</span> <span class="d">vs ${big(lsp[1])} grep/rg/find searches</span>`])
+  out.push(['', `More levers, measured and verified: <a data-go="advisor">Advisor →</a>`])
+  el.outerHTML = notes(out, 'Insights', 'selected period and filters').replace('<div class="insights">', '<div class="insights" id="insights">')
   el.querySelectorAll('[data-go]').forEach(a => a.onclick = () => go(a.dataset.go))
 }
 
@@ -1085,7 +1131,7 @@ async function renderLive(view, { live, seq } = {}) {
     const g = $('#liveGrid')
     const specs = [
       { id: 'minute', title: 'Spend per minute, last 3 hours', kind: 'stacked', x: 'minute', series: 'profile', y: 'cost', money: true, wide: true, maxSeries: 8 },
-      { id: 'active', title: 'Active sessions (last 30 min)', kind: 'table', wide: true, note: 'Context is the latest main-loop request; the bar turns amber past 150k and red past 250k.' },
+      { id: 'active', title: 'Active sessions (last 30 min)', kind: 'table', wide: true, info: 'Context is the latest main-loop request; the bar turns amber past 150k and red past 250k.' },
       { id: 'hourly', title: 'Today by hour', kind: 'stacked', x: 'hour', series: 'profile', y: 'cost', money: true },
       { id: 'reqs', title: 'Requests per minute, last 3 hours', kind: 'stacked', x: 'minute', series: 'profile', y: 'requests' },
       { id: 'feed', title: 'Latest model requests', kind: 'table', wide: true },
@@ -1098,12 +1144,13 @@ async function renderLive(view, { live, seq } = {}) {
   const P = Object.fromEntries(state.panels.map(x => [x.id, x]))
   const t = L.today, h = L.lastHour, m = L.month
   const liveDelta = (cur, prev, label) => deltaHtml(cur, prev, -1, label)
+  const sub = t => `<span class="delta"><span class="vs">${t}</span></span>`
   $('#liveKpis').innerHTML = [
-    `<div class="kpi hero"><small>spent today</small><b>${usd(t.cost)}</b>${liveDelta(t.cost, t.yesterdaySameTime, 'yesterday by now').replace('<span class="delta', `<span title="yesterday by this time: ${usd(t.yesterdaySameTime)}" class="delta`)}<div class="nospark"></div></div>`,
-    `<div class="kpi"><small>last 60 minutes</small><b>${usd(h.cost)}<span class="unit">/h</span></b><span class="delta">${big(h.requests)} requests</span><div class="nospark"></div></div>`,
-    `<div class="kpi"><small>month to date</small><b>${usd(m.mtd)}</b><span class="delta">${m.projected ? `on pace for ${usd(m.projected)}` : '&nbsp;'}</span><div class="nospark"></div><div class="meter" title="${m.elapsedPct}% of the month"><i style="width:${Math.min(100, m.elapsedPct)}%"></i></div></div>`,
-    `<div class="kpi"><small>active sessions</small><b>${L.active.rows.length}</b><span class="delta">${t.sessions} today</span><div class="nospark"></div></div>`,
-    `<div class="kpi"><small>requests today</small><b>${big(t.requests)}</b><span class="delta">${t.requests ? usd(t.cost / t.requests) + ' each' : '&nbsp;'}</span><div class="nospark"></div></div>`,
+    tile({ label: 'Spent today', value: usd(t.cost), cls: 'hero', title: `Yesterday by this time: ${usd(t.yesterdaySameTime)}`, sub: liveDelta(t.cost, t.yesterdaySameTime, 'yesterday by now') }),
+    tile({ label: 'Last 60 minutes', value: `${usd(h.cost)}<span class="unit">/h</span>`, sub: sub(`${big(h.requests)} requests`) }),
+    tile({ label: 'Month to date', value: usd(m.mtd), sub: sub(m.projected ? `on pace for ${usd(m.projected)}` : '&nbsp;'), extra: `<div class="nospark"></div><div class="meter" title="${m.elapsedPct}% of the month"><i style="width:${Math.min(100, m.elapsedPct)}%"></i></div>` }),
+    tile({ label: 'Active sessions', value: L.active.rows.length, sub: sub(`${t.sessions} today`) }),
+    tile({ label: 'Requests today', value: big(t.requests), sub: sub(t.requests ? usd(t.cost / t.requests) + ' each' : '&nbsp;') }),
   ].join('')
   $('#liveBadge') && ($('#liveBadge').textContent = L.active.rows.length ? L.active.rows.length : '')
   // Per-minute series with the empty minutes filled in, labelled in local time.
@@ -1135,7 +1182,7 @@ async function renderLive(view, { live, seq } = {}) {
   const toolIds = new Set(L.tools.rows.map(r => 't' + r[L.tools.cols.indexOf('id')]))
   const freshT = new Set([...toolIds].filter(id => !seenFeed.has(id)))
   fill(P.tools, L.tools, { hide: ['id'], long: ['target'], rowClass: r => !first && freshT.has('t' + r[L.tools.cols.indexOf('id')]) ? 'new' : '',
-    cell: (c, v) => c === 'ts' ? agoCell(v) : c === 'is_error' ? `<td>${v ? '<span class="pill err">error</span>' : ''}</td>` : null, heads: { ts: 'when', is_error: '' } })
+    cell: (c, v) => c === 'ts' ? agoCell(v) : c === 'is_error' ? `<td>${v ? tag('error', 'bad') : ''}</td>` : null, heads: { ts: 'when', is_error: '' } })
   toolIds.forEach(id => seenFeed.add(id))
   status()
 }
@@ -1143,29 +1190,32 @@ setInterval(() => document.querySelectorAll('[data-ts]').forEach(el => el.textCo
 
 // ---------- Mod impact / Savings / SQL (custom tabs) ----------
 async function renderImpact(view) {
-  view.innerHTML = `<p class="tabnote">Every mod leaves a random share of sessions untouched (the <b>holdout</b>) and logs what it <i>would</i> have done there.
-    <b>Verdict</b> compares cost per prompt in active vs holdout sessions, with a bootstrap 95% interval: a verdict appears only once the interval excludes zero.
-    <b>Ledger</b> prices each mod's own actions (text it adds to every request, classifier calls, keep-alive pings) against what it kept out of context; it is an upper bound on savings, the holdout comparison is the real answer. Uses the period and profile filters.</p><div class="skel"></div>`
+  view.innerHTML = about('Each mod leaves a random share of sessions untouched (the holdout); verdicts compare the two.',
+    '<b>Verdict</b> compares cost per prompt in active vs holdout sessions, with a bootstrap 95% interval. A verdict appears only once the interval excludes zero.',
+    '<b>Ledger</b> prices each mod’s own actions (text added to every request, classifier calls, keep-alive pings) against what it kept out of context. It is an upper bound on savings; the holdout comparison is the real answer.',
+    'Uses the period and profile filters.') + '<div class="skel"></div>'
   teardown()
   $('#status').textContent = 'Loading…'
   const r = await api('/api/impact')
   view.querySelector('.skel').remove()
   const cls = { saving: 'good', costing: 'bad', collecting: '', unclear: 'warn' }
-  view.insertAdjacentHTML('beforeend', `<div class="insights"><div class="insights-head"><h3>Verdicts</h3><small>active vs holdout sessions</small></div>${r.mods.map(m => `<div class="insight ${cls[m.verdict[0]]}"><span><b>${esc(m.mod)}</b>: ${esc(m.verdict[1])}${m.costs.length || m.savings.length ? ` · ledger net <b>${usd(m.net)}</b>` : ''}</span></div>`).join('')}
-    <div class="insight good"><span><b>usage-analytics</b>: ${esc(r.observer.note)}</span></div></div>`)
+  view.insertAdjacentHTML('beforeend', notes([
+    ...r.mods.map(m => [cls[m.verdict[0]], `<b>${esc(m.mod)}</b> ${esc(m.verdict[1])}${m.costs.length || m.savings.length ? ` <span class="muted">· ledger net ${usd(m.net)}</span>` : ''}`]),
+    ['good', `<b>usage-analytics</b> ${esc(r.observer.note)}`],
+  ], 'Verdicts', 'active vs holdout sessions'))
   for (const m of r.mods) {
-    view.insertAdjacentHTML('beforeend', `<h2 class="sec">${esc(m.mod)} <small>holdout share ${m.holdoutShare == null ? '?' : (100 * m.holdoutShare).toFixed(0) + '%'}</small></h2>`)
-    const grid = document.createElement('div'); grid.className = 'grid'; view.appendChild(grid)
+    view.insertAdjacentHTML('beforeend', sec(esc(m.mod), `holdout ${m.holdoutShare == null ? '?' : (100 * m.holdoutShare).toFixed(0) + '%'} of sessions`))
+    if (m.warnings.length) view.insertAdjacentHTML('beforeend', notes(m.warnings.map(w => ['warn', esc(w)])))
+    const grid = gridIn(view)
     const add = (p, d) => fill(makePanel(p, grid), d)
     const fx = m.effects.map(e => [e.metric, e.on, e.holdout, chg(e.diff), ciText(e.lo, e.hi)])
-    add({ title: 'Active vs holdout sessions', note: `${m.arms.on?.sessions || 0} active · ${m.arms.holdout?.sessions || 0} holdout sessions`, kind: 'table' }, { cols: ['metric', 'active', 'holdout', 'change', '95% interval'], rows: fx.map(([k, a, b, d, ci]) => [k, k.includes('cost') ? usd(a) : big(a), k.includes('cost') ? usd(b) : big(b), d, ci]) })
-    add({ title: 'Ledger: saved vs own cost (active sessions)', kind: 'table' }, { cols: ['', 'item', 'usd', 'times'], rows: [...m.savings.map(x => ['+', ...x]), ...m.costs.map(x => ['−', ...x])] })
-    if (m.compliance.length) add({ title: 'Nudges followed (vs would-have-been in holdout)', kind: 'table' }, { cols: ['nudge', 'arm', 'followed', 'total', 'followed_pct'], rows: m.compliance })
+    add({ title: 'Active vs holdout', note: `${m.arms.on?.sessions || 0} active · ${m.arms.holdout?.sessions || 0} holdout sessions`, kind: 'table' }, { cols: ['metric', 'active', 'holdout', 'change', '95% interval'], rows: fx.map(([k, a, b, d, ci]) => [k, k.includes('cost') ? usd(a) : big(a), k.includes('cost') ? usd(b) : big(b), d, ci]) })
+    add({ title: 'Ledger', note: 'saved (+) vs own cost (−), active sessions', kind: 'table' }, { cols: ['', 'item', 'usd', 'times'], rows: [...m.savings.map(x => ['+', ...x]), ...m.costs.map(x => ['−', ...x])] })
+    if (m.compliance.length) add({ title: 'Nudges followed', info: 'Followed in active sessions vs would-have-been nudges in the holdout.', kind: 'table' }, { cols: ['nudge', 'arm', 'followed', 'total', 'followed_pct'], rows: m.compliance })
     add({ title: 'Actions', kind: 'table' }, { cols: ['kind', 'arm', 'n'], rows: m.actions })
-    if (m.warnings.length) view.insertAdjacentHTML('beforeend', `<div class="insights" style="margin-top:14px">${m.warnings.map(w => `<div class="insight warn"><span>${esc(w)}</span></div>`).join('')}</div>`)
   }
-  view.insertAdjacentHTML('beforeend', '<h2 class="sec">All mods</h2>')
-  const grid = document.createElement('div'); grid.className = 'grid'; view.appendChild(grid)
+  view.insertAdjacentHTML('beforeend', sec('All mods'))
+  const grid = gridIn(view)
   const agg = {}, daily = { cols: ['day', 'mod', 'n'], rows: [] }
   asObjs(r.daily).forEach(o => agg[o.day + '|' + o.mod] = (agg[o.day + '|' + o.mod] || 0) + o.n)
   Object.entries(agg).forEach(([k, n]) => daily.rows.push([...k.split('|'), n]))
@@ -1182,36 +1232,40 @@ function advValue(m, v) {
   return m.unit === 'usd' ? '$' + v.toFixed(v < 10 ? 3 : 2) : m.unit === 'pct' ? v.toFixed(1) + '%' : m.unit === 'sec' ? v.toFixed(1) + 's' : v >= 100 ? big(Math.round(v)) : v.toFixed(2)
 }
 async function renderAdvisor(view) {
-  view.innerHTML = `<p class="tabnote">The advisor's loop: <b>measure</b> each goal per session, <b>detect</b> the biggest levers, <b>research</b> current guidance on the web (a background agent, every few days, or <code>/analytics advise</code>),
-    <b>recommend</b> concrete changes backed by queries on your own data (re-run and stored, so they can be reproduced), and <b>verify</b> each one with the strongest design the data allows:
-    <b>A</b> randomized (an instruction trialled in a random half of sessions), <b>B</b> controlled (untouched projects as a control, or before/after checked by a placebo window), <b>C</b>/<b>D</b> weaker.
-    Intervals are stratified bootstrap 95%, standardized by project, with fixed seeds; <code>/analytics advise reproduce &lt;id&gt;</code> re-runs everything.
-    Each verdict feeds the next research run. The trend cards use the profile filter; findings use the period.</p><div class="skel"></div>`
+  view.innerHTML = about('Measures your goals, finds the biggest levers, recommends changes and checks whether each one worked.',
+    'The loop: <b>measure</b> each goal per session, <b>detect</b> the biggest levers, <b>research</b> current guidance on the web (a background agent every few days, or <code>/analytics advise</code>), <b>recommend</b> concrete changes backed by queries on your own data, and <b>verify</b> each one.',
+    'Evidence grades: <b>A</b> randomized (an instruction trialled in a random half of sessions), <b>B</b> controlled (untouched projects as a control, or before/after checked by a placebo window), <b>C</b>/<b>D</b> weaker.',
+    'Intervals are stratified bootstrap 95%, standardized by project, with fixed seeds; <code>/analytics advise reproduce &lt;id&gt;</code> re-runs everything. Goals use the profile filter; findings use the period.') + '<div class="skel"></div>'
   teardown()
   $('#status').textContent = 'Loading…'
   const d = await api('/api/advisor')
   view.querySelector('.skel')?.remove()
   const dirCls = { better: 'down good', worse: 'up bad', flat: '', neutral: '' }
   const color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#888'
-  const sect = (title, small) => view.insertAdjacentHTML('beforeend', `<h2 class="sec">${title}${small ? ` <small>${small}</small>` : ''}</h2>`)
-
+  const sect = (title, small) => view.insertAdjacentHTML('beforeend', sec(title, small))
+  const trend = m => {
+    const tip = `8-week trend: Theil–Sen slope per week${m.slope_p != null ? `, Mann–Kendall p ${m.slope_p < 0.001 ? '<.001' : m.slope_p.toFixed(2)}` : ''}${m.mde != null ? `\nDetects ${m.mde < 0.01 ? '<1' : '±' + (100 * m.mde).toFixed(0)}%: the smallest change a 28-day before/after can tell from noise` : ''}`
+    const v = m.slope == null ? '–' : `<span class="${m.trend === 'better' ? 'good' : m.trend === 'worse' ? 'bad' : ''}">${(m.slope > 0 ? '+' : m.slope < 0 ? '−' : '') + Math.abs(100 * m.slope).toFixed(0)}%/wk</span>`
+    return `<div class="trend" title="${esc(tip)}">8 wk ${v}</div>`
+  }
+  const goalTile = m => {
+    const i0 = Math.max(0, m.weekly.findIndex(x => x != null))
+    const sp = spark(m.weekly.slice(i0), color, (m.weeks || []).slice(i0).map(w => 'week of ' + w), m.unit === 'usd' ? 'usd4' : m.unit === 'pct' ? 'pct' : m.unit === 'sec' ? 'sec' : 'num')
+    const sub = `<span class="delta ${dirCls[m.direction] || ''}"${m.lo != null ? ` title="95% interval ${ciText(m.lo, m.hi)}"` : ''}>${m.diff == null ? '&nbsp;' : `${chg(m.diff)} <span class="vs">vs ${advValue(m, m.baseline)}</span>`}</span>`
+    return tile({ label: m.label, value: advValue(m, m.current), sub, extra: (sp || '<div class="nospark"></div>') + trend(m) })
+  }
   // Goals: each metric this week vs the four before, with eight weeks of history.
-  for (const g of ['cost', 'tokens', 'speed', 'reliability']) {
-    const ms = d.metrics.filter(m => m.goal === g)
-    if (!ms.length) continue
-    sect(g[0].toUpperCase() + g.slice(1), 'last 7 days vs the 28 before · weekly')
-    view.insertAdjacentHTML('beforeend', `<div class="kpis advkpis">${ms.map(m => `<div class="kpi">
-      <small title="${esc(m.label)}">${esc(m.label)}</small><b>${advValue(m, m.current)}</b>
-      <span class="delta ${dirCls[m.direction] || ''}"${m.lo != null ? ` title="95% interval ${ciText(m.lo, m.hi)}"` : ''}>${m.diff == null ? '&nbsp;' : `${chg(m.diff)} <span class="vs">vs ${advValue(m, m.baseline)}${m.direction === 'flat' ? ' · flat' : ''}</span>`}</span>
-      ${(() => { const i0 = Math.max(0, m.weekly.findIndex(x => x != null)); return spark(m.weekly.slice(i0), color, (m.weeks || []).slice(i0).map(w => 'week of ' + w), m.unit === 'usd' ? 'usd4' : m.unit === 'pct' ? 'pct' : m.unit === 'sec' ? 'sec' : 'num') })() || '<div class="nospark"></div>'}
-      <div class="trendline" title="8-week trend: Theil–Sen slope per week, Mann–Kendall p. Detects: the smallest change a 28-day before/after can tell from noise.">${m.slope == null ? '<span>8 wk: –</span>' : `<span class="${m.trend === 'better' ? 'good' : m.trend === 'worse' ? 'bad' : ''}">8 wk ${(m.slope > 0 ? '+' : m.slope < 0 ? '−' : '') + Math.abs(100 * m.slope).toFixed(0)}%/wk${m.slope_p != null ? ` · p ${m.slope_p < 0.001 ? '<.001' : m.slope_p.toFixed(2).replace(/^0/, '')}` : ''}</span>`}${m.mde != null ? `<span>detects ${m.mde < 0.01 ? '<1' : '±' + (100 * m.mde).toFixed(0)}%</span>` : ''}</div></div>`).join('')}</div>`)
+  const goals = ['cost', 'tokens', 'speed', 'reliability'].map(g => [g, d.metrics.filter(m => m.goal === g)]).filter(([, ms]) => ms.length)
+  if (goals.length) {
+    sect('Goals', 'last 7 days vs the 28 before')
+    view.insertAdjacentHTML('beforeend', `<div class="goals">${goals.map(([g, ms]) => `<div class="goal"><h3>${g[0].toUpperCase() + g.slice(1)}</h3><div class="kpis auto">${ms.map(goalTile).join('')}</div></div>`).join('')}</div>`)
   }
 
   const OPEN = ['proposed', 'accepted', 'trial', 'applied']
   const live = d.recs.filter(r => OPEN.includes(r.status))
   const done = d.recs.filter(r => !OPEN.includes(r.status))
   const tr = Object.values(d.trackRecord || {}), applied = d.recs.filter(r => r.verdict && r.verdict !== 'collecting')
-  sect('Recommendations', `${live.length} open · ${applied.filter(r => r.verdict === 'improved').length} helped · ${applied.filter(r => ['regressed', 'tradeoff'].includes(r.verdict)).length} backfired or traded off`)
+  sect('Recommendations', `${live.length} open · ${applied.filter(r => r.verdict === 'improved').length} helped · ${applied.filter(r => ['regressed', 'tradeoff'].includes(r.verdict)).length} backfired`)
   const GRADE = { A: ['good', 'Randomized on your sessions'], B: ['good', 'Controlled comparison on your data'], C: ['warn', 'Your data plus a primary source'], D: ['', 'Weak: before/after or unchecked evidence'] }
   const METHOD = { randomized: 'Randomized A/B', control_group: 'Vs untouched projects', before_after: 'Before vs after', trend_adjusted: 'Before vs after, trend-adjusted' }
   const STATUS = { proposed: 'Proposed', accepted: 'Accepted', trial: 'A/B trial', applied: 'Applied', dismissed: 'Dismissed', reverted: 'Reverted' }
@@ -1223,7 +1277,7 @@ async function renderAdvisor(view) {
   const link = (u, label) => /^https?:\/\//.test(u) ? `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(label || u.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, ''))}</a>` : esc(u)
   const cellv = v => v == null ? '' : typeof v === 'number' ? (Number.isInteger(v) ? big(v) : String(+v.toFixed(4))) : String(v).slice(0, 60)
   const field = (label, body) => body ? `<dt>${label}</dt><dd>${body}</dd>` : ''
-  const stat = (label, value, sub, cls = '', title = '') => `<div class="rstat ${cls}"${title ? ` title="${esc(title)}"` : ''}><small>${label}</small><b>${value}</b>${sub ? `<span>${sub}</span>` : ''}</div>`
+  const stat = (label, value, sub, vcls = '', title = '') => tile({ label, value, sub: `<span class="delta"><span class="vs">${sub || '&nbsp;'}</span></span>`, vcls, title, extra: ' ' })
   // A 95% interval on a symmetric axis around zero, coloured by whether the change is good for this metric.
   const ciBar = (diff, lo, hi, lb) => {
     if (diff == null || lo == null) return ''
@@ -1260,7 +1314,7 @@ async function renderAdvisor(view) {
     const segs = (v.segments || []).length > 1 ? `<details class="rdisc"><summary>Per project <span class="count">${v.segments.length}</span></summary><div class="minitbl"><table class="mini"><tr><th>Project</th><th class="num">Before</th><th class="num">After</th><th class="num">Change</th><th class="num">95% interval</th><th class="num">Sessions</th></tr>${v.segments.map(g => `<tr><td title="${esc(g.segment)}">${esc(g.segment.split('/').filter(Boolean).slice(-2).join('/'))}</td><td class="num">${num(g.before)}</td><td class="num">${num(g.after)}</td><td class="num ${g.sense === 'better' ? 'good' : g.sense === 'worse' ? 'bad' : ''}">${chg(g.diff)}</td><td class="num">${range(g)}</td><td class="num">${g.n_before} → ${g.n_after}</td></tr>`).join('')}</table></div></details>` : ''
     const side = (v.side_effects || []).map(x => `${esc(x.label)} ${chg(x.diff)}`).join(', ')
     const checks = [
-      v.placebo ? [`Placebo`, `${chg(v.placebo.diff)} <small>${range(v.placebo)}</small>${v.placebo.significant ? ' <span class="tagv warn">drift: trend-adjusted</span>' : ' <span class="tagv good">no drift</span>'}`, 'The same comparison one window earlier; it should show nothing'] : null,
+      v.placebo ? [`Placebo`, `${chg(v.placebo.diff)} <small>${range(v.placebo)}</small>${v.placebo.significant ? ' ' + tag('drift: trend-adjusted', 'warn') : ' ' + tag('no drift', 'good')}`, 'The same comparison one window earlier; it should show nothing'] : null,
       v.control ? [`Control`, `${chg(v.control.diff)} <small>${range(v.control)}</small>`, 'The change in projects it did not touch'] : null,
       side ? ['Side effects', `<span class="bad">${side}</span>`, 'Guard metrics that got worse'] : null,
       (v.confounders || []).length ? ['Also changed', v.confounders.map(c => `${esc(c.day)} ${esc(c.what)}`).join('<br>'), 'Changes within 7 days of the start: they keep the grade below B'] : null,
@@ -1269,57 +1323,58 @@ async function renderAdvisor(view) {
         <div class="rresult-head"><span class="verdict">${word}</span><span class="method">${esc(METHOD[v.method] || v.method || '')}</span></div>
         <div class="rresult-main"><b>${chg(v.diff)}</b><div class="rresult-ci">${ciBar(v.diff, v.lo, v.hi, lowerBetter[r.metric])}</div></div>
         <p class="rresult-sub">${esc(labelOf[r.metric] || r.metric)} ${num(v.before)} → ${num(v.after)} · ${v.method === 'randomized' ? `${big(v.n_after ?? 0)} with, ${big(v.n_before ?? 0)} without` : `${big(v.n_before ?? 0)} sessions before, ${big(v.n_after ?? 0)} after`}</p>
-        ${checks.length ? `<dl class="rchecks">${checks.map(([k, val, t]) => `<dt title="${esc(t)}">${k}</dt><dd>${val}</dd>`).join('')}</dl>` : ''}
-        ${(v.notes || []).map(x => `<p class="rresult-note">${esc(x)}</p>`).join('')}
-        ${segs}
       </section>`
-      : r.verdict === 'collecting' ? `<section class="rresult pending"><div class="rresult-head"><span class="verdict">Measuring</span><span class="method">${esc(METHOD[v.method] || v.method || '')}</span></div><p class="rresult-sub">${esc(v.why || 'Collecting sessions since it started.')}</p>${need ? `<div class="progress" title="sessions so far vs needed"><i style="width:${Math.min(100, 100 * ((v.n_after || 0) + (v.method === 'randomized' ? v.n_before || 0 : 0)) / need)}%"></i></div>` : ''}</section>` : ''
+      : r.verdict === 'collecting' ? `<section class="rresult pending"><div class="rresult-head"><span class="verdict">Measuring</span><span class="method">${esc(METHOD[v.method] || v.method || '')}</span></div><p class="rresult-sub">${esc(v.why || 'Collecting sessions since it started.')}</p>${need ? `<div class="pbar" title="sessions so far vs needed"><i style="width:${Math.min(100, 100 * ((v.n_after || 0) + (v.method === 'randomized' ? v.n_before || 0 : 0)) / need)}%"></i></div>` : ''}</section>` : ''
     const srcs = (r.sources || []).map(x => typeof x === 'string' ? { url: x } : x)
+    const change = r.action || r.instruction ? `<div class="change">${r.instruction
+      ? `<span class="eyebrow" title="Added to the system prompt in the trial's sessions">Instruction for the trial</span>${esc(r.instruction)}${r.action ? `<span class="eyebrow" style="margin-top:6px">Or change</span>${esc(r.action)}` : ''}`
+      : `<span class="eyebrow">Change</span>${esc(r.action)}`}</div>` : ''
+    const why = [
+      field('Hypothesis', r.hypothesis ? esc(r.hypothesis) : ''),
+      field('Expected', r.expected ? esc(r.expected) : ''),
+      field('Against', r.counter ? esc(r.counter) : ''),
+      field('Risk', r.risk ? esc(r.risk) : ''),
+      field('Note', r.note ? esc(r.note) : ''),
+      ev ? '' : evHtml,
+      field('Sources', srcs.length ? `<div class="rsources">${srcs.map(x => `<span class="src ${x.kind === 'primary' ? 'primary' : ''}" title="${x.kind === 'primary' ? 'Primary source' : 'Secondary source'}${x.checked ? ` · checked ${esc(x.checked)}` : ''}">${link(x.url, x.title)}${x.kind === 'primary' ? '<em>primary</em>' : ''}</span>`).join('')}</div>` : ''),
+      checks.length ? checks.map(([k, val, t]) => field(`<span title="${esc(t)}">${k}</span>`, val)).join('') : '',
+      (v.notes || []).length ? field('Result notes', v.notes.map(esc).join('<br>')) : '',
+    ].join('')
+    const whyCount = [r.hypothesis, r.expected, r.counter, r.risk, r.note, srcs.length, checks.length, (v.notes || []).length].filter(Boolean).length
     return `<article class="rec st-${esc(r.status)}">
-      <header class="rec-head"><div class="rec-tags"><span class="tagv st">${STATUS[r.status] || esc(r.status)}</span>${r.grade ? `<span class="tagv grade ${gcls}" title="Evidence grade ${esc(r.grade)}: ${esc(gword)}">Grade ${esc(r.grade)}</span>` : ''}</div><code class="rec-id">${esc(r.id)}</code></header>
+      <header class="rec-head"><div class="rec-tags">${tag(STATUS[r.status] || esc(r.status), r.status === 'trial' ? 'accent' : 'plain')}${r.grade ? tag(`Grade ${esc(r.grade)}`, gcls, `Evidence grade ${r.grade}: ${gword}`) : ''}</div><code class="rec-id">${esc(r.id)}</code></header>
       <h4>${esc(r.title)}</h4>
       <div class="rec-sub"><span>${esc(r.goal)}</span><span>${esc(labelOf[r.metric] || r.metric)}</span>${r.effort ? `<span>effort ${esc(r.effort)}</span>` : ''}${scope}</div>
-      ${stats.length ? `<div class="rstats">${stats.join('')}</div>` : ''}
+      ${stats.length ? `<div class="kpis compact">${stats.join('')}</div>` : ''}
       ${result}
-      <dl class="rfields">
-        ${field('Hypothesis', r.hypothesis ? esc(r.hypothesis) : '')}
-        ${field('Change', r.action ? `<div class="act">${esc(r.action)}</div>` : '')}
-        ${field('Instruction', r.instruction ? `<blockquote class="instr">${esc(r.instruction)}</blockquote><small class="hint">Added to the system prompt in the trial's sessions</small>` : '')}
-        ${field('Expected', r.expected && r.expected_effect == null ? esc(r.expected) : '')}
-        ${field('Against', r.counter ? esc(r.counter) : '')}
-        ${field('Risk', r.risk ? esc(r.risk) : '')}
-        ${field('Note', r.note ? esc(r.note) : '')}
-        ${ev ? '' : evHtml}
-      </dl>
-      ${ev ? evHtml : ''}
-      ${(r.warnings || []).length ? `<div class="callout warn"><b>Check before relying on it</b><ul>${r.warnings.map(w => `<li>${esc(w)}</li>`).join('')}</ul></div>` : ''}
-      ${srcs.length ? `<div class="rsources">${srcs.map(x => `<span class="src ${x.kind === 'primary' ? 'primary' : ''}" title="${x.kind === 'primary' ? 'Primary source' : 'Secondary source'}${x.checked ? ` · checked ${esc(x.checked)}` : ''}">${link(x.url, x.title)}${x.kind === 'primary' ? '<em>primary</em>' : ''}</span>`).join('')}</div>` : ''}
+      ${change}
+      ${(r.warnings || []).length ? `<div class="callout warn"><b>Check before relying on it:</b> ${r.warnings.map(esc).join(' · ')}</div>` : ''}
+      ${whyCount || ev || segs ? `<details class="rdisc"><summary>Why &amp; evidence</summary>${why ? `<dl class="rfields">${why}</dl>` : ''}${ev ? evHtml : ''}${segs}</details>` : ''}
       <footer class="rec-foot"><div class="rec-actions">${buttons}</div><div class="rec-copy">${copies}</div></footer>
     </article>`
   }
   view.insertAdjacentHTML('beforeend', live.length ? `<div class="recs">${live.map(card).join('')}</div>`
-    : `<div class="insights"><div class="insight"><span>No open recommendations. Run <code>/analytics advise</code> in Claude Code (or <code>/analytics advise bg</code> to research in the background).</span></div></div>`)
+    : notes([['', 'No open recommendations. Run <code>/analytics advise</code> in Claude Code, or <code>/analytics advise bg</code> to research in the background.']]))
 
   if (d.detectors.length) {
-    sect('Findings', 'computed from your data in this period, no model involved')
+    sect('Findings', 'from your data in this period, no model involved')
     const sev = { high: 'bad', medium: 'warn', low: '' }
-    view.insertAdjacentHTML('beforeend', `<div class="insights">${d.detectors.map(x => `<div class="insight ${sev[x.severity] || ''}"><span><b>${esc(x.title)}</b>: ${esc(x.detail)}</span></div>`).join('')}</div>`)
+    view.insertAdjacentHTML('beforeend', notes(d.detectors.map(x => [sev[x.severity] || '', `<span class="k">${esc(x.title)}</span> <span class="d">${esc(x.detail)}</span>`])))
   }
 
-  const grid = document.createElement('div'); grid.className = 'grid'
-  sect('History'); view.appendChild(grid)
+  sect('History'); const grid = gridIn(view)
   const add = (p, data) => fill(makePanel(p, grid), data)
   const tbl = (rows, cols) => ({ cols, rows: rows.map(r => cols.map(c => r[c] ?? '')) })
   if (done.length) add({ title: 'Closed recommendations', kind: 'table' }, tbl(done.map(r => ({ ...r, verdict: r.verdict ? (VERDICT[r.verdict] || [, r.verdict])[1] : '' })), ['id', 'status', 'title', 'verdict', 'status_at']))
-  if (tr.length) add({ title: 'Track record (what kind of advice works here)', note: 'success: helped among measured verdicts, Laplace-smoothed ((helped+1)/(measured+2)); randomized: verdicts from A/B trials', kind: 'table', wide: true }, { cols: ['bucket', 'proposed', 'applied', 'dismissed', 'improved', 'tradeoff', 'regressed', 'no_effect', 'randomized', 'success'], rows: Object.entries(d.trackRecord).map(([k, v]) => [k, v.proposed, v.applied, v.dismissed, v.improved, v.tradeoff, v.regressed, v.no_effect, v.randomized ?? 0, v.successRate == null ? '' : (100 * v.successRate).toFixed(0) + '%']) })
+  if (tr.length) add({ title: 'Track record', note: 'what kind of advice works here', info: 'success: helped among measured verdicts, Laplace-smoothed ((helped+1)/(measured+2))\nrandomized: verdicts from A/B trials', kind: 'table', wide: true }, { cols: ['bucket', 'proposed', 'applied', 'dismissed', 'improved', 'tradeoff', 'regressed', 'no_effect', 'randomized', 'success'], rows: Object.entries(d.trackRecord).map(([k, v]) => [k, v.proposed, v.applied, v.dismissed, v.improved, v.tradeoff, v.regressed, v.no_effect, v.randomized ?? 0, v.successRate == null ? '' : (100 * v.successRate).toFixed(0) + '%']) })
   const seg = Array.isArray(d.segments) ? d.segments : d.segments?.project || []
   if (seg.length) {
     const sc = Object.keys(seg[0]).filter(k => !['project', 'segment'].includes(k))
-    add({ title: 'Where each metric stands, by project', note: 'the advisor scopes advice to the projects where a lever lives; what helps one project can hurt another', kind: 'table', wide: true }, { cols: ['project', ...sc], rows: seg.map(r => [r.project ?? r.segment, ...sc.map(k => k === 'spendShare' ? (100 * r[k]).toFixed(0) + '%' : r[k] == null ? '' : typeof r[k] === 'number' && !Number.isInteger(r[k]) ? +r[k].toFixed(2) : r[k])]) })
+    add({ title: 'Metrics by project', info: 'The advisor scopes advice to the projects where a lever lives; what helps one project can hurt another.', kind: 'table', wide: true }, { cols: ['project', ...sc], rows: seg.map(r => [r.project ?? r.segment, ...sc.map(k => k === 'spendShare' ? (100 * r[k]).toFixed(0) + '%' : r[k] == null ? '' : typeof r[k] === 'number' && !Number.isInteger(r[k]) ? +r[k].toFixed(2) : r[k])]) })
   }
-  add({ title: 'Setting changes (from session starts)', note: 'the advisor reads these to tell your own changes from its advice', kind: 'table' }, tbl(d.changes, ['ts', 'profile', 'what', 'change']))
+  add({ title: 'Setting changes', info: 'Read from session starts. The advisor uses these to tell your own changes from its advice.', kind: 'table' }, tbl(d.changes, ['ts', 'profile', 'what', 'change']))
   add({ title: 'Research runs', kind: 'table' }, tbl(d.runs, ['started', 'trigger_', 'model', 'status', 'recs', 'summary']))
-  if (d.notes.length) add({ title: 'Research notes', note: 'stale: checked more than 90 days ago; the next run re-checks it', kind: 'table', wide: true }, tbl(d.notes.map(x => ({ ...x, stale: x.stale ? 'stale' : '' })), ['ts', 'topic', 'finding', 'source', 'kind', 'published', 'checked', 'stale']))
+  if (d.notes.length) add({ title: 'Research notes', info: 'stale: checked more than 90 days ago; the next run re-checks it', kind: 'table', wide: true }, tbl(d.notes.map(x => ({ ...x, stale: x.stale ? 'stale' : '' })), ['ts', 'topic', 'finding', 'source', 'kind', 'published', 'checked', 'stale']))
 
   view.querySelectorAll('[data-rec]').forEach(b => b.onclick = async () => {
     let note = ''
@@ -1336,28 +1391,28 @@ async function renderAdvisor(view) {
 }
 
 async function renderRecurring(view) {
-  view.innerHTML = `<p class="tabnote">Prompts you typed three or more times, on at least two days, grouped by meaning without a model: paths, numbers, branch names and quoted text are ignored, so
-    “fix CI on feat/a” and “why did CI fail on fix/b” are one ask. Each gets a score for how automatable it looks (how often, how steadily, how stable the wording, what it costs).
-    Run <code>/analytics recurring classify</code> in Claude Code to have a model name each one and draft a skill, hook, slash command or CLAUDE.md rule; mark it automated and the table shows whether it stopped.
-    Prompts are redacted before they are stored and again before any are shown to a model.</p><div class="skel"></div>`
+  view.innerHTML = about('Prompts you typed three or more times on at least two days, grouped by meaning, scored by how automatable they look.',
+    'Grouping uses no model: paths, numbers, branch names and quoted text are ignored, so “fix CI on feat/a” and “why did CI fail on fix/b” are one ask. The score weighs how often, how steadily, how stable the wording, and what it costs.',
+    'Run <code>/analytics recurring classify</code> in Claude Code to have a model name each ask and draft a skill, hook, slash command or CLAUDE.md rule. Mark it automated and the table shows whether it stopped.',
+    'Prompts are redacted before they are stored and again before any are shown to a model.') + '<div class="skel"></div>'
   teardown()
   $('#status').textContent = 'Loading…'
   const d = await api('/api/recurring')
   view.querySelector('.skel')?.remove()
   const color = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#888'
-  const stat = (label, value, sub) => `<div class="kpi"><small>${label}</small><b>${value}</b><span class="delta">${sub || '&nbsp;'}</span></div>`
+  const stat = (label, value, sub) => tile({ label, value, sub: `<span class="delta"><span class="vs">${sub || '&nbsp;'}</span></span>` })
   const live = d.clusters.filter(c => c.status !== 'dismissed')
   const auto = d.clusters.filter(c => c.status === 'automated')
   const saved = d.clusters.reduce((a, c) => a + (c.status === 'new' && c.label?.estUsdMonth || 0), 0)
-  view.insertAdjacentHTML('beforeend', `<div class="kpis rc-kpis">
+  view.insertAdjacentHTML('beforeend', `<div class="kpis auto">
     ${stat('Recurring asks', big(d.clusterCount), `${big(d.recurring)} prompts`)}
     ${stat('Share of prompts', Math.round(100 * d.recurringShare) + '%', `${big(d.prompts - d.recurring)} one-off`)}
-    ${stat('Per month', big(Math.round(d.perMonth)), 'prompts you could skip')}
+    ${stat('Per month', big(Math.round(d.perMonth)), 'repeat prompts')}
     ${stat('Their cost', usd(d.costPerMonth), 'per month, est.')}
     ${stat('Automated', big(auto.length), saved ? `${usd(saved)}/month still open` : 'marked by you')}
   </div>`)
   if (!d.clusters.length) {
-    view.insertAdjacentHTML('beforeend', `<div class="insights"><div class="insight"><span>No ask came up ${d.params.minCount}+ times on ${d.params.minDays}+ days in this period. Try a longer period.</span></div></div>`)
+    view.insertAdjacentHTML('beforeend', notes([['', `No ask came up ${d.params.minCount}+ times on ${d.params.minDays}+ days in this period. Try a longer period.`]]))
     status(); return
   }
   const STATUS = { new: 'New', automated: 'Automated', dismissed: 'Dismissed' }
@@ -1366,38 +1421,39 @@ async function renderRecurring(view) {
   const view_ = { key: 'score', asc: false, show: 'open' }
   const title = c => c.label?.title || c.exemplar
   const val = (c, k) => k === 'title' ? title(c).toLowerCase() : k === 'last' ? c.lastSeen : k === 'st' ? c.status : c[k]
-  view.insertAdjacentHTML('beforeend', `<h2 class="sec">Asks <small>click a row for samples, the draft and the status buttons</small></h2>
-    <div class="filters" style="margin-bottom:8px"><button class="btn" data-show="open">Open</button><button class="btn" data-show="all">All</button><button class="btn" data-show="automated">Automated</button><button class="btn" data-show="dismissed">Dismissed</button></div>
+  const shows = { open: c => c.status !== 'dismissed', all: () => true, automated: c => c.status === 'automated', dismissed: c => c.status === 'dismissed' }
+  const seg = `<div class="seg sm">${Object.keys(shows).map(k => `<button data-show="${k}">${k[0].toUpperCase() + k.slice(1)}<span class="n">${d.clusters.filter(shows[k]).length}</span></button>`).join('')}</div>`
+  view.insertAdjacentHTML('beforeend', `${sec('Asks', 'click a row for details', seg)}
     <div class="rc-wrap"><table class="rc"><thead></thead><tbody></tbody></table></div>`)
   const thead = view.querySelector('table.rc thead'), tbody = view.querySelector('table.rc tbody')
   const detail = c => {
     const L = c.label, A = L?.automation, e = c.effect
-    const btn = (st, label, kind = '') => `<button class="btn ${kind}" data-id="${esc(c.id)}" data-st="${st}">${label}</button>`
+    const btn = (st, label, kind = '') => `<button class="btn sm ${kind}" data-id="${esc(c.id)}" data-st="${st}">${label}</button>`
     return `<tr class="rc-detail-row" data-for="${esc(c.id)}" hidden><td colspan="${cols.length}" style="padding:0"><div class="rc-detail">
       <div><h5>Samples</h5><ul>${c.samples.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
         <h5 style="margin-top:10px">Per week</h5>${spark(c.weekly, color, d.weeks.map(w => 'week of ' + w), 'num') || '<small>too short for a trend</small>'}
         <small>${esc(c.reason)}. In ${c.sessions} sessions${c.projects.length ? ': ' + c.projects.slice(0, 3).map(p => esc(String(p[0]).split('/').filter(Boolean).pop() || p[0]) + ' ×' + p[1]).join(', ') : ''}.</small>
-        ${e ? `<p style="margin:8px 0 0"><span class="tagv ${(EFF[e.verdict] || [''])[0]}">${(EFF[e.verdict] || ['', e.verdict])[1]}</span> ${e.beforePerWeek}/week before ${esc(e.at)}, ${e.afterPerWeek}/week since (${e.afterDays} days)</p>` : ''}</div>
+        ${e ? `<p style="margin:8px 0 0">${tag((EFF[e.verdict] || ['', e.verdict])[1], (EFF[e.verdict] || [''])[0] || 'plain')} ${e.beforePerWeek}/week before ${esc(e.at)}, ${e.afterPerWeek}/week since (${e.afterDays} days)</p>` : ''}</div>
       <div>${L ? `<h5>${esc(L.category || '')} · ${esc(A?.kind || 'none')}${L.estPromptsMonth ? ` · saves ~${big(Math.round(L.estPromptsMonth))} prompts, ~${usd(L.estUsdMonth)}/month` : ''}</h5><p style="margin:0 0 8px">${esc(L.rationale || '')}</p>
         ${A?.draft ? `<h5>Draft</h5><pre>${esc(A.draft)}</pre>` : ''}`
         : `<h5>Not labelled yet</h5><p style="margin:0">Run <code>/analytics recurring classify</code> in Claude Code to get a title, a category and a draft for this ask.</p>`}</div>
-      <div class="rc-actions">${A?.draft ? `<button class="btn primary" data-copy-draft="${esc(c.id)}">Copy draft</button>` : ''}${c.status === 'automated' ? btn('new', 'Reopen', 'ghost') : btn('automated', 'Mark automated', 'primary')}${c.status === 'dismissed' ? btn('new', 'Reopen', 'ghost') : btn('dismissed', 'Dismiss', 'ghost')}
-        <button class="btn ghost" data-copy="/analytics recurring show ${esc(c.id)}">Copy show</button></div>
+      <div class="rc-actions">${A?.draft ? `<button class="btn sm primary" data-copy-draft="${esc(c.id)}">Copy draft</button>` : ''}${c.status === 'automated' ? btn('new', 'Reopen', 'ghost') : btn('automated', 'Mark automated', 'primary')}${c.status === 'dismissed' ? btn('new', 'Reopen', 'ghost') : btn('dismissed', 'Dismiss', 'ghost')}
+        <button class="btn sm ghost" data-copy="/analytics recurring show ${esc(c.id)}">Copy show</button></div>
     </div></td></tr>`
   }
   const draw = () => {
-    thead.innerHTML = '<tr>' + cols.map(([k, l, n]) => `<th class="${n ? 'num' : ''} ${view_.key === k ? 'on' + (view_.asc ? ' asc' : '') : ''}" data-k="${k}">${l}</th>`).join('') + '</tr>'
-    const rows = d.clusters.filter(c => view_.show === 'all' ? true : view_.show === 'open' ? c.status !== 'dismissed' : c.status === view_.show)
+    thead.innerHTML = '<tr>' + cols.map(([k, l, n]) => `<th class="${n ? 'num' : ''}" data-k="${k}">${l}${view_.key === k ? `<span class="arrow">${view_.asc ? '▲' : '▼'}</span>` : ''}</th>`).join('') + '</tr>'
+    const rows = d.clusters.filter(shows[view_.show])
       .sort((a, b) => { const x = val(a, view_.key), y = val(b, view_.key); return (x < y ? -1 : x > y ? 1 : 0) * (view_.asc ? 1 : -1) })
     tbody.innerHTML = rows.map(c => `<tr class="rc-row" data-id="${esc(c.id)}"><td class="ask"><span class="t">${esc(title(c))}</span><small>${c.label ? esc(c.label.category || '') + (c.label.automation?.kind && c.label.automation.kind !== 'none' ? ' · ' + esc(c.label.automation.kind.replace(/_/g, ' ')) : '') : esc(c.reason)}</small></td>
       <td class="num">${big(c.count)}</td><td class="num">${c.days}</td><td class="num">${c.perMonth}</td><td class="num">${usd(c.costPerMonth)}</td><td class="num">${Math.round(c.score)}</td><td>${esc(c.lastSeen)}</td>
-      <td><span class="tagv ${c.status === 'automated' ? 'good' : ''}">${STATUS[c.status] || esc(c.status)}</span></td></tr>${detail(c)}`).join('') || `<tr><td colspan="${cols.length}"><small>Nothing here.</small></td></tr>`
-    view.querySelectorAll('[data-show]').forEach(b => b.classList.toggle('primary', b.dataset.show === view_.show))
+      <td>${tag(STATUS[c.status] || esc(c.status), c.status === 'automated' ? 'good' : 'plain')}</td></tr>${detail(c)}`).join('') || `<tr><td colspan="${cols.length}"><small>Nothing here.</small></td></tr>`
+    view.querySelectorAll('[data-show]').forEach(b => b.classList.toggle('on', b.dataset.show === view_.show))
   }
   view.onclick = async ev => {
     const t = ev.target
     if (t.closest('th[data-k]')) { const k = t.closest('th').dataset.k; view_.asc = view_.key === k ? !view_.asc : k === 'title'; view_.key = k; draw(); return }
-    if (t.dataset.show) { view_.show = t.dataset.show; draw(); return }
+    const sh = t.closest('[data-show]'); if (sh) { view_.show = sh.dataset.show; draw(); return }
     if (t.dataset.copy) return navigator.clipboard.writeText(t.dataset.copy).then(() => toast('Copied: ' + t.dataset.copy), () => toast(t.dataset.copy))
     if (t.dataset.copyDraft) {
       const c = d.clusters.find(x => x.id === t.dataset.copyDraft)
@@ -1413,25 +1469,24 @@ async function renderRecurring(view) {
       return
     }
     const row = t.closest('tr.rc-row')
-    if (row) { const det = tbody.querySelector(`tr.rc-detail-row[data-for="${row.dataset.id}"]`); if (det) det.hidden = !det.hidden }
+    if (row) { const det = tbody.querySelector(`tr.rc-detail-row[data-for="${row.dataset.id}"]`); if (det) { det.hidden = !det.hidden; row.classList.toggle('open', !det.hidden) } }
   }
   draw()
-  if (d.retired?.length) view.insertAdjacentHTML('beforeend', `<div class="insights">${d.retired.map(x => `<div class="insight good"><span><b>${esc(x.title || x.id)}</b>: marked automated ${esc(String(x.statusAt || '').slice(0, 10))} and no longer shows up as a recurring ask.</span></div>`).join('')}</div>`)
-  const grid = document.createElement('div'); grid.className = 'grid'
-  view.insertAdjacentHTML('beforeend', '<h2 class="sec">Over time</h2>'); view.appendChild(grid)
+  if (d.retired?.length) view.insertAdjacentHTML('beforeend', notes(d.retired.map(x => ['good', `<span class="k">${esc(x.title || x.id)}</span> <span class="d">automated ${esc(String(x.statusAt || '').slice(0, 10))}, no longer recurring</span>`]), 'Automated away'))
+  view.insertAdjacentHTML('beforeend', sec('Over time')); const grid = gridIn(view)
   fill(makePanel({ title: 'Recurring vs one-off prompts per week', kind: 'stacked', x: 'week', series: 'kind', y: 'prompts', wide: true,
-    note: 'Recurring prompts are the ones in the asks above; a falling blue share means asks are being automated away.' }, grid),
+    info: 'Recurring prompts are the ones in the asks above; a falling recurring share means asks are being automated away.' }, grid),
     { cols: ['week', 'kind', 'prompts'], rows: d.weeks.flatMap((w, i) => [[w, 'recurring', d.weeklyRecurring[i]], [w, 'one-off', Math.max(0, d.weeklyAll[i] - d.weeklyRecurring[i])]]) })
   status()
 }
 
 async function renderSavings(view) {
-  view.innerHTML = '<p class="tabnote">From budget-guard’s session ledgers (all time, not filtered): estimated dollars each lever avoided.</p>'
+  view.innerHTML = about('From budget-guard’s session ledgers: estimated dollars each lever avoided. All time, not filtered.')
   teardown()
-  const grid = document.createElement('div'); grid.className = 'grid'; view.appendChild(grid)
+  const grid = gridIn(view)
   const s = await (await fetch('/api/savings')).json()
   const add = (p, d) => fill(makePanel(p, grid), d)
-  add({ title: 'Saved by lever', kind: 'hbar', x: 'lever', y: 'saved', money: true, note: 'The table view (top right) has every column.' }, s.byLever)
+  add({ title: 'Saved by lever', kind: 'hbar', x: 'lever', y: 'saved', money: true }, s.byLever)
   add({ title: 'By profile', kind: 'table' }, s.byProfile)
   add({ title: 'Saved vs spent per day', kind: 'bar', x: 'day', y: ['spent', 'saved'], money: true, wide: true }, s.byDay)
   status()
@@ -1446,7 +1501,7 @@ const EXAMPLES = {
 }
 function renderSql(view) {
   if ($('#sqlText')) return
-  view.insertAdjacentHTML('beforeend', `<section class="panel sql"><header><div><h3>SQL console</h3><p class="note">Read-only. Tables: requests, tool_uses, prompts, attachments, system_events, sessions, agents, events; views v_*. <kbd>⌘</kbd>+<kbd>↵</kbd> runs.</p></div></header>
+  view.insertAdjacentHTML('beforeend', `<section class="panel sql"><header><div><h3>SQL console ${info('Tables: requests, tool_uses, prompts, attachments, system_events, sessions, agents, events; views v_*')}</h3><p class="note">Read-only · <kbd>⌘</kbd>+<kbd>↵</kbd> runs</p></div></header>
     <div class="row">${Object.keys(EXAMPLES).map(k => `<button data-ex="${esc(k)}">${esc(k)}</button>`).join('')}</div>
     <textarea id="sqlText" spellcheck="false">${esc(EXAMPLES['Top 20 costliest requests'])}</textarea>
     <div class="row"><button id="sqlRun" class="btn primary">Run</button><button id="sqlCsv" class="btn">CSV</button><span id="sqlInfo" class="note" style="color:var(--muted)"></span></div><div id="sqlOut"></div></section>`)
@@ -1483,14 +1538,17 @@ async function openSession(sid) {
   const cost = tl.reduce((a, r) => a + (r.cost || 0), 0)
   const facts = [info.profile, info.project, info.git_branch, `${tl.length} requests`, `${usd(cost)} list price`, info.cc_cost_usd ? `Claude Code said ${usd(info.cc_cost_usd)}` : null].filter(Boolean)
   body.innerHTML = `<div class="dhead"><button id="close" class="btn">✕</button><h3>${esc(info.title || sid)}</h3></div>
-    <div class="facts"><span class="pill"><code>${esc(sid)}</code></span>${facts.map(f => `<span class="pill">${esc(f)}</span>`).join('')}</div>
+    <div class="facts"><code class="tag plain">${esc(sid)}</code>${facts.map(f => tag(esc(f), 'plain')).join('')}</div>
     <div class="grid"></div>`
   $('#close').onclick = closeDrawer
   const grid = body.querySelector('.grid')
   const add = (p, d) => fill(makePanel(p, grid, drawerPanels), d)
   let run = 0
-  const ctx = { cols: ['n', 'context', 'cumulative_cost'], rows: tl.map((r, i) => [i + 1, r.agent === 'main' ? r.context : null, (run += r.cost || 0)]) }
-  add({ title: 'Main-loop context and cumulative cost per request', kind: 'line', x: 'n', y: ['context', 'cumulative_cost'], y2: ['cumulative_cost'], y2money: true, wide: true }, ctx)
+  // Two charts, not one with two y-scales: context is tokens, the running total is dollars.
+  const ctx = { cols: ['n', 'context'], rows: tl.map((r, i) => [i + 1, r.agent === 'main' ? r.context : null]) }
+  const cum = { cols: ['n', 'cumulative_cost'], rows: tl.map((r, i) => [i + 1, (run += r.cost || 0)]) }
+  add({ title: 'Main-loop context', note: 'tokens per request', kind: 'line', x: 'n', y: 'context' }, ctx)
+  add({ title: 'Cumulative cost', note: 'per request, all agents', kind: 'line', x: 'n', y: 'cumulative_cost', money: true }, cum)
   const byAgent = {}; tl.forEach(r => { byAgent[r.agent] = (byAgent[r.agent] || 0) + (r.cost || 0) })
   add({ title: 'Cost by agent', kind: 'doughnut', x: 'agent', y: 'cost', money: true }, { cols: ['agent', 'cost'], rows: Object.entries(byAgent) })
   const byTool = {}; asObjs(s.tools).forEach(t => { byTool[t.tool] = (byTool[t.tool] || 0) + (t.result_chars || 0) })

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.1
+- Dashboard redesign, same data and queries. Every view uses one set of components: one tile, one tag, one table look, one notes list, and the same change format (−12%).
+- Long explanations are folded under "How it works" at the top of the Advisor, Recurring, Mod impact, Savings and Engine tabs. Panel notes are one line; the details are in an ⓘ tooltip. Chart | Table is a switch in each panel header.
+- Advisor: goals show as one grid. Recommendation cards show the change, the result and the warnings; hypothesis, evidence, sources and checks are under "Why & evidence". The measuring bar shows again (it was hidden by the import bar's style).
+- Recurring: Open / All / Automated / Dismissed with counts in the heading; the expanded row is highlighted.
+- Session drawer: context and cumulative cost are two charts instead of one chart with two y-axes.
+
 ## 0.10.0
 - Recurring asks: a new Recurring tab and `/analytics recurring` find the prompts you keep typing (three or more times on two or more days), grouped by shared wording (no model; headless `claude -p`/SDK runs left out), with cost, trend and an automatable score. `/analytics recurring classify` (or `classify bg`) has a model draft a skill, hook, command or CLAUDE.md rule for each; mark one automated and the tab shows prompts per week before and after.
 - New `claude-usage recurring [show|brief|record|set]`, tools `recurring_brief` and `recurring_record`, a hidden `recurring` agent, and `GET /api/recurring` with `POST /api/recurring/status` on the dashboard.
