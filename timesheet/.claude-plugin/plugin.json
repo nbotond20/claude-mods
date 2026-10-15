@@ -1,6 +1,6 @@
 {
   "name": "timesheet",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "description": "NetSuite-ready timesheets from your Claude Code and OpenCode sessions, git and GitHub history and Google Calendar: the timesheet CLI and web app, the timesheet skill, and /timesheet.",
   "author": {
     "name": "nbotond"

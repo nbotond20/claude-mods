@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.7
+- The classifier runs `claude -p` lean: no tools, MCP servers or skills and a one-line system prompt instead of Claude Code's own. A day's call carries about 3.5k tokens of context instead of 25-36k, about 7x cheaper on the same model. Transcripts are still written so usage-analytics counts the spend.
+
 ## 0.3.6
 - Docs: screenshots of the web app (week, month, block details, submission preview, calendar, settings) and CLI examples, from generated demo data (`scripts/demo`).
 

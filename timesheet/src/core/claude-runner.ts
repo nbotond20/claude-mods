@@ -111,8 +111,16 @@ export function abortError(): Error {
   return e;
 }
 
+/**
+ * Classifying text needs none of Claude Code's tools, system prompt, MCP servers or skills: leaving them out cuts a call
+ * from about 26k context tokens to about 1k (25x cheaper, same answers). Auth and the profile stay as they are (transcripts are kept so usage-analytics can count the spend; no --bare,
+ * which would skip OAuth).
+ */
+export const LEAN_ARGS = ['--tools', '', '--system-prompt', 'You classify a person\'s work log. Follow the instructions in the message exactly and reply with JSON only.',
+  '--strict-mcp-config', '--disable-slash-commands', '--exclude-dynamic-system-prompt-sections'];
+
 export function runClaude(prompt: string, opts: RunOptions): Promise<string> {
-  const inv = resolveInvocation(opts.command, ['-p', '--output-format', 'json', '--model', opts.model]);
+  const inv = resolveInvocation(opts.command, ['-p', '--output-format', 'json', '--model', opts.model, ...LEAN_ARGS]);
   return new Promise((resolve, reject) => {
     if (opts.signal?.aborted) return reject(abortError());
     mkdirSync(opts.cwd, { recursive: true });
