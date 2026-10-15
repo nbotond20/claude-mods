@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claude Usage</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23c96442'/%3E%3Ctext x='16' y='22' font-family='system-ui,sans-serif' font-size='17' font-weight='700' fill='white' text-anchor='middle'%3EC%3C/text%3E%3C/svg%3E">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
 <style>
 :root {
@@ -172,6 +173,7 @@ h2.sec .seg { margin-left: auto; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 540px), 1fr)); gap: var(--gap); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 13px 14px 12px; min-width: 0; box-shadow: var(--shadow); display: flex; flex-direction: column; }
 .panel.wide { grid-column: 1 / -1; }
+.panel > .body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .panel > header { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; min-height: 24px; }
 .panel > header > div:first-child { flex: 1; min-width: 0; }
 .panel h3 { margin: 0; font-size: var(--fs); font-weight: 620; line-height: 24px; }
@@ -192,9 +194,9 @@ h2.sec .seg { margin-left: auto; }
 .chart.short { height: 200px; }
 
 /* ---------- tables: one look everywhere ---------- */
-.tbl { overflow: auto; max-height: 470px; }
+.tbl { overflow: auto; max-height: 560px; }
 table { border-collapse: collapse; width: 100%; font-size: var(--fs-s); }
-th, td { padding: 6px 10px; border-bottom: 1px solid var(--line2); text-align: left; white-space: nowrap; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--line2); text-align: left; white-space: nowrap; }
 td { position: relative; }
 th { position: sticky; top: 0; z-index: 2; background: var(--panel); color: var(--muted); font-weight: 600; font-size: var(--fs-xs); border-bottom: 1px solid var(--line); user-select: none; }
 th[data-i], th[data-k] { cursor: pointer; }
@@ -203,18 +205,28 @@ th .arrow { color: var(--accent); margin-left: 3px; font-size: 9px; }
 th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
 th:first-child, td:first-child { padding-left: 2px; }
 th:last-child, td:last-child { padding-right: 2px; }
-td .b { position: absolute; right: 10px; bottom: 3px; height: 3px; background: color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 2px; pointer-events: none; }
+td .b { position: absolute; right: 8px; bottom: 3px; height: 3px; background: color-mix(in srgb, var(--accent) 55%, transparent); border-radius: 2px; pointer-events: none; }
 td:last-child .b { right: 2px; }
 td.num > span.v { position: relative; }
-td.path { max-width: 380px; overflow: hidden; text-overflow: ellipsis; }
-td.long { white-space: normal; min-width: 240px; max-width: 520px; }
+td.path, td.txt { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.panel.wide td.path, .panel.wide td.txt { max-width: 300px; }
+.panel.max td.path, .panel.max td.txt { max-width: 480px; }
+td.long { white-space: normal; min-width: 240px; max-width: 560px; }
+/* Long text reads as two lines in the table; the whole text is in the tooltip and the CSV. */
+td.long .clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.panel.max td.long .clamp, .sql td.long .clamp { -webkit-line-clamp: 6; }
 td a { cursor: pointer; text-decoration: none; font-family: var(--mono); font-size: 11.5px; }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr { transition: background .1s; }
 tbody tr:hover td { background: var(--hover); }
 tr.new td { animation: flash 2.2s ease-out; }
 @keyframes flash { from { background: color-mix(in srgb, var(--accent) 22%, transparent); } to { background: transparent; } }
-.more { color: var(--muted); font-size: var(--fs-s); padding: 6px 2px 0; }
+.more { display: flex; align-items: center; gap: 10px; color: var(--faint); font-size: var(--fs-xs); padding: 8px 2px 0; margin-top: auto; border-top: 1px solid var(--line2); font-variant-numeric: tabular-nums; }
+.more .btn { margin-left: auto; color: var(--accent); }
+.more .btn:hover { color: var(--accent); }
+.tfilter[hidden] { display: none; }
+.more a { color: var(--accent); cursor: pointer; }
+.more a:hover { text-decoration: underline; }
 .gauge { display: inline-flex; align-items: center; gap: 7px; }
 .gauge .meter { width: 70px; margin: 0; }
 /* Tables inside cards (evidence, per project) get a frame instead of a panel. */
@@ -349,6 +361,7 @@ code.tag { font-family: var(--mono); font-weight: 500; }
 
 /* ---------- recurring asks ---------- */
 .rc-wrap { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); overflow-x: auto; padding: 4px 12px; }
+.rc-foot { padding-bottom: 8px; } .rc-foot:empty { display: none; }
 table.rc td { vertical-align: top; }
 table.rc tr.rc-row { cursor: pointer; }
 table.rc tr.rc-row.open td { background: var(--hover); }
@@ -484,12 +497,22 @@ const pct = v => v == null ? '–' : (+v).toFixed(1) + '%'
 /** A relative change (0.12 → +12%) and its 95% interval, the same on every page. */
 const chg = v => v == null ? '–' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(100 * v).toFixed(Math.abs(v) < .1 && v !== 0 ? 1 : 0).replace(/\.0$/, '') + '%'
 const ciText = (lo, hi) => lo == null ? '' : `${chg(lo)} to ${chg(hi)}`
+/** A timestamp as local "2026-10-15 14:20": epoch ms, or ISO (UTC when it says so, else as written). */
+const TS_COL = /^(ts|started|finished|status_at|checked|last_ts|first_ts)$/
+const fmtTs = v => {
+  const d = typeof v === 'number' ? new Date(v > 1e11 ? v : v * 1000) : /(Z|[+-]\d\d:?\d\d)$/.test(v) ? new Date(v) : null
+  if (d && !isNaN(d)) return `${ymd(d)} ${hhmm24(d)}`
+  return String(v).replace('T', ' ').slice(0, 16)
+}
 const fmtCell = (col, v) => {
   if (v == null) return ''
-  if (typeof v !== 'number') return col === 'tool' ? prettyTool(v) : String(v)
+  if (TS_COL.test(col) && (typeof v === 'number' ? v > 1e9 : /^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(v))) return fmtTs(v)
+  if (col === 'signals') { try { return JSON.parse(v).map(human).join(' · ') } catch { return String(v) } }
+  if (typeof v !== 'number') return col === 'tool' ? prettyTool(v) : /^models?$/.test(col) ? String(v).split(/,\s*/).map(shortModel).join(', ') : String(v)
   if (/cost|saved|spent|usd/.test(col)) return usd(v)
   if (/pct|share/.test(col)) return pct(v)
   if (/^(hour|weekday|spawn_depth|is_error|deferred)$/.test(col)) return String(v)
+  if (col === 'minutes') return v < 60 ? Math.round(v) + 'm' : v < 1440 ? `${Math.floor(v / 60)}h ${Math.round(v % 60)}m` : (v / 60).toFixed(0) + 'h'
   return big(v)
 }
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
@@ -498,10 +521,11 @@ const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); r
 const ago = ts => { if (!ts) return '–'; const s = Math.max(0, (Date.now() - new Date(ts).getTime()) / 1000)
   return s < 60 ? Math.round(s) + 's ago' : s < 3600 ? Math.round(s / 60) + 'm ago' : s < 86400 ? (s / 3600).toFixed(1) + 'h ago' : Math.round(s / 86400) + 'd ago' }
 const hhmm = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+const hhmm24 = d => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 const shortModel = m => String(m || '').replace(/^claude-/, '').replace(/-\d{8}$/, '')
 /** Column and series names as people read them: cache_read → cache read, hit_pct → cache hit %. */
 const HEADS = { pct: '%', usd: '$', ctx: 'context', avg_s: 'avg seconds', max_s: 'max seconds', n: 'count', cost_per_1k_req: 'cost per 1k requests', hit_pct: 'cache hit %', subagent_pct: 'subagent share %', followed_pct: 'followed %', is_error: 'error' }
-const human = c => HEADS[c] ?? String(c).replace(/_pct$/, ' %').replace(/_/g, ' ')
+const human = c => HEADS[c] ?? String(c).replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().replace(/_pct$/, ' %').replace(/_+$/, '').replace(/_/g, ' ')
 /** mcp__plugin_x_server__tool → server · tool */
 const prettyTool = t => { const m = /^mcp__(.+?)__(.+)$/.exec(String(t)); if (!m) return String(t)
   return `${m[1].replace(/^plugin_[^_]+_/, '').replace(/^claude_ai_/, '').replace(/_/g, ' ')} · ${m[2]}` }
@@ -539,6 +563,7 @@ const ICON = {
   agents: I('<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.4 3-5.2 6-5.2s5.4 1.8 6 5.2"/><circle cx="17.5" cy="9" r="2.4"/><path d="M16.5 14.6c2.4.2 4 1.8 4.5 4.4"/>'),
   projects: I('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
   prompts: I('<path d="M4 5h16v11H8l-4 4z"/>'),
+  mood: I('<circle cx="12" cy="12" r="9"/><path d="M8 16.5c1-1.2 2.4-1.8 4-1.8s3 .6 4 1.8M7.5 8.5l2.5 1.3M16.5 8.5 14 9.8"/>'),
   health: I('<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>'),
   engine: I('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>'),
   advisor: I('<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2V16h5v-.2c.1-.8.5-1.5 1.1-2A6 6 0 0 0 12 3z"/>'),
@@ -584,7 +609,8 @@ function prevRange() {
 const colorIdx = new Map()
 const FIXED = [[/^(main|main_cost|main loop)$/i, 1], [/^subagent(_cost|s)?$/i, 2], [/^opus$/i, 4], [/^sonnet$/i, 6], [/^haiku$/i, 5], [/^fable$/i, 7],
   [/^cache.?read/i, 6], [/^cache.?write/i, 4], [/^input/i, 5], [/^output/i, 1], [/^(other|–)$/i, 8], [/^(lsp)$/i, 3], [/^text.?search$/i, 8],
-  [/^saved$/i, 3], [/^spent$/i, 1], [/^prompts$/i, 1], [/^commands$/i, 2], [/^agent.?prompts$/i, 4]]
+  [/^saved$/i, 3], [/^spent$/i, 1], [/^prompts$/i, 1], [/^commands$/i, 2], [/^agent.?prompts$/i, 4],
+  [/^mild$/i, 10], [/^annoyed$/i, 5], [/^frustrated$/i, 1], [/^rage$/i, 7]]
 function colorFor(label) {
   const pal = PALETTE(), isProfile = state.meta?.profiles?.includes(label)
   if (!isProfile && !colorIdx.has(label)) { const f = FIXED.find(([re]) => re.test(String(label))); if (f) return pal[f[1] - 1] }
@@ -757,7 +783,7 @@ function makePanel(p, grid, list = state.panels) {
   // Title, then at most one short line; anything longer sits behind the ⓘ. Charts get a visible Chart | Table switch.
   const topNote = p.top ? `top ${p.top}; Table lists all` : ''
   el.innerHTML = `<header><div><h3>${esc(p.title)}${info([p.info, topNote].filter(Boolean).join('\n'))}</h3>${p.note ? `<p class="note">${p.note}</p>` : ''}</div><div class="acts">
-    ${p.kind === 'table' ? '<input class="tfilter" placeholder="Filter…">' : ''}
+    ${p.kind === 'table' ? '<input class="tfilter" placeholder="Filter…" hidden>' : ''}
     <button class="ib" data-a="csv" title="Download CSV">${ICON.csv}</button><button class="ib" data-a="max" title="Expand (esc closes)">${ICON.max}</button>
     ${chartable ? '<div class="seg sm"><button data-v="chart" class="on">Chart</button><button data-v="table">Table</button></div>' : ''}</div></header>
     <div class="body"><div class="skel ${p.kind === 'table' ? 's' : ''}"></div></div>`
@@ -778,7 +804,7 @@ function destroyChart(P) { if (P.chart) { P.chart.destroy(); P.chart = null } }
 function fill(P, d, opts) {
   if (!d) { P.body.innerHTML = '<div class="err">query missing</div>'; return }
   P.data = d
-  if (P.p.kind === 'heatmap') { destroyChart(P); return heatmap(P.body, d) }
+  if (P.p.kind === 'heatmap') { destroyChart(P); return heatmap(P.body, d, P.p) }
   if (P.view === 'table') return drawTable(P, opts)
   drawChart(P)
 }
@@ -804,15 +830,19 @@ function drawTable(P, opts = P.opts || {}) {
   const d = P.data, el = P.body
   if (!d) return
   if (!d.rows.length) { el.innerHTML = '<div class="empty">No data for this filter</div>'; return }
-  const long = new Set(opts.long || ['text', 'prompt', 'description', 'title', 'error', 'target', 'section'])
+  const long = new Set(opts.long || ['text', 'prompt', 'description', 'title', 'error', 'target', 'section', 'summary', 'finding'])
   let rows = d.rows
   if (P.filter) rows = rows.filter(r => r.some(v => v != null && String(v).toLowerCase().includes(P.filter)))
   const { col, asc } = P.sort
   if (col >= 0) rows = rows.slice().sort((a, b) => { const x = a[col] ?? -Infinity, y = b[col] ?? -Infinity; return x > y ? (asc ? 1 : -1) : x < y ? (asc ? -1 : 1) : 0 })
-  const LIMIT = 500, shown = rows.slice(0, LIMIT)
+  // Panels show the first rows; "Show all" opens the rest in a scroll box, Expand shows everything with every column.
+  const max = P.el?.classList.contains('max'), CAP = P.p.rows ?? 10
+  const LIMIT = !P.el || max || P.expanded ? 500 : CAP, shown = rows.slice(0, LIMIT)
   const barCols = d.cols.map((c, i) => /cost|saved|spent|usd|result_chars|^chars$/.test(c) && d.rows.some(r => typeof r[i] === 'number') ? Math.max(...d.rows.map(r => +r[i] || 0)) : 0)
-  const hide = new Set(opts.hide || [])
-  const numCol = d.cols.map((c, i) => d.rows.some(r => typeof r[i] === 'number'))
+  const hide = new Set([...(opts.hide || []), ...(max ? [] : (P.p.hide || []).filter(c => d.cols.includes(c)))])
+  const extraCols = max ? 0 : (P.p.hide || []).filter(c => d.cols.includes(c)).length
+  const numCol = d.cols.map((c, i) => !TS_COL.test(c) && d.rows.some(r => typeof r[i] === 'number'))
+  const f = P.el?.querySelector('.tfilter'); if (f) f.hidden = d.rows.length <= CAP && !P.filter
   const prev = el.querySelector('.tbl'), top = prev ? prev.scrollTop : 0
   el.innerHTML = `<div class="tbl"><table><thead><tr>${d.cols.map((c, i) => hide.has(c) ? '' : `<th data-i="${i}" class="${numCol[i] ? 'num' : ''}" title="${esc(c)}">${esc(opts.heads?.[c] ?? human(c))}${i === col ? `<span class="arrow">${asc ? '▲' : '▼'}</span>` : ''}</th>`).join('')}</tr></thead><tbody>${
     shown.map(r => `<tr class="${opts.rowClass ? opts.rowClass(r) : ''}">${r.map((v, i) => {
@@ -821,31 +851,46 @@ function drawTable(P, opts = P.opts || {}) {
       const custom = opts.cell && opts.cell(c, v, r)
       if (custom != null) return custom
       if (c === 'session_id' && v) return `<td><a data-sid="${esc(v)}" title="Open session">${esc(String(v).slice(0, 8))}</a></td>`
-      if (typeof v === 'number') {
+      if (typeof v === 'number' && numCol[i]) {
         const bar = barCols[i] && v > 0 ? `<span class="b" style="width:calc(${(100 * v / barCols[i]).toFixed(1)}% - 14px)"></span>` : ''
         return `<td class="num">${bar}<span class="v">${esc(fmtCell(c, v))}</span></td>`
       }
       if (typeof v === 'string' && /^(project|cwd|file|path)$/.test(c) && !long.has(c)) return `<td class="path" title="${esc(v)}">${esc(c === 'project' || c === 'cwd' ? projectLabel(v) : shortPath(v))}</td>`
-      const tip = typeof v === 'string' && (v.length > 60 || (c === 'tool' && v.startsWith('mcp__'))) ? esc(v.slice(0, 2000)) : ''
-      return `<td class="${long.has(c) ? 'long' : ''}"${tip ? ` title="${tip}"` : ''}>${esc(fmtCell(c, v))}</td>`
-    }).join('')}</tr>`).join('')}</tbody></table></div>${rows.length > LIMIT ? `<div class="more">Showing ${LIMIT} of ${rows.length} rows · download CSV for all</div>` : P.filter ? `<div class="more">${rows.length} of ${d.rows.length} rows</div>` : ''}`
+      const tip = typeof v === 'string' && (v.length > 34 || (c === 'tool' && v.startsWith('mcp__'))) ? esc(v.slice(0, 2000)) : ''
+      return long.has(c) ? `<td class="long"${tip ? ` title="${tip}"` : ''}><div class="clamp">${esc(fmtCell(c, v))}</div></td>`
+        : `<td class="txt"${tip ? ` title="${tip}"` : ''}>${esc(fmtCell(c, v))}</td>`
+    }).join('')}</tr>`).join('')}</tbody></table></div>${tableFoot(P, rows.length, d.rows.length, shown.length, CAP, max, extraCols)}`
   el.querySelector('.tbl').scrollTop = top
   el.querySelectorAll('th').forEach(th => th.onclick = () => {
     const i = +th.dataset.i; P.sort = { col: i, asc: P.sort.col === i ? !P.sort.asc : false }; drawTable(P)
   })
   el.querySelectorAll('a[data-sid]').forEach(a => a.onclick = () => openSession(a.dataset.sid))
+  const more = el.querySelector('[data-more]')
+  if (more) more.onclick = () => { P.expanded = !P.expanded; drawTable(P); if (!P.expanded) P.el.scrollIntoView({ block: 'nearest' }) }
+  const exp = el.querySelector('[data-expand]')
+  if (exp) exp.onclick = () => toggleMax(P)
 }
-function heatmap(el, d) {
-  const o = asObjs(d), m = {}
+/** Under a table: how many rows of how many, and the way to the rest. */
+function tableFoot(P, matched, total, shown, cap, max, extraCols) {
+  if (!P.el) return matched > shown ? `<div class="more">${shown} of ${big(matched)} rows · CSV has all</div>` : ''
+  const parts = [P.filter ? `${big(matched)} of ${big(total)} rows match` : matched > shown ? `${shown} of ${big(matched)} rows` : '']
+  if (shown > cap && !max && matched > shown) parts[0] += ' · CSV has all'
+  if (extraCols) parts.push(`<a data-expand title="Expand to see every column">+${extraCols} column${extraCols > 1 ? 's' : ''}</a>`)
+  const btn = !max && matched > cap ? `<button class="btn ghost sm" data-more>${P.expanded ? 'Show fewer' : `Show all ${big(matched)}`}</button>` : ''
+  const text = parts.filter(Boolean).join(' · ')
+  return text || btn ? `<div class="more"><span>${text}</span>${btn}</div>` : ''
+}
+function heatmap(el, d, p = {}) {
+  const o = asObjs(d), m = {}, val = p.val || 'cost', fmt = p.fmt || usd
   let max = 0
-  o.forEach(r => { m[r.weekday + '-' + r.hour] = r.cost; max = Math.max(max, r.cost) })
+  o.forEach(r => { m[r.weekday + '-' + r.hour] = r[val]; max = Math.max(max, r[val]) })
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], acc = css('--accent')
   let h = '<div class="heat"><div></div>' + [...Array(24).keys()].map(i => `<div>${i}</div>`).join('')
   for (const w of [1, 2, 3, 4, 5, 6, 0]) {
     h += `<div>${days[w]}</div>`
     for (let i = 0; i < 24; i++) {
       const v = m[w + '-' + i] || 0, a = max ? Math.sqrt(v / max) : 0
-      h += `<div data-tip="${days[w]} ${i}:00–${i + 1}:00\n${usd(v)}" style="background:${acc}${Math.round(a * 255).toString(16).padStart(2, '0')}"></div>`
+      h += `<div data-tip="${days[w]} ${i}:00–${i + 1}:00\n${fmt(v)}" style="background:${acc}${Math.round(a * 255).toString(16).padStart(2, '0')}"></div>`
     }
   }
   el.innerHTML = h + '</div>'
@@ -865,17 +910,18 @@ function toggleMax(P) {
   P.el.classList.toggle('max', on); $('#scrim').classList.toggle('on', on); document.body.classList.toggle('noscroll', on)
   maxed = on ? P : null
   if (P.chart) setTimeout(() => P.chart.resize(), 0)
+  else if (P.data && P.view === 'table') drawTable(P)
 }
 $('#scrim').onclick = () => maxed && toggleMax(maxed)
 
 // ---------- tabs ----------
-const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context']], ['Work', ['tools', 'agents', 'projects', 'prompts']], ['Quality', ['health', 'engine']], ['Improve', ['advisor', 'recurring', 'impact', 'savings']], ['Data', ['sql']]]
+const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context']], ['Work', ['tools', 'agents', 'projects', 'prompts']], ['Quality', ['mood', 'health', 'engine']], ['Improve', ['advisor', 'recurring', 'impact', 'savings']], ['Data', ['sql']]]
 const TABS = {
   live: { label: 'Live', sub: 'right now, pushed as you work', custom: renderLive, live: true, noKpis: true, filters: ['profiles'] },
   overview: { label: 'Overview', sub: 'spend, efficiency and where it goes', panels: [
     { title: 'Spend per day', q: 'daily_profile', kind: 'stacked', x: 'day', series: 'profile', y: 'cost', money: true, wide: true, note: 'by profile' },
     { title: 'Spend by token kind', q: 'cost_kinds', kind: 'doughnut', x: 'kind', y: 'cost', money: true, info: 'Cache reads: the whole context re-read on every request.\nCache writes: new or changed context.' },
-    { title: 'Profiles', q: 'by_profile', kind: 'table' },
+    { title: 'Profiles', q: 'by_profile', kind: 'table', hide: ['input', 'cache_write'] },
     { title: 'When you work', q: 'heatmap', kind: 'heatmap', wide: true, note: 'spend by weekday and hour' },
   ] },
   cost: { label: 'Cost & tokens', sub: 'models, tokens, cache and efficiency', panels: [
@@ -887,9 +933,9 @@ const TABS = {
     { title: 'Requests per day', q: 'model_mix_daily', kind: 'stacked', x: 'day', series: 'family', y: 'requests', note: 'by model family' },
     { title: 'Spend by hour of day', q: 'hours', kind: 'bar', x: 'hour', y: 'cost', money: true },
     { title: 'Effort levels', q: 'by_effort', kind: 'table' },
-    { title: 'Entrypoints', q: 'by_entrypoint', kind: 'table', note: 'cli, sdk, ide…' },
+    { title: 'Entrypoints', q: 'by_entrypoint', kind: 'table', note: 'cli, sdk, ide…', hide: ['input', 'cache_write'] },
     { title: 'Stop reasons', q: 'stop_reasons', kind: 'table' },
-    { title: 'Claude Code versions', q: 'by_version', kind: 'table' },
+    { title: 'Claude Code versions', q: 'by_version', kind: 'table', hide: ['input', 'cache_write'] },
   ] },
   context: { label: 'Context', sub: 'how big requests get, and what fills them', panels: [
     { title: 'Requests by context size', q: 'ctx_buckets', kind: 'bar', x: 'bucket', y: ['requests'], info: 'Context = input + cache read + cache write of one request.' },
@@ -913,7 +959,7 @@ const TABS = {
     { title: 'File extensions', q: 'extensions', kind: 'table' },
     { title: 'LSP vs text search per day', q: 'search_vs_lsp', kind: 'bar', x: 'day', y: ['lsp', 'text_search'] },
     { title: 'LSP operations', q: 'lsp', kind: 'table' },
-    { title: 'MCP servers', q: 'mcp', kind: 'table' },
+    { title: 'MCP servers', q: 'mcp', kind: 'table', hide: ['images'] },
     { title: 'Skills', q: 'skills', kind: 'table' },
     { title: 'Web fetch and search', q: 'web', kind: 'table' },
     { title: 'Tool errors', q: 'tool_errors', kind: 'table' },
@@ -922,7 +968,7 @@ const TABS = {
     { title: 'Spend by agent type', q: 'by_agent_type', kind: 'hbar', x: 'agent_type', y: 'cost', money: true, info: 'Table has calls, tokens and models per type.' },
     { title: 'Models per agent type', q: 'agent_model', kind: 'stacked', x: 'agent_type', series: 'model', y: 'cost', money: true, note: 'spend' },
     { title: 'Spawns', q: 'agent_spawns', kind: 'table', wide: true, note: 'Agent tool calls by type and model parameter' },
-    { title: 'Most expensive subagents', q: 'top_agents', kind: 'table', wide: true },
+    { title: 'Most expensive subagents', q: 'top_agents', kind: 'table', wide: true, hide: ['agent_id'] },
   ] },
   projects: { label: 'Projects & sessions', sub: 'where the work happened', panels: [
     { title: 'Spend per day', q: 'project_daily', kind: 'stacked', x: 'day', series: 'project', y: 'cost', money: true, wide: true, note: 'top 8 projects' },
@@ -930,7 +976,7 @@ const TABS = {
     { title: 'Session cost vs peak context', q: 'session_scatter', kind: 'scatter', x: 'max_context', y: 'cost', series: 'profile', xLabel: 'peak context (tokens)', yLabel: 'session cost', logY: true, tall: true, note: 'click a dot for its timeline', info: 'Each dot is a session. Top right: long sessions that grew huge.' },
     { title: 'Session cost distribution', q: 'session_sizes', kind: 'bar', x: 'size', y: ['sessions'] },
     { title: 'Branches', q: 'by_branch', kind: 'table' },
-    { title: 'Sessions', q: 'sessions', kind: 'table', wide: true, note: 'most expensive first · click an id for its timeline' },
+    { title: 'Sessions', q: 'sessions', kind: 'table', wide: true, note: 'most expensive first · click an id for its timeline', hide: ['subagent_requests', 'cc_cost', 'lines_added', 'lines_removed'] },
   ] },
   prompts: { label: 'Prompts', sub: 'what you asked, and what each ask cost', panels: [
     { title: 'Prompts per day', q: 'prompts_daily', kind: 'stacked', x: 'day', y: ['prompts', 'commands', 'agent_prompts'], wide: true, note: 'prompts, commands and agent prompts' },
@@ -939,6 +985,21 @@ const TABS = {
     { title: 'Slash commands', q: 'commands', kind: 'table' },
     { title: 'Most expensive prompts', q: 'expensive_prompts', kind: 'table', wide: true, info: 'A prompt’s cost is every request until the next prompt.' },
     { title: 'Recent prompts', q: 'recent_prompts', kind: 'table', wide: true },
+  ] },
+  mood: { label: 'Frustration', sub: 'how annoyed your prompts read, and when', kpis: renderMoodKpis,
+    about: ['Every prompt gets a score from 0 (calm) to 100 (rage): swearing, insults, giving up, repeating yourself, blame, corrections, shouting, !!/???, plus an interrupt, a rejected call or the same ask again just before it. Levels: mild 1–24, annoyed 25–49, frustrated 50–74, rage 75+. A prompt counts against the model that answered the turn before it. The rules are in bin/frustration.py; nothing leaves your machine.'], panels: [
+    { title: 'Frustration per day', q: 'mood_daily', kind: 'line', x: 'day', y: ['avg_score', 'annoyed_pct', 'frustrated_pct'], wide: true, note: 'average score and share of prompts at 25+ and 50+', info: 'avg score: 0–100 per prompt.\nannoyed %: prompts scoring 25 or more.\nfrustrated %: prompts scoring 50 or more.' },
+    { title: 'Heated prompts per day', q: 'mood_levels_daily', kind: 'stacked', x: 'day', series: 'level', y: 'prompts', note: 'by level, calm left out' },
+    { title: 'Frustration per week', q: 'mood_weekly', kind: 'bar', x: 'week', y: ['avg_score', 'frustrated_pct'], note: 'week starting Monday' },
+    { title: 'When it boils over', q: 'mood_heatmap', kind: 'heatmap', val: 'score', fmt: v => `avg score ${(+v).toFixed(1)}`, wide: true, note: 'average score by weekday and hour' },
+    { title: 'By hour of day', q: 'mood_hours', kind: 'bar', x: 'hour', y: ['avg_score'] },
+    { title: 'What sets it off', q: 'mood_signals', kind: 'hbar', x: 'signal', y: 'prompts', labelFmt: human, note: 'prompts showing each signal' },
+    { title: 'Signals per day', q: 'mood_signals_daily', kind: 'stacked', x: 'day', series: 'signal', y: 'n', wide: true },
+    { title: 'By model and effort', q: 'mood_by_model', kind: 'table', note: 'the model that answered the turn before', info: '5 prompts or more.' },
+    { title: 'By project', q: 'mood_by_project', kind: 'hbar', x: 'project', y: 'avg_score', tall: true, top: 15, info: '5 prompts or more.' },
+    { title: 'Most heated prompts', q: 'mood_prompts', kind: 'table', wide: true, note: 'highest score first · click an id for its timeline', hide: ['model'] },
+    { title: 'Most heated sessions', q: 'mood_sessions', kind: 'table', wide: true, note: 'most frustrated prompts first', hide: ['swearing', 'annoyed_pct'] },
+    { title: 'Recent prompts', q: 'mood_recent', kind: 'table', wide: true, note: 'newest first, with their score' },
   ] },
   health: { label: 'Health', sub: 'errors, compactions, turn times', panels: [
     { title: 'Events per day', q: 'system_daily', kind: 'stacked', x: 'day', series: 'subtype', y: 'n', wide: true, note: 'API errors, compactions, notices' },
@@ -1006,7 +1067,7 @@ async function render() {
 /** Fetch the current tab's data and fill it in place (charts animate to the new values). */
 async function refresh({ live = false } = {}) {
   const seq = ++state.seq, tab = TABS[state.tab], view = $('#view')
-  if (!tab.noKpis) renderKpis(seq)
+  if (!tab.noKpis) (tab.kpis || renderKpis)(seq)
   if (tab.custom) {
     if (live && !tab.live) { if (!tab.quiet) showStale(); return }
     try { await tab.custom(view, { live, seq }) } catch (e) { $('#status').innerHTML = `<span class="err">${esc(e.message)}</span>` }
@@ -1094,6 +1155,32 @@ async function renderKpis(seq) {
     }).join('')
     lastKpis = Object.fromEntries(cards.map(([key]) => [key, k[key]]))
     setTimeout(() => document.querySelectorAll('.kpi b.bump').forEach(b => b.classList.remove('bump')), 900)
+  } catch (e) { $('#kpis').innerHTML = `<div class="err">${esc(e.message)}</div>` }
+}
+
+/** The Frustration tab's tiles: the same tiles, sparklines and comparison as the spend row. */
+async function renderMoodKpis(seq) {
+  try {
+    const pr = prevRange(), n = +state.days
+    const [cur, daily, prev] = await Promise.all([api('/api/mood_kpis'), api('/api/mood_daily'),
+      state.compare && pr && n > 1 ? api('/api/mood_kpis', { days: 0, from: pr.from, to: pr.to }) : null])
+    if (seq !== state.seq) return
+    const k = asObjs(cur)[0] || {}, p = prev ? asObjs(prev)[0] || {} : {}, dd = asObjs(daily), days = dd.map(r => r.day)
+    const label = `prev ${n}d`, warm = css('--bad'), mut = css('--muted')
+    const score = v => v == null ? '–' : (+v).toFixed(1)
+    const cards = [
+      ['avg_score', score(k.avg_score), 'Frustration', 'Average score per prompt, 0 (calm) to 100 (rage)', p.avg_score, -1, dd.map(r => r.avg_score), warm, 'hero', 'big'],
+      ['frustrated_pct', pct(k.frustrated_pct), 'Frustrated prompts', 'Prompts scoring 50 or more', p.frustrated_pct, -1, dd.map(r => r.frustrated_pct), mut, '', 'pct'],
+      ['annoyed_pct', pct(k.annoyed_pct), 'Annoyed or worse', 'Prompts scoring 25 or more', p.annoyed_pct, -1, dd.map(r => r.annoyed_pct), mut, '', 'pct'],
+      ['rage', big(k.rage), 'Rage prompts', 'Prompts scoring 75 or more', p.rage, -1, dd.map(r => r.rage), mut, '', 'big'],
+      ['swearing', big(k.swearing), 'Prompts with swearing', '', p.swearing, -1, dd.map(r => r.swearing), mut, '', 'big'],
+      ['peak', big(k.peak), 'Peak score', 'The highest-scoring prompt in the period', p.peak, -1, dd.map(r => r.peak), mut, '', 'big'],
+      ['prompts', big(k.prompts), 'Prompts scored', '', p.prompts, 0, dd.map(r => r.prompts), mut, '', 'big'],
+    ]
+    $('#kpis').classList.remove('flat')
+    $('#kpis').innerHTML = cards.map(([key, v, l, title, prevV, sense, sp, color, cls, f]) =>
+      tile({ label: l, value: v, cls, title, sub: !pr && n > 1 && state.compare ? (cls ? deltaHtml(0, 0, 0, 'none') : '<span class="delta">&nbsp;</span>') : deltaHtml(k[key], prevV, sense, label),
+             extra: dd.length > 1 && spark(sp, color, days, f) })).join('')
   } catch (e) { $('#kpis').innerHTML = `<div class="err">${esc(e.message)}</div>` }
 }
 
@@ -1370,10 +1457,13 @@ async function renderAdvisor(view) {
   const seg = Array.isArray(d.segments) ? d.segments : d.segments?.project || []
   if (seg.length) {
     const sc = Object.keys(seg[0]).filter(k => !['project', 'segment'].includes(k))
-    add({ title: 'Metrics by project', info: 'The advisor scopes advice to the projects where a lever lives; what helps one project can hurt another.', kind: 'table', wide: true }, { cols: ['project', ...sc], rows: seg.map(r => [r.project ?? r.segment, ...sc.map(k => k === 'spendShare' ? (100 * r[k]).toFixed(0) + '%' : r[k] == null ? '' : typeof r[k] === 'number' && !Number.isInteger(r[k]) ? +r[k].toFixed(2) : r[k])]) })
+    const metricOf = Object.fromEntries(d.metrics.map(m => [m.key || m.metric, m]))
+    fill(makePanel({ title: 'Metrics by project', info: 'The advisor scopes advice to the projects where a lever lives; what helps one project can hurt another.', kind: 'table', wide: true, hide: ['whole_file_reads', 'requests_per_prompt', 'non_english_prompts'] }, grid),
+      { cols: ['project', 'spend_share', ...sc.filter(k => k !== 'spendShare')], rows: seg.map(r => [r.project ?? r.segment, r.spendShare == null ? null : 100 * r.spendShare, ...sc.filter(k => k !== 'spendShare').map(k => r[k] ?? null)]) },
+      { cell: (c, v) => typeof v === 'number' && (metricOf[c] || c === 'spend_share') ? `<td class="num">${c === 'spend_share' ? Math.round(v) + '%' : advValue(metricOf[c], v)}</td>` : null })
   }
   add({ title: 'Setting changes', info: 'Read from session starts. The advisor uses these to tell your own changes from its advice.', kind: 'table' }, tbl(d.changes, ['ts', 'profile', 'what', 'change']))
-  add({ title: 'Research runs', kind: 'table' }, tbl(d.runs, ['started', 'trigger_', 'model', 'status', 'recs', 'summary']))
+  add({ title: 'Research runs', kind: 'table', wide: true }, tbl(d.runs, ['started', 'trigger_', 'model', 'status', 'recs', 'summary']))
   if (d.notes.length) add({ title: 'Research notes', info: 'stale: checked more than 90 days ago; the next run re-checks it', kind: 'table', wide: true }, tbl(d.notes.map(x => ({ ...x, stale: x.stale ? 'stale' : '' })), ['ts', 'topic', 'finding', 'source', 'kind', 'published', 'checked', 'stale']))
 
   view.querySelectorAll('[data-rec]').forEach(b => b.onclick = async () => {
@@ -1418,14 +1508,14 @@ async function renderRecurring(view) {
   const STATUS = { new: 'New', automated: 'Automated', dismissed: 'Dismissed' }
   const EFF = { stopped: ['good', 'stopped'], dropped: ['good', 'dropped'], unchanged: ['bad', 'unchanged'], 'too early': ['', 'too early'], 'no baseline': ['', 'no baseline'] }
   const cols = [['title', 'Ask', 0], ['count', 'Times', 1], ['days', 'Days', 1], ['perMonth', '/month', 1], ['costPerMonth', '$/month', 1], ['score', 'Score', 1], ['last', 'Last', 0], ['st', 'Status', 0]]
-  const view_ = { key: 'score', asc: false, show: 'open' }
+  const view_ = { key: 'score', asc: false, show: 'open', all: false }, CAP = 10
   const title = c => c.label?.title || c.exemplar
   const val = (c, k) => k === 'title' ? title(c).toLowerCase() : k === 'last' ? c.lastSeen : k === 'st' ? c.status : c[k]
   const shows = { open: c => c.status !== 'dismissed', all: () => true, automated: c => c.status === 'automated', dismissed: c => c.status === 'dismissed' }
   const seg = `<div class="seg sm">${Object.keys(shows).map(k => `<button data-show="${k}">${k[0].toUpperCase() + k.slice(1)}<span class="n">${d.clusters.filter(shows[k]).length}</span></button>`).join('')}</div>`
   view.insertAdjacentHTML('beforeend', `${sec('Asks', 'click a row for details', seg)}
-    <div class="rc-wrap"><table class="rc"><thead></thead><tbody></tbody></table></div>`)
-  const thead = view.querySelector('table.rc thead'), tbody = view.querySelector('table.rc tbody')
+    <div class="rc-wrap"><table class="rc"><thead></thead><tbody></tbody></table><div class="more rc-foot"></div></div>`)
+  const thead = view.querySelector('table.rc thead'), tbody = view.querySelector('table.rc tbody'), foot = view.querySelector('.rc-foot')
   const detail = c => {
     const L = c.label, A = L?.automation, e = c.effect
     const btn = (st, label, kind = '') => `<button class="btn sm ${kind}" data-id="${esc(c.id)}" data-st="${st}">${label}</button>`
@@ -1443,8 +1533,10 @@ async function renderRecurring(view) {
   }
   const draw = () => {
     thead.innerHTML = '<tr>' + cols.map(([k, l, n]) => `<th class="${n ? 'num' : ''}" data-k="${k}">${l}${view_.key === k ? `<span class="arrow">${view_.asc ? '▲' : '▼'}</span>` : ''}</th>`).join('') + '</tr>'
-    const rows = d.clusters.filter(shows[view_.show])
+    const all = d.clusters.filter(shows[view_.show])
       .sort((a, b) => { const x = val(a, view_.key), y = val(b, view_.key); return (x < y ? -1 : x > y ? 1 : 0) * (view_.asc ? 1 : -1) })
+    const rows = view_.all ? all : all.slice(0, CAP)
+    foot.innerHTML = all.length > CAP ? `<span>${rows.length} of ${all.length} asks</span><button class="btn ghost sm" data-all>${view_.all ? 'Show fewer' : `Show all ${all.length}`}</button>` : ''
     tbody.innerHTML = rows.map(c => `<tr class="rc-row" data-id="${esc(c.id)}"><td class="ask"><span class="t">${esc(title(c))}</span><small>${c.label ? esc(c.label.category || '') + (c.label.automation?.kind && c.label.automation.kind !== 'none' ? ' · ' + esc(c.label.automation.kind.replace(/_/g, ' ')) : '') : esc(c.reason)}</small></td>
       <td class="num">${big(c.count)}</td><td class="num">${c.days}</td><td class="num">${c.perMonth}</td><td class="num">${usd(c.costPerMonth)}</td><td class="num">${Math.round(c.score)}</td><td>${esc(c.lastSeen)}</td>
       <td>${tag(STATUS[c.status] || esc(c.status), c.status === 'automated' ? 'good' : 'plain')}</td></tr>${detail(c)}`).join('') || `<tr><td colspan="${cols.length}"><small>Nothing here.</small></td></tr>`
@@ -1453,7 +1545,8 @@ async function renderRecurring(view) {
   view.onclick = async ev => {
     const t = ev.target
     if (t.closest('th[data-k]')) { const k = t.closest('th').dataset.k; view_.asc = view_.key === k ? !view_.asc : k === 'title'; view_.key = k; draw(); return }
-    const sh = t.closest('[data-show]'); if (sh) { view_.show = sh.dataset.show; draw(); return }
+    const sh = t.closest('[data-show]'); if (sh) { view_.show = sh.dataset.show; view_.all = false; draw(); return }
+    if (t.closest('[data-all]')) { view_.all = !view_.all; draw(); if (!view_.all) view.querySelector('.rc-wrap').scrollIntoView({ block: 'nearest' }); return }
     if (t.dataset.copy) return navigator.clipboard.writeText(t.dataset.copy).then(() => toast('Copied: ' + t.dataset.copy), () => toast(t.dataset.copy))
     if (t.dataset.copyDraft) {
       const c = d.clusters.find(x => x.id === t.dataset.copyDraft)

@@ -67,14 +67,18 @@ METRICS = [
     ('verify_coverage', 'Editing turns with a check', 'quality', 'verify_turns_edit', 'edit_turns', 100, None, 'pct'),
     ('edit_survival', 'Lines kept at the next commit', 'quality', 'lines_kept', 'lines_written', 100, False, 'pct'),
     ('files_shipped', 'Edited files committed', 'quality', 'files_committed', 'files_edited', 100, False, 'pct'),
+    # Frustration: how annoyed the prompts read (rules in frustration.py)
+    ('frustration', 'Frustration per prompt (0-100)', 'quality', 'mood_score', 'mood_prompts', 1, True, 'num'),
+    ('frustrated_rate', 'Frustrated prompts per 100', 'quality', 'frustrated', 'mood_prompts', 100, True, 'num'),
 ]
 M = {m[0]: m for m in METRICS}
 # A cheaper or faster change that makes the output worse is not an improvement: the quality guards catch that.
-GUARDS = ('cost_per_prompt', 'requests_per_prompt', 'tool_error_rate', 'turn_seconds', 'api_errors', 'correction_rate', 'verify_pass', 'interrupt_rate')
+GUARDS = ('cost_per_prompt', 'requests_per_prompt', 'tool_error_rate', 'turn_seconds', 'api_errors', 'correction_rate', 'verify_pass', 'interrupt_rate',
+          'frustrated_rate')
 # A guard only counts as a side effect when it also got worse by at least this much in its own unit:
 # a rare event doubling (0.02 → 0.04 API errors per 100 requests) is not a cost.
 GUARD_FLOOR = {'cost_per_prompt': 0.02, 'requests_per_prompt': 0.5, 'tool_error_rate': 1.0, 'turn_seconds': 5.0, 'api_errors': 0.5,
-               'correction_rate': 2.0, 'verify_pass': 5.0, 'interrupt_rate': 2.0}
+               'correction_rate': 2.0, 'verify_pass': 5.0, 'interrupt_rate': 2.0, 'frustrated_rate': 2.0}
 STATUSES = ('proposed', 'accepted', 'trial', 'applied', 'dismissed', 'reverted')
 WINDOW_DAYS = 28        # before/after window around an applied recommendation
 MIN_AFTER = 8           # sessions on each side before any verdict
@@ -179,7 +183,7 @@ def sessions(con, since, until=None, profiles=None):
         rows[sid] = dict(sid=sid, profile=prof, day=first, project=proj or '', entrypoint=entry or '', cost=cost, requests=reqs, tokens=tokens, output=out, cache_read=cr,
                          ctx_total=ctx, main_ctx=main_ctx, main_reqs=main_reqs or 0, premium_cost=prem, sub_cost=sub,
                          prompts=0, prompt_chars=0, non_en=0, tool_calls=0, tool_errors=0, tool_chars=0, reads=0, whole_reads=0,
-                         api_errors=0, compactions=0, turns=0, turn_ms=0)
+                         api_errors=0, compactions=0, turns=0, turn_ms=0, mood_prompts=0, mood_score=0, frustrated=0)
     sids = list(rows)
     for i in range(0, len(sids), 500):
         chunk = sids[i:i + 500]
@@ -202,6 +206,12 @@ def sessions(con, since, until=None, profiles=None):
                 r['compactions'] = n
             else:
                 r['turns'], r['turn_ms'] = n, ms
+        try:
+            for sid, n, total, hot in con.execute(f'''SELECT session_id, COUNT(*), TOTAL(score), SUM(score >= 50) FROM mood
+                    WHERE session_id IN ({q}) GROUP BY 1''', chunk):
+                rows[sid].update(mood_prompts=n, mood_score=total, frustrated=hot or 0)
+        except sqlite3.OperationalError:  # no mood table before the first import with frustration scoring
+            pass
     for sid, qv in quality.session_quality(con, sids).items():
         rows[sid].update(qv)
     return [r for r in rows.values() if r['prompts'] > 0]

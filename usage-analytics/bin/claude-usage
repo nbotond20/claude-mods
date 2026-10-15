@@ -13,7 +13,7 @@ Commands:
   ingest  [--quiet] [--full]          fold new data in (lock-protected, incremental by byte offset)
   report  [what] [--days N] [--profile P[,P]] [--project S] [--limit N] [--ingest]
           what: overview (default) | profiles | daily | models | projects | tools | bash | files |
-                agents | sessions | context | hours | cache | prompts | gateway | quality | all
+                agents | sessions | context | hours | cache | prompts | gateway | quality | frustration | all
   sql     "SELECT ..."                run any query (tables: see `schema`)
   schema                              list tables and views
   export  TABLE|VIEW [--format csv|jsonl] [--out FILE]
@@ -34,6 +34,7 @@ from datetime import datetime, timedelta, timezone
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import paths  # noqa: E402
 import quality  # noqa: E402
+import frustration  # noqa: E402
 
 HOME = paths.HOME
 DATA = paths.DATA
@@ -163,6 +164,7 @@ def connect():
     con.execute('PRAGMA journal_mode=WAL')
     con.execute('PRAGMA synchronous=NORMAL')
     con.executescript(DDL)
+    con.executescript(frustration.DDL)
     migrate(con)
     con.execute("INSERT OR REPLACE INTO meta VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),))
     return con
@@ -362,6 +364,7 @@ class Ingest:
         self.con, self.args = con, args
         self.cost = make_coster()
         self.n = {'requests': 0, 'tools': 0, 'prompts': 0, 'events': 0, 'files': 0}
+        self.touched = set()  # sessions with new prompts: their frustration scores are worked out again
 
     # ---- transcripts -------------------------------------------------------
     def transcript(self, path, profile, agent_id, start):
@@ -509,6 +512,7 @@ class Ingest:
         if not text or not d.get('uuid'):
             return
         kind = prompt_kind(text, d.get('isMeta'), bool(aid) and d.get('parentUuid') is None)
+        self.touched.add(d.get('sessionId'))
         self.con.execute('INSERT OR IGNORE INTO prompts VALUES (?,?,?,?,?,?,?,?,?,?)',
                          (d['uuid'], profile, d.get('sessionId'), aid, ts, day, project_of(d.get('cwd')), kind, len(text),
                           redact(text if kind in ('prompt', 'command', 'agent_prompt') else text[:500])))
@@ -650,7 +654,7 @@ class Ingest:
     def run(self, full=False, progress=None):
         con = self.con
         if full:
-            for t in ('files', 'requests', 'tool_uses', 'prompts', 'attachments', 'system_events', 'sessions', 'agents', 'events'):
+            for t in ('files', 'requests', 'tool_uses', 'prompts', 'attachments', 'system_events', 'sessions', 'agents', 'events', 'mood'):
                 con.execute(f'DELETE FROM {t}')
             con.execute("DELETE FROM meta WHERE k = 'backfill_quality'")
         known = {r[0]: r[1:] for r in con.execute('SELECT path, size, mtime, offset FROM files')}
@@ -708,6 +712,12 @@ class Ingest:
         self.gateway()
         con.commit()
         self.backfill_quality(budget_s=240 if getattr(self.args, 'quiet', False) else None)
+        try:
+            n = frustration.refresh(con, [s for s in self.touched if s])
+            if n:
+                log(self.args, f'frustration: scored the prompts of {n} sessions')
+        except Exception as ex:  # a scoring bug must not fail the import
+            log(self.args, f'frustration: {ex}')
         if git_outcomes_on():
             try:
                 quality.refresh_git(con, budget_s=15)
@@ -949,6 +959,20 @@ def cmd_report(args):
             print(f'\n## Cost vs quality: {title.lower()}\n' + ' | '.join(head))
             for row in body:
                 print(' | '.join(str(x) for x in row))
+    if want('frustration'):
+        M = '''COUNT(*) prompts, ROUND(AVG(score), 1) avg_score, SUM(score >= 50) frustrated, SUM(score >= 75) rage,
+            ROUND(100.0 * SUM(score >= 50) / COUNT(*), 1) frustrated_pct, MAX(score) peak'''
+        print('\n## Frustration (0 calm .. 100 rage per prompt; frustrated 50+, rage 75+; rules in bin/frustration.py)')
+        table(con, 'Overall', f'SELECT {M} FROM mood WHERE {W}', p)
+        table(con, 'By week', f"SELECT date(day, 'weekday 0', '-6 days') week, {M} FROM mood WHERE {W} GROUP BY 1 ORDER BY 1 DESC LIMIT ?", p + [L])
+        table(con, 'By day', f'SELECT day, {M} FROM mood WHERE {W} GROUP BY day ORDER BY day DESC LIMIT ?', p + [L])
+        table(con, 'Signals', f'''SELECT s.value signal, COUNT(*) prompts, ROUND(AVG(score), 1) avg_score FROM mood, json_each(mood.signals) s
+            WHERE {W} GROUP BY 1 ORDER BY prompts DESC''', p)
+        table(con, 'By model and effort (the turn before the prompt)', f'''SELECT COALESCE(model, '?') model, COALESCE(effort, '-') effort, {M}
+            FROM mood WHERE {W} GROUP BY 1, 2 HAVING prompts >= 5 ORDER BY avg_score DESC''', p)
+        table(con, 'By project', f'SELECT project, {M} FROM mood WHERE {W} GROUP BY project HAVING prompts >= 5 ORDER BY avg_score DESC LIMIT ?', p + [L])
+        table(con, 'Most heated prompts', f'''SELECT m.ts, m.score, m.signals, substr(replace(p.text, char(10), ' '), 1, 100) text FROM (SELECT * FROM mood WHERE {W}) m
+            JOIN prompts p USING (uuid) WHERE m.score > 0 ORDER BY m.score DESC, m.ts DESC LIMIT ?''', p + [L])
     if want('hours'):
         table(con, 'By hour of day (local)', f'''SELECT printf('%02d:00', hour) hour, COUNT(*) requests, {TOK}
             FROM requests WHERE {W} GROUP BY hour ORDER BY hour''', p)
@@ -1423,7 +1447,7 @@ def main(argv=None):
     r = sub.add_parser('report')
     r.add_argument('what', nargs='?', default='overview',
                    choices=['overview', 'profiles', 'daily', 'models', 'projects', 'tools', 'bash', 'files', 'agents',
-                            'sessions', 'context', 'hours', 'cache', 'prompts', 'gateway', 'quality', 'all'])
+                            'sessions', 'context', 'hours', 'cache', 'prompts', 'gateway', 'quality', 'frustration', 'all'])
     r.add_argument('--days', type=int, default=30, help='0 = all time')
     r.add_argument('--profile'); r.add_argument('--project'); r.add_argument('--limit', type=int, default=15)
     r.add_argument('--ingest', action='store_true', help='ingest new data first')

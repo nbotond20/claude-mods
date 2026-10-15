@@ -56,7 +56,7 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 | | |
 | --- | --- |
 | `/analytics setup` | the setup wizard |
-| `/dashboard [tab]` or `/analytics dashboard [tab]` | starts the dashboard in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, tools, agents, projects, prompts, health, engine, advisor, recurring, impact, savings, sql) |
+| `/dashboard [tab]` or `/analytics dashboard [tab]` | starts the dashboard in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, tools, agents, projects, prompts, mood, health, engine, advisor, recurring, impact, savings, sql) |
 | `/analytics advise` (or `advise now`) | research how to use Claude cheaper, with fewer tokens, faster and more reliably, here in the conversation ([below](#the-advisor)) |
 | `/analytics advise bg` · `show` | the same research in the background · the trends, findings and recommendations in the terminal |
 | `/analytics advise apply <id>` | shows the exact change, asks before making it, and starts measuring it |
@@ -141,6 +141,29 @@ Cost and token numbers alone can't tell a cheaper setup from a worse one. These 
 | Lines kept | for each edited file in a git repo, the first commit (any branch) within 3 days after Claude's last edit, and the share of Claude's written lines found in it. Only line hashes are stored. A file without such a commit counts as not committed, once the 3 days are over. |
 
 `claude-usage report quality [--days N] [--project X]` prints the numbers, then cost and quality side by side per model, per model and effort, and per project. Use it to see whether a cheaper model, a lower effort or a smaller context did the same work. The advisor's A/B trials and before/after verdicts check the quality guards automatically.
+
+## Frustration meter
+
+Every main-loop prompt gets a score from 0 (calm) to 100 (rage): the sum of the weights of the signals it shows, capped at 100. Code blocks, pasted blocks, inline code, links and paths are left out first, so a pasted SQL query or log is not "shouting". All rules and weights are in `bin/frustration.py`:
+
+| Signal | Weight | Rule |
+|---|---|---|
+| swearing | 35 | fuck, shit, wtf, ffs, damn, kurva, bazdmeg, … |
+| insult | 30 | stupid, idiot, useless, incompetent, … |
+| giving up | 20 | "forget it", "never mind", "I'll do it myself", "this is ridiculous" |
+| repeating self | 15 | "how many times", "I already said", "for the third time", "you keep" |
+| correction | 15 | a push-back or redo (the *Output quality* rule) |
+| shouting | 15 | in prose lines: two or more ALL-CAPS words (acronyms left out) making up a quarter of the words, or mostly upper case |
+| repeated ask | 15 | nearly the same words as one of the 3 prompts before it |
+| blame | 10 | "you broke", "why did you", "did you even" |
+| punctuation | 10 | `!!`, `???`, `?!` |
+| after interrupt | 10 | the previous turn was stopped |
+| rejected calls | 10 | a tool call was refused in the previous turn (not on top of an interrupt) |
+| elongation, terse | 5 | "nooooo"; a correction under 20 characters |
+
+Levels: calm 0, mild 1–24, annoyed 25–49, frustrated 50–74, rage 75+. Each prompt is tied to the model and effort that answered the turn before it, the one being reacted to. Scores live in the `mood` table; changing a rule bumps `VERSION` and every prompt is scored again at the next import.
+
+The **Frustration** tab (under Quality) shows KPI tiles, the score per day and per week, levels per day, a weekday×hour heatmap, signals over time, the score by model and effort and by project, the most heated prompts and sessions. `claude-usage report frustration [--days N] [--project X]` prints the same in a terminal. The advisor tracks the average score and the frustrated share, and the frustrated share is a guard: a recommendation that makes you angrier is not graded as *helped*.
 
 ## Recurring asks
 
@@ -230,6 +253,7 @@ The filters (period, profiles, model, project) apply to every panel. Click any s
 | Agents | Spend by agent type; which model each type ran on; spawns by type and `model` parameter; the most expensive subagents. |
 | Projects & sessions | Spend per day for the top 8 projects; a scatter of session cost against peak context (click a dot); spend by project and branch; the session cost distribution; the session list. |
 | Prompts | Prompts and commands per day; message kinds; prompt length; slash commands; the most expensive prompts (all requests until the next prompt); recent prompts. |
+| Frustration | Score per prompt, day and week; levels per day; weekday×hour heatmap; signals; by model, effort and project; most heated prompts and sessions ([above](#frustration-meter)). |
 | Health | API errors, compactions and notices per day; turn durations; recent errors; compactions. |
 | Engine | From the mod: TTFT and latency by model; tool latency; tool schema sizes; system prompt sections; rate limits; event counts. |
 | Advisor | Metric trends, findings, recommendations with their evidence grade and verdict, A/B trial controls ([above](#the-advisor)). |

@@ -27,11 +27,17 @@ COLS = {
     'v_system_prompt': ('day', 'profile'),
     'v_tool_schemas': ('profile',),
     'gateway_spend': ('day', 'profile', 'model'),
+    'mood': ('day', 'profile', 'project', 'model'),
 }
 
 TOK = '''ROUND(SUM(cost_usd), 2) cost, COUNT(*) requests, SUM(input) input, SUM(output) output,
   SUM(cache_read) cache_read, SUM(cache_write) cache_write,
   ROUND(100.0 * SUM(cache_read) / NULLIF(SUM(input + cache_read + cache_write), 0), 1) hit_pct'''
+
+# Frustration aggregates over mood rows (score 0-100 per prompt; frustrated = 50+, rage = 75+).
+MOOD = '''ROUND(AVG(score), 1) avg_score, MAX(score) peak, SUM(score >= 50) frustrated, SUM(score >= 75) rage,
+  ROUND(100.0 * SUM(score >= 25) / COUNT(*), 1) annoyed_pct, ROUND(100.0 * SUM(score >= 50) / COUNT(*), 1) frustrated_pct,
+  SUM(signals LIKE '%"swearing"%') swearing'''
 
 # name -> (source table for filters, sql). `{W}` is replaced by the filter clause (repeatable).
 Q = {
@@ -173,6 +179,29 @@ Q = {
     'turn_durations': ('system_events', '''SELECT day, COUNT(*) turns, ROUND(AVG(duration_ms) / 1000.0, 1) avg_s, ROUND(MAX(duration_ms) / 1000.0) max_s,
         ROUND(AVG(message_count)) avg_messages FROM system_events WHERE {W} AND subtype = 'turn_duration' GROUP BY day ORDER BY day'''),
     'api_errors': ('system_events', "SELECT ts, profile, substr(data, 1, 300) error FROM system_events WHERE {W} AND subtype = 'api_error' ORDER BY ts DESC LIMIT 40"),
+    # Frustration meter: one scored row per main-loop prompt (rules and weights in frustration.py).
+    'mood_kpis': ('mood', f'''SELECT COUNT(*) prompts, {MOOD} FROM mood WHERE {{W}}'''),
+    'mood_daily': ('mood', f'SELECT day, COUNT(*) prompts, {MOOD} FROM mood WHERE {{W}} GROUP BY day ORDER BY day'),
+    'mood_weekly': ('mood', f'''SELECT date(day, 'weekday 0', '-6 days') week, COUNT(*) prompts, {MOOD}
+        FROM mood WHERE {{W}} GROUP BY 1 ORDER BY 1'''),
+    'mood_levels_daily': ('mood', '''SELECT day, level, COUNT(*) prompts FROM mood WHERE {W} AND score > 0 GROUP BY 1, 2
+        ORDER BY day, CASE level WHEN 'mild' THEN 1 WHEN 'annoyed' THEN 2 WHEN 'frustrated' THEN 3 ELSE 4 END'''),
+    'mood_heatmap': ('mood', 'SELECT weekday, hour, ROUND(AVG(score), 1) score, COUNT(*) prompts FROM mood WHERE {W} GROUP BY 1, 2'),
+    'mood_hours': ('mood', f'SELECT hour, COUNT(*) prompts, {MOOD} FROM mood WHERE {{W}} GROUP BY hour ORDER BY hour'),
+    'mood_signals': ('mood', '''SELECT s.value signal, COUNT(*) prompts, COUNT(DISTINCT session_id) sessions, ROUND(AVG(score), 1) avg_score
+        FROM mood, json_each(mood.signals) s WHERE {W} GROUP BY 1 ORDER BY prompts DESC'''),
+    'mood_signals_daily': ('mood', 'SELECT day, s.value signal, COUNT(*) n FROM mood, json_each(mood.signals) s WHERE {W} GROUP BY 1, 2 ORDER BY day'),
+    'mood_by_model': ('mood', f'''SELECT COALESCE(model, '?') model, COALESCE(effort, '-') effort, COUNT(*) prompts, {MOOD}
+        FROM mood WHERE {{W}} GROUP BY 1, 2 HAVING prompts >= 5 ORDER BY avg_score DESC'''),
+    'mood_by_project': ('mood', f'''SELECT project, COUNT(*) prompts, {MOOD} FROM mood WHERE {{W}}
+        GROUP BY project HAVING prompts >= 5 ORDER BY avg_score DESC LIMIT 40'''),
+    'mood_prompts': ('mood', '''SELECT r.ts, r.project, r.score, r.level, r.signals, substr(p.text, 1, 300) text, r.model, r.session_id
+        FROM mood r JOIN prompts p USING (uuid) WHERE {RW} AND r.score > 0 ORDER BY r.score DESC, r.ts DESC LIMIT 100'''),
+    'mood_recent': ('mood', '''SELECT r.ts, r.project, r.score, r.level, r.signals, substr(p.text, 1, 300) text, r.session_id
+        FROM mood r JOIN prompts p USING (uuid) WHERE {RW} ORDER BY r.ts DESC LIMIT 100'''),
+    'mood_sessions': ('mood', f'''SELECT r.session_id, MIN(r.day) day, s.title, r.project, COUNT(*) prompts, {MOOD}
+        FROM mood r LEFT JOIN sessions s USING (session_id) WHERE {{RW}} GROUP BY r.session_id HAVING peak > 0
+        ORDER BY frustrated DESC, avg_score DESC LIMIT 60'''),
     # From the usage-analytics mod's own log (present once sessions run with it).
     'mod_latency': ('v_mod_steps', '''SELECT model, COUNT(*) steps, ROUND(AVG(ttft_ms)) avg_ttft_ms, ROUND(AVG(ms)) avg_ms, MAX(ms) max_ms,
         ROUND(AVG(messages)) avg_messages FROM v_mod_steps WHERE {W} GROUP BY model ORDER BY steps DESC'''),

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.12.0
+- Frustration meter: every main-loop prompt gets a score from 0 (calm) to 100 (rage), from swearing, insults, giving up, repeating yourself, blame, corrections, shouting, `!!`/`???` and elongated words, plus an interrupt, a rejected call or nearly the same ask just before it. Code blocks, pasted blocks, inline code, links and paths are left out, so pasted SQL or diffs do not count as shouting. Levels: mild 1-24, annoyed 25-49, frustrated 50-74, rage 75+. The rules and weights are in `bin/frustration.py`.
+- A new *Frustration* tab under Quality: tiles with sparklines and the previous-period comparison, score per day and per week, heated prompts per day by level, a weekday × hour heatmap, by hour, which signals fire, by model and effort (the model that answered the turn before the prompt), by project, and the most heated prompts and sessions.
+- `claude-usage report frustration`: overall, by week and day, signals, by model and effort, by project, and the most heated prompts.
+- Advisor: *Frustration per prompt* and *Frustrated prompts per 100* under Quality; the frustrated-prompt rate is a guard metric.
+- A new `mood` table (one row per prompt, no prompt text). The import scores the sessions it touched; the first import after upgrading, or a change to the rules, scores every prompt again (a few seconds).
+
 ## 0.11.0
 - Output quality, so a cheaper setup can be shown to give results that are as good or better. A new *Quality* goal in the advisor and on the dashboard: corrections per 100 follow-ups, interrupts, rejected tool calls, edits that redo Claude's own new lines, turns whose last test/typecheck/lint/build passed, editing turns with a check, lines kept at the next commit and edited files committed. Plus *Cache writes after an idle gap* under Cost.
 - Correction rate, check pass rate and interrupt rate are guard metrics now: a recommendation that saves money but makes one of them worse is graded *helped, with a cost*, not *helped*.
