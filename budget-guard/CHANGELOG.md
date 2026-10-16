@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.3
+- Keep-alive pings once, not up to 6 times. In the usage data only idle stretches of one ping were followed by a cache read; the 6-ping stretches all ran out before you came back (net −$1.29 over 23 stretches).
+- The keep-alive saving is counted only when you are back within 5 minutes of the ping. Before, any later prompt counted as a saved cache write, even one an hour later after the cache had expired.
+
 ## 0.13.2
 - The band's LiteLLM `24h` and `7d` now match LiteLLM's UI: whole synced days only, today left out. `24h` is yesterday's spend and `7d` the six days before today, so the band and LiteLLM's "Last 24 hours" and "Last 7 days" show the same numbers. The 10-minute key readings (`key-history/`) are no longer taken; old files can be deleted.
 - Docs: screenshots of the band, the new-task hold and the savings pane.

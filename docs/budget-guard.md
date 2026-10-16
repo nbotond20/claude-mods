@@ -50,7 +50,7 @@ When a new-task prompt is held, the band shows the choice `[c] clear · [k] comp
 | **Context hold** | At `block` (default 300k) prompts are held until you /compact or /clear. Prefix a prompt with `force:` to send it anyway. | (none) |
 | **Read guards** | Reads of images are denied (unless `/budget images on`), as are reads of generated or vendored files: `node_modules`, `dist`, `build`, `.next`, `coverage`, lockfiles, `*.min.*`, `*.map`, `*.log`. | (not counted) |
 | **Build/test output trim** | Noisy commands keep only their last 300 lines in context; the full log goes to `$TMPDIR/budget-guard.XXXXXX`. Noisy means npm/pnpm/yarn/bun test/build/lint, jest, vitest, playwright, tsc, eslint, pytest, go/cargo test/build, docker build. | `output-trim` |
-| **Keep-alive** | On gateway profiles only, a tiny fork ping every 270s (at most 6, with at least 30k of context) keeps the prompt cache warm while you are idle. It turns itself off if a ping misses the cache. | `keep-alive` |
+| **Keep-alive** | On gateway profiles only, one tiny fork ping after 270s idle (with at least 30k of context) keeps the prompt cache warm for another 5 minutes. It turns itself off if a ping misses the cache. A saving is counted only when you are back while that cache is still warm. | `keep-alive` |
 | **Spend polling** | On gateway profiles, it reads LiteLLM `/key/info` every 60s for key spend, max budget and reset time. | (none) |
 
 ## On by default

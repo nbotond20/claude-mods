@@ -744,7 +744,10 @@ const KEEP_AGENT_MODEL = /^fork$/i
 /** Gateway spend and burn-rate readings; off a gateway the tick makes no request. */
 const LITELLM_POLL_MS = 60_000
 const KEEPALIVE_MS = 270_000
-const KEEPALIVE_MAX = 6
+/** One ping: in the usage data only stretches of one ping were followed by a cache read; longer ones ran out unused. */
+const KEEPALIVE_MAX = 1
+/** The prompt cache lives 5 minutes after the last read. */
+const CACHE_TTL_MS = 300_000
 const FLUSH_MS = 60_000
 const PANE = 'budget-savings'
 
@@ -777,7 +780,7 @@ const short = (model: string) => model.replace(/^claude-/, '').replace(/-(\d+)-(
 
 // Module-level: timers die with the module on reload, which is what they should do.
 let keepAliveTimer: Timer | null = null
-let pings = { count: 0, cost: 0, tokens: 0, model: OPUS }
+let pings = { count: 0, cost: 0, tokens: 0, model: OPUS, last: 0 }
 let lastMainModel = OPUS
 /** Where compaction starts: the mod's compactAt, else settings' autoCompactWindow (for the band). */
 let compactAt = 250_000
@@ -1067,7 +1070,7 @@ function scheduleKeepAlive($: EngineInterface) {
       if (!l.keepAlive || pings.count >= KEEPALIVE_MAX || tokens < 30_000 || !(await isGateway($))) return
       const r = await $.model.fork({ prompt: 'Reply with the single word: ok' })
       if (r.isAnswered === false && r.reason === 'nothing-to-fork') return
-      pings = { count: pings.count + 1, cost: pings.cost + costOf(r.usage, lastMainModel), tokens, model: lastMainModel }
+      pings = { count: pings.count + 1, cost: pings.cost + costOf(r.usage, lastMainModel), tokens, model: lastMainModel, last: Date.now() }
       await trackLog($, 'keepalive', { model: lastMainModel, tokens, cacheRead: r.usage.cache_read_input_tokens, cacheWrite: r.usage.cache_creation_input_tokens,
         input: r.usage.input_tokens, output: r.usage.output_tokens, costUsd: costOf(r.usage, lastMainModel), hit: r.usage.cache_read_input_tokens >= tokens * 0.5 })
       if (r.usage.cache_read_input_tokens < tokens * 0.5) {
@@ -1081,14 +1084,16 @@ function scheduleKeepAlive($: EngineInterface) {
   })
 }
 
-/** The prompt came back: if pings kept the cache warm, the first call reads it instead of writing it again. */
+/** The prompt came back: if it came while the pinged cache was still warm, the first call reads it instead of
+ * writing it again. Coming back later, the cache is gone and the pings were spent for nothing. */
 async function settleKeepAlive($: EngineInterface) {
   keepAliveTimer?.cancel()
   keepAliveTimer = null
   if (pings.count > 0) {
-    await addSaving($, 'keep-alive', writeCost(pings.tokens, pings.model) - readCost(pings.tokens, pings.model) - pings.cost)
+    const warm = Date.now() - pings.last < CACHE_TTL_MS
+    await addSaving($, 'keep-alive', (warm ? writeCost(pings.tokens, pings.model) - readCost(pings.tokens, pings.model) : 0) - pings.cost)
   }
-  pings = { count: 0, cost: 0, tokens: 0, model: lastMainModel }
+  pings = { count: 0, cost: 0, tokens: 0, model: lastMainModel, last: 0 }
 }
 
 async function classifyFirstPrompt($: EngineInterface, text: string, engineModel: string) {

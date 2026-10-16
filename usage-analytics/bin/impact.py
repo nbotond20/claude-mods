@@ -112,16 +112,16 @@ class Pricer:
 
 
 def _main_requests(con, sids):
-    """Main-loop requests per session as (ms, model, speed), and compaction times."""
+    """Main-loop requests per session as (ms, model, speed, cache_read), and compaction times."""
     reqs, comp = defaultdict(list), defaultdict(list)
     sids = list(sids)
     for i in range(0, len(sids), 500):
         chunk = sids[i:i + 500]
         q = ','.join('?' * len(chunk))
-        for sid, ts, model, speed in con.execute(f'SELECT session_id, ts, model, speed FROM requests WHERE agent_id IS NULL AND session_id IN ({q}) ORDER BY ts', chunk):
+        for sid, ts, model, speed, cr in con.execute(f'SELECT session_id, ts, model, speed, cache_read FROM requests WHERE agent_id IS NULL AND session_id IN ({q}) ORDER BY ts', chunk):
             ms = _iso_ms(ts)
             if ms:
-                reqs[sid].append((ms, model, speed))
+                reqs[sid].append((ms, model, speed, cr or 0))
         for sid, ts in con.execute(f"SELECT session_id, ts FROM system_events WHERE subtype = 'compact_boundary' AND session_id IN ({q})", chunk):
             ms = _iso_ms(ts)
             if ms:
@@ -139,8 +139,34 @@ def _carry(pr, reqs, comp, sid, ts, tokens, survives_compaction=False):
             later = [r for r in later if r[0] < cut]
     if not later:
         return 0.0, 0
-    usd = tokens * pr.write(later[0][1], later[0][2]) + sum(tokens * pr.read(m, s) for _, m, s in later[1:])
+    usd = tokens * pr.write(later[0][1], later[0][2]) + sum(tokens * pr.read(r[1], r[2]) for r in later[1:])
     return usd, len(later)
+
+
+KEEPALIVE_GAP_MS = 330_000  # pings 4.5 min apart belong to one idle stretch
+CACHE_TTL_MS = 300_000
+
+
+def _keepalive(pr, reqs, pings):
+    """Keep-alive measured from what came next: each idle stretch of pings pays off only when the next
+    main-loop request arrives while the cache is still warm and reads it. It then saves a cache write
+    of what it read; otherwise every ping in the stretch was spent for nothing."""
+    stretches = []
+    for e in sorted(pings, key=lambda e: (e['sid'], e['ts'])):
+        s = stretches[-1] if stretches else None
+        if s and s['sid'] == e['sid'] and e['ts'] - s['last'] < KEEPALIVE_GAP_MS:
+            s['last'] = e['ts']
+            s['n'] += 1
+        else:
+            stretches.append(s := {'sid': e['sid'], 'last': e['ts'], 'n': 1, 'tokens': e.get('tokens', 0)})
+    paid, saved = 0, 0.0
+    for s in stretches:
+        nxt = next((r for r in reqs.get(s['sid'], ()) if r[0] > s['last']), None)
+        if nxt and nxt[0] - s['last'] < CACHE_TTL_MS and nxt[3] >= 0.5 * s['tokens']:
+            paid += 1
+            saved += nxt[3] * (pr.write(nxt[1], nxt[2]) - pr.read(nxt[1], nxt[2]))
+    return {'stretches': len(stretches), 'paid': paid, 'saved': saved,
+            'fullRuns': sum(1 for s in stretches if s['n'] >= 6)}
 
 
 def _ledgers():
@@ -208,6 +234,7 @@ def impact(con, coster, days=30, profiles=None, seed=7):
         save = defaultdict(lambda: [0.0, 0])
         acts = defaultdict(int)
         outcome = defaultdict(lambda: [0, 0])
+        pings = []
         for e in evs:
             if e.get('mod') != mod:
                 continue
@@ -234,6 +261,7 @@ def impact(con, coster, days=30, profiles=None, seed=7):
                 c[0] += pr.call(HAIKU, e.get('inputChars', 0) / 4 + 60, 5)
                 c[1] += 1
             elif k == 'keepalive':
+                pings.append(e)
                 c = cost['keep-alive pings' + ('' if e.get('hit') else ' (missed cache)')]
                 c[0] += pr.call(e.get('model') or 'opus', e.get('input', 0), e.get('output', 0), e.get('cacheRead', 0), e.get('cacheWrite', 0))
                 c[1] += 1
@@ -243,13 +271,21 @@ def impact(con, coster, days=30, profiles=None, seed=7):
                 s = save['shell output kept out of context (cap)' if k == 'cap' else 'build/test output trimmed']
                 s[0] += usd
                 s[1] += 1
+        ka = None
         if mod == 'budget-guard':
+            if pings:
+                ka = _keepalive(pr, reqs, pings)
+                ka['spent'] = sum(v[0] for k, v in cost.items() if k.startswith('keep-alive pings'))
+                s = save['keep-alive (cache read on return)']
+                s[0] += ka['saved']
+                s[1] += ka['paid']
+                m['keepAlive'] = {k: round(v, 2) if isinstance(v, float) else v for k, v in ka.items()}
             for sid_, j in ledgers.items():
                 if arms.get((mod, sid_)) != 'on':
                     continue
                 for cat, v in (j.get('saved') or {}).items():
-                    if cat == 'output-trim':
-                        continue  # counted above from the trim events
+                    if cat in ('output-trim', 'keep-alive'):
+                        continue  # measured above: trim from its events, keep-alive from the next request's cache read
                     s = save[f'{cat} (budget-guard estimate)']
                     s[0] += v.get('usd', 0)
                     s[1] += v.get('count', 0)
@@ -259,7 +295,7 @@ def impact(con, coster, days=30, profiles=None, seed=7):
         m['actions'] = sorted(([k, a, n] for (k, a), n in acts.items()), key=lambda r: (r[0], r[1]))
         for (nudge, arm), (f, t) in sorted(outcome.items(), key=lambda kv: (str(kv[0][0]), kv[0][1])):
             m['compliance'].append([nudge, arm, f, t, round(100 * f / t, 1) if t else None])
-        m['warnings'] = _warnings(mod, acts, outcome)
+        m['warnings'] = _warnings(mod, acts, outcome, ka)
         result['mods'].append(m)
 
     daily = defaultdict(int)
@@ -270,15 +306,16 @@ def impact(con, coster, days=30, profiles=None, seed=7):
     return result
 
 
-def _warnings(mod, acts, outcome):
+def _warnings(mod, acts, outcome, ka=None):
     """Signs that a mechanism costs more than it saves."""
     w = []
     n = lambda k, a='on': acts.get((k, a), 0)
     if mod == 'lean-tools' and n('cap') >= 5 and n('cap_followup') / n('cap') > 0.3:
         w.append(f"{n('cap_followup')} of {n('cap')} capped outputs were re-opened: the cap may be too tight (raise maxBytes/maxLines).")
     if mod == 'budget-guard':
-        if n('keepalive') >= 3:
-            pass
+        if ka and ka['stretches'] >= 3 and ka['saved'] < ka['spent']:
+            w.append(f"keep-alive cost ${ka['spent']:.2f} and saved ${ka['saved']:.2f}: {ka['paid']} of {ka['stretches']} idle stretches ended "
+                     f"with a cache read, {ka['fullRuns']} ran all pings without one. /budget keepalive off, or ping less.")
         if n('hold') >= 3 and acts.get(('resolve', 'on'), 0):
             pass
         if n('deny') >= 5:

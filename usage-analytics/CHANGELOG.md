@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.1
+- Impact: keep-alive savings are measured, no longer taken from budget-guard's estimate. Each idle stretch of pings counts as saved only when the next main-loop request came within 5 minutes and read the cache, worth one cache write of what it read. budget-guard's own figure credited any later prompt, so it showed a saving where the pings had lost money.
+- A warning when keep-alive cost more than it saved, with how many stretches paid off and how many ran every ping without one.
+
 ## 0.13.0
 - Mod spend: a new tab under Spend with only what the mods themselves spend on models, nothing you or your own scripts ran. It covers the timesheet classifier (`claude -p`), the advisor and recurring agents, and budget-guard's Haiku classifier and keep-alive pings, which have no transcript and are read from its events. The Haiku classifier is priced from its input size at list price. It shows tiles with sparklines (total, share of all spend, in-session calls, runs, cost per run, context per request), spend per day by caller, a table by caller with its models, context per request by kind of call, spend by model and the most expensive runs. A `claude -p` caller that sends 15k+ tokens of context per call is flagged: that is Claude Code's own prompt riding along, and running it lean cuts it.
 - A new `v_background` view (`caller`, `kind`, `run_id`); `/dashboard background`. Views are made again when the schema version changes.
