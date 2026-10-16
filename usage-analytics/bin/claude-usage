@@ -1067,7 +1067,8 @@ def cmd_serve(args):
         version = None
     return dashboard_api.serve(DB, html, make_coster(), ingest, port=args.port or paths.port(), open_browser=args.open,
                                daemon=args.daemon, tab=args.tab, log_path=os.path.join(DATA, 'dashboard.log'),
-                               live_dir=os.path.join(DATA, 'live'), version=version, quiet=args.quiet)
+                               live_dir=os.path.join(DATA, 'live'), version=version, quiet=args.quiet, restart=args.restart,
+                               idle_min=paths.idle_min() if args.idle_min is None else args.idle_min)
 
 
 def cmd_scrub(args):
@@ -1500,6 +1501,8 @@ def main(argv=None):
     v.add_argument('--daemon', action='store_true', help='run in the background'); v.set_defaults(fn=cmd_serve)
     v.add_argument('--tab', help='open the dashboard on this tab, e.g. impact')
     v.add_argument('--quiet', action='store_true', help='print nothing (used by the mod to start it at session start)')
+    v.add_argument('--restart', action='store_true', help='stop a running dashboard first and start a fresh one')
+    v.add_argument('--idle-min', type=int, help='close after this many minutes with no page open (default: "dashboardIdleMin" in config.json, else 60; 0 = never)')
     m = sub.add_parser('impact', help='is each mod saving money or costing more (holdout comparison + ledger)')
     m.add_argument('--days', type=int, default=30, help='0 = all time'); m.add_argument('--profile')
     m.add_argument('--json', action='store_true'); m.add_argument('--ingest', action='store_true'); m.set_defaults(fn=cmd_impact)

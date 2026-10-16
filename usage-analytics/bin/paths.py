@@ -25,6 +25,17 @@ def config():
         return {}
 
 
+DEFAULT_IDLE_MIN = 60
+
+
+def idle_min():
+    """Minutes with no dashboard page open before the server closes itself; 0 keeps it running."""
+    try:
+        return max(0, int(config().get('dashboardIdleMin', DEFAULT_IDLE_MIN)))
+    except (TypeError, ValueError):
+        return DEFAULT_IDLE_MIN
+
+
 def port():
     try:
         p = int(os.environ.get('CLAUDE_USAGE_PORT') or config().get('port') or DEFAULT_PORT)

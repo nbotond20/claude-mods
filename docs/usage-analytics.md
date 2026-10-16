@@ -31,7 +31,7 @@ Active right after install, with no setup:
 | Claude Code's own telemetry events logged | on (`captureOtel`) | `captureOtel: false` |
 | All profiles' transcripts imported | on: `~/.claude*` plus every config dir a session ran from | `profileDirs` |
 | Background ingest | on: 45s after session start, then every 30 min (`autoIngest`, `ingestEveryMin`) | config |
-| Dashboard server | **on**: started at session start and by every `/analytics` command, one per machine, `127.0.0.1:8787` | `dashboard: false`, `port` |
+| Dashboard server | **on**: started at session start and by every `/analytics` command, one per machine, `127.0.0.1:8787`; closes itself after 60 minutes with no page open | `dashboard: false`, `port`, `dashboardIdleMin` (0 = never) |
 | Dashboard at login | **off** | `claude-usage autostart on` (or `/analytics setup`) |
 | History backfill | on: runs when the server first starts | none |
 | Secret redaction | on, always | not switchable |
@@ -51,12 +51,14 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 
 **One server per machine, started when needed.** Every session start, every `/analytics` command and `/dashboard` start it if it is not running (a lock file keeps it to one), and replace one older than the installed mod. `claude-usage autostart on` also starts it at login and re-checks every 10 minutes (a launchd agent `dev.claude-mods.usage-dashboard` on macOS, a systemd user timer on Linux); `off` removes it. It is off until you turn it on. `"dashboard": false` keeps it off until you run `/dashboard`.
 
+**Restart, stop, idle close.** `/dashboard` always restarts the server, so the page talks to a fresh one. `/dashboard stop` (or `/analytics stop`) closes it. On its own it closes once no dashboard page has been open and nothing was asked of it for `dashboardIdleMin` minutes (default 60, `0` keeps it running). The next session start, `/analytics` command or the login agent starts it again.
+
 ## Use it
 
 | | |
 | --- | --- |
 | `/analytics setup` | the setup wizard |
-| `/dashboard [tab]` or `/analytics dashboard [tab]` | starts the dashboard in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, background, tools, agents, projects, prompts, mood, health, engine, advisor, recurring, impact, savings, sql) |
+| `/dashboard [tab]` or `/analytics dashboard [tab]` | restarts the dashboard server in the background and opens **http://127.0.0.1:8787/** (on a tab: live, overview, cost, context, background, tools, agents, projects, prompts, mood, health, engine, advisor, recurring, impact, savings, sql) |
 | `/analytics advise` (or `advise now`) | research how to use Claude cheaper, with fewer tokens, faster and more reliably, here in the conversation ([below](#the-advisor)) |
 | `/analytics advise bg` · `show` | the same research in the background · the trends, findings and recommendations in the terminal |
 | `/analytics advise apply <id>` | shows the exact change, asks before making it, and starts measuring it |
@@ -69,10 +71,10 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 | `/analytics impact [--days N] [--profile P]` | are the mods saving money or costing more ([mod-impact.md](mod-impact.md)) |
 | `/analytics digest` | last week against the week before: spend, sessions, cache hit, top project and model, new advisor suggestions. The same comes as a toast once a week (`weeklyDigest`) |
 | `/analytics summary [--days N] [--format md\|html] [--no-projects] [--out F]` | a shareable summary (totals, by day, models, project names without paths, mod verdicts; no prompts or code), saved under `<mods home>/usage-analytics/summaries/`. The dashboard's **Share summary** button opens the same page for the period on screen (shift-click: Markdown) |
-| `/analytics status` · `/analytics ingest` · `/analytics stop` | data and dashboard status · ingest now · stop the dashboard |
+| `/analytics status` · `/analytics ingest` · `/analytics stop` or `/dashboard stop` | data and dashboard status · ingest now · stop the dashboard |
 | `/analytics [overview\|profiles\|daily\|models\|projects\|tools\|bash\|files\|agents\|sessions\|context\|hours\|cache\|prompts\|gateway\|all] [--days N] [--profile P] [--project x] [--limit N]` | terminal report (ingests first; `--days` defaults to 30, 0 is all time) |
 | `claude-usage ingest [--full] [--quiet]` · `report [what]` | fold new data in (`--full` rebuilds) · the terminal report from a shell |
-| `claude-usage serve [--port N] [--daemon] [--open] [--tab T] [--quiet]` · `stop [--port N]` · `status` · `impact [--days N] [--profile P] [--json]` | the same from a shell |
+| `claude-usage serve [--port N] [--daemon] [--open] [--tab T] [--quiet] [--restart] [--idle-min N]` · `stop [--port N]` · `status` · `impact [--days N] [--profile P] [--json]` | the same from a shell |
 | `claude-usage setup [--json]` · `autostart on\|off\|status` | what was detected · start the server at login |
 | `claude-usage digest [--line\|--json]` · `summary [--days N] [--format md\|html] [--out F\|-]` | the weekly digest · a shareable summary (`GET /api/summary?days=&format=` on the dashboard) |
 | `claude-usage recurring [show\|brief\|record FILE\|set ID STATUS] [--days N] [--min N] [--json]` | the recurring asks and their labels from a shell |

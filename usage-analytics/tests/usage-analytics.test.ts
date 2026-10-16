@@ -107,7 +107,10 @@ describe('usage-analytics', () => {
     const cmd = (command: string, args: string) => $.command.run({ command, args, origin: { kind: 'user' }, presentation: 'text' } as any)
     const tail = () => runs[runs.length - 1]!.slice(2, -1)
     await cmd('dashboard', 'impact')
-    expect(tail()).toEqual(['serve', '--daemon', '--open', '--tab', 'impact'])
+    // Opening the dashboard always starts a fresh server.
+    expect(tail()).toEqual(['serve', '--daemon', '--open', '--restart', '--tab', 'impact'])
+    await cmd('dashboard', 'stop')
+    expect(tail()).toEqual(['stop'])
     const bad = await cmd('dashboard', 'nope')
     expect(String((bad as any).text)).toMatch(/Unknown tab/)
     await cmd('analytics', 'impact --days 7')

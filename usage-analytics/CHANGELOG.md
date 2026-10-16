@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.14.0
+- `/dashboard` (and `/analytics dashboard`) restarts the server every time, so the page always talks to a fresh one. `claude-usage serve --restart` does the same from a shell.
+- `/dashboard stop` closes the server, like `/analytics stop`.
+- The server closes itself once no dashboard page has been open and nothing was asked of it for `dashboardIdleMin` minutes (config.json, default 60, 0 keeps it running; `serve --idle-min N` for one run). The next session start, `/analytics` command or the login agent starts it again.
+
 ## 0.13.1
 - Impact: keep-alive savings are measured, no longer taken from budget-guard's estimate. Each idle stretch of pings counts as saved only when the next main-loop request came within 5 minutes and read the cache, worth one cache write of what it read. budget-guard's own figure credited any later prompt, so it showed a saving where the pings had lost money.
 - A warning when keep-alive cost more than it saved, with how many stretches paid off and how many ran every ping without one.

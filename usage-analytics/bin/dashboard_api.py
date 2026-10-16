@@ -457,7 +457,34 @@ def watch(db, ingest, live, live_dir, fallback_s=20, trailer_s=3):
             live.bump(reason='pulse' if fresh else 'poll')
 
 
-def make_handler(db, html_path, coster, ingest, live=None, version=None):
+class Activity:
+    """When the dashboard was last used: the last request, and how many pages hold a live stream open."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.last = time.time()
+        self.streams = 0
+
+    def touch(self, streams=0):
+        with self.lock:
+            self.last = time.time()
+            self.streams += streams
+
+    def idle_s(self):
+        with self.lock:
+            return 0 if self.streams else time.time() - self.last
+
+
+def close_when_idle(srv, activity, idle_min, check_s=30):
+    """Shut the server down once no page is open and nothing was asked of it for `idle_min` minutes."""
+    while True:
+        time.sleep(check_s)
+        if activity.idle_s() >= idle_min * 60:
+            print(f'dashboard: idle for {idle_min} min, closing', file=sys.stderr)
+            srv.shutdown()
+            return
+
+
+def make_handler(db, html_path, coster, ingest, live=None, version=None, activity=None):
     recur = {}    # (live version, filters) -> the recurring asks report
     advice = {}   # (live version, days, profiles) -> the advisor's page; it takes seconds to compute
 
@@ -494,6 +521,8 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
         def do_GET(self):
             if not self.host_ok():
                 return
+            if activity:
+                activity.touch()
             u = urlparse(self.path)
             qs = parse_qs(u.query)
             try:
@@ -590,6 +619,8 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
             self.send_header('X-Content-Type-Options', 'nosniff')
             self.end_headers()
             seen = live.version if live else 0
+            if activity:
+                activity.touch(1)
             try:
                 self.wfile.write(f'event: hello\ndata: {json.dumps({"version": seen, "server": version})}\n\n'.encode())
                 self.wfile.flush()
@@ -606,10 +637,15 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None):
                     self.wfile.flush()
             except (BrokenPipeError, ConnectionResetError, OSError):
                 return
+            finally:
+                if activity:
+                    activity.touch(-1)
 
         def do_POST(self):
             if not self.host_ok():
                 return
+            if activity:
+                activity.touch()
             u = urlparse(self.path)
             body = self.rfile.read(int(self.headers.get('Content-Length') or 0))
             # A page on another origin must not drive this server.
@@ -703,9 +739,10 @@ def stop(port=8787):
 
 
 def serve(db, html_path, coster, ingest, port=8787, open_browser=False, daemon=False, log_path=None, tab=None,
-          live_dir=None, version=None, quiet=False):
+          live_dir=None, version=None, quiet=False, restart=False, idle_min=0):
     """One dashboard per machine: a second call opens the running one, or replaces it when this copy is newer
-    (a profile updated the plugin). A lock file closes the race between sessions starting together."""
+    (a profile updated the plugin) or `restart` is set. A lock file closes the race between sessions starting
+    together. With `idle_min`, it closes itself once no page was open for that many minutes."""
     url = f'http://127.0.0.1:{port}/' + (f'#{tab}' if tab else '')
     say = (lambda *a: None) if quiet else print
     lock_path = os.path.join(os.path.dirname(db), 'dashboard.lock')
@@ -713,8 +750,8 @@ def serve(db, html_path, coster, ingest, port=8787, open_browser=False, daemon=F
     fcntl.flock(guard, fcntl.LOCK_EX)  # held only while deciding and starting
     try:
         running = ping(port)
-        if running and version and vtuple(running.get('version')) < vtuple(version):
-            say(f'replacing dashboard {running.get("version") or "?"} with {version}')
+        if running and (restart or version and vtuple(running.get('version')) < vtuple(version)):
+            say(f'restarting dashboard {running.get("version") or "?"}' + (f' as {version}' if version and version != running.get('version') else ''))
             stop(port)
             running = None
         if running:
@@ -738,10 +775,10 @@ def serve(db, html_path, coster, ingest, port=8787, open_browser=False, daemon=F
             out = open(log_path or os.devnull, 'a')
             os.dup2(out.fileno(), 1); os.dup2(out.fileno(), 2)
             os.dup2(os.open(os.devnull, os.O_RDONLY), 0)
-        live = Live()
+        live, activity = Live(), Activity()
         try:
             ThreadingHTTPServer.daemon_threads = True
-            srv = ThreadingHTTPServer(('127.0.0.1', port), make_handler(db, html_path, coster, ingest, live, version))
+            srv = ThreadingHTTPServer(('127.0.0.1', port), make_handler(db, html_path, coster, ingest, live, version, activity))
         except OSError as ex:
             print(f'dashboard: port {port} is taken ({ex})', file=sys.stderr)
             if daemon:
@@ -756,6 +793,8 @@ def serve(db, html_path, coster, ingest, port=8787, open_browser=False, daemon=F
     if live_dir:
         os.makedirs(live_dir, exist_ok=True)
     threading.Thread(target=watch, args=(db, ingest, live, live_dir or os.path.join(os.path.dirname(db), 'live')), daemon=True).start()
+    if idle_min and idle_min > 0:
+        threading.Thread(target=close_when_idle, args=(srv, activity, idle_min), daemon=True).start()
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

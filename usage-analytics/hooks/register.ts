@@ -560,6 +560,8 @@ type Config = {
   dashboard: boolean
   /** the dashboard's port on 127.0.0.1 */
   port: number
+  /** minutes with no dashboard page open before the server closes itself; 0 keeps it running */
+  dashboardIdleMin: number
   /** Claude config dirs to read transcripts from; empty: every ~/.claude* dir plus each one a session ran from */
   profileDirs: string[]
   /** the model `/analytics advise bg` runs the advisor on (an alias or a full id) */
@@ -584,6 +586,7 @@ const DEFAULTS: Config = {
   captureOtel: true,
   dashboard: true,
   port: 8787,
+  dashboardIdleMin: 60,
   profileDirs: [],
   advisorModel: 'sonnet',
   advisorNotify: true,
@@ -1400,13 +1403,13 @@ export const register: Register = on => {
 
     await $.command.register({
       name: 'analytics',
-      description: 'Usage analytics across all profiles: setup · dashboard [tab] · digest (last week) · summary [--days N] [--format md|html] (a shareable report) · advise (research how to use Claude cheaper/faster from your own data, A/B-trial, apply and verify) · recurring [classify] (the prompts you keep typing, and what could automate them) · impact (are the mods saving money?) · status · ingest · stop · or a report: overview|daily|models|projects|tools|agents|sessions|context|hours [--days N] [--profile P]',
-      argumentHint: '[setup | dashboard [tab] | digest | summary [--days N] [--format md|html] | advise [bg|show|apply <id>|trial <id>|applied <id>|dismiss <id>|reproduce <id>] | recurring [classify [bg]|show <id>|automated <id>|dismiss <id>] | impact | status | ingest | stop | <report>] [--days N] [--profile P]',
+      description: 'Usage analytics across all profiles: setup · dashboard [tab|stop] · digest (last week) · summary [--days N] [--format md|html] (a shareable report) · advise (research how to use Claude cheaper/faster from your own data, A/B-trial, apply and verify) · recurring [classify] (the prompts you keep typing, and what could automate them) · impact (are the mods saving money?) · status · ingest · stop · or a report: overview|daily|models|projects|tools|agents|sessions|context|hours [--days N] [--profile P]',
+      argumentHint: '[setup | dashboard [tab|stop] | digest | summary [--days N] [--format md|html] | advise [bg|show|apply <id>|trial <id>|applied <id>|dismiss <id>|reproduce <id>] | recurring [classify [bg]|show <id>|automated <id>|dismiss <id>] | impact | status | ingest | stop | <report>] [--days N] [--profile P]',
     })
     await $.command.register({
       name: 'dashboard',
-      description: `Open the usage dashboard in the browser (starts it if needed). Tabs: ${TABS.join(', ')}`,
-      argumentHint: '[tab]',
+      description: `Open the usage dashboard in the browser, restarting its server · stop closes it. Tabs: ${TABS.join(', ')}`,
+      argumentHint: '[tab | stop]',
     })
     await hubStart($, {
       mod: 'usage-analytics',
@@ -1724,11 +1727,13 @@ async function analytics($: EngineInterface, sub: string | undefined, rest: stri
       $.clock.after(50, () => void $.prompt.submit({ text }).catch(() => {}))
       return 'Starting the usage-analytics setup…'
     }
-    // The dashboard runs detached on 127.0.0.1 and outlives the session; a second call just opens it.
+    // The dashboard runs detached on 127.0.0.1 and outlives the session until it has been idle for
+    // dashboardIdleMin. Opening it restarts the server, so the page always talks to a fresh one.
     case 'dashboard': {
+      if (rest[0] === 'stop') return run(['stop'], 30_000)
       const tab = rest[0] && !rest[0].startsWith('-') ? rest.shift()! : undefined
       if (tab && !TABS.includes(tab)) return `Unknown tab "${tab}". Tabs: ${TABS.join(', ')}`
-      return run(['serve', '--daemon', '--open', ...(tab ? ['--tab', tab] : []), ...rest], 30_000)
+      return run(['serve', '--daemon', '--open', '--restart', ...(tab ? ['--tab', tab] : []), ...rest], 30_000)
     }
     case 'advise': return adviseCommand($, rest)
     case 'recurring': return recurringCommand($, rest)
