@@ -131,8 +131,26 @@ my-mods · profile claude-work · data in ~/.claude-mods
 
 <span class="g">⏺</span> handleKey is called from two places in DatePicker: the grid's onKeyDown and the input's. Both pass the focused date, so the fix belongs in handleKey.</pre></div></div>
 
+<div class="scene" id="noattr-refused" style="--w:1120px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>~/code/billing-api — claude</span></div><pre><span class="g">⏺</span> <span class="b">Bash</span>(git commit -m "feat(invoices): paginate the list endpoint" -m "Co&#45;Authored&#45;By: Cl&#97;ude Opus 5.5 &lt;noreply&#64;anthropic.com&gt;")
+  <span class="d">⎿</span>  <span class="r">Error: no-attribution: this credits Cl&#97;ude, which is never allowed ("Co&#45;Authored&#45;By: Cl&#97;ude Opus 5.5 &lt;noreply&#64;anthropic.com&gt;",
+     "&lt;noreply&#64;anthropic.com&gt;"). Run it again without that text:
+     git commit -m "feat(invoices): paginate the list endpoint" -m ""</span>
+
+<span class="g">⏺</span> <span class="b">Bash</span>(git commit -m "feat(invoices): paginate the list endpoint")
+  <span class="d">⎿</span>  [main 4e1c9a7] feat(invoices): paginate the list endpoint
+      3 files changed, 64 insertions(+), 12 deletions(-)
+
+<span class="g">⏺</span> Committed with the configured identity and a clean message.</pre></div></div>
+
+<div class="scene" id="noattr-status" style="--w:1120px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>~/code/billing-api — claude</span></div><pre><span class="d">❯</span> /no-attribution
+  <span class="d">⎿</span>  no-attribution is on.
+     - commit trailer and PR footer from the engine: empty
+     - system prompt: authorship rule added, attribution removed from 2 engine section(s)
+     - this session: 1 tool call(s) refused (attribution, Cl&#97;ude as author, or skipped hooks)
+     - global git hooks active (~/.claude-mods/no-attribution/git-hooks): commit-msg strips attribution, pre-commit refuses a Cl&#97;ude author</pre></div></div>
+
 <script>
-  const s = new URLSearchParams(location.search).get('s') || 'band-gateway'
+  const s =new URLSearchParams(location.search).get('s') || 'band-gateway'
   document.getElementById(s)?.classList.add('on')
 </script>
 </body>

@@ -12,6 +12,8 @@ claude-usage impact [--days N] [--profile P] [--json]   from a shell
 
 ![The Mod impact tab: per mod, the holdout verdict, active against holdout cost per session with 95% intervals, and the ledger of what the mod cost and saved](images/usage-analytics/impact.png)
 
+The screenshots use generated demo data ([scripts/demo](../scripts/demo/README.md)).
+
 ## On by default
 
 | Feature | Default | How to change |
@@ -53,7 +55,8 @@ Session costs vary a lot from one session to the next, so expect weeks of normal
 | − | budget-guard's Haiku classifier calls | input chars/4 at Haiku prices |
 | − | Keep-alive pings | their real usage, repriced |
 | + | Output kept out of context (lean-tools cap, budget-guard trim) | the bytes avoided, carried the same way |
-| + | budget-guard's own route-session / route-agents / new-task estimates | from its ledgers |
+| + | Keep-alive pings that paid off | measured, not taken from budget-guard's estimate: an idle stretch of pings (each less than 5.5 minutes after the one before) counts only when the next main-loop request came within 5 minutes and read at least half the cache it kept warm. It is then worth what a cache write of those tokens would have cost over the cache read. |
+| + | budget-guard's own route-session / route-agents / new-task estimates (its keep-alive and trim estimates are left out, they are measured above) | from its ledgers |
 
 The savings side is an upper bound: without the cap the model might have piped through `head` itself. Trust the holdout verdict over the ledger.
 
@@ -73,6 +76,7 @@ The same rate is computed in holdout sessions for the moments a nudge *would* ha
 - a nudge that is not changing behaviour;
 - lean-tools caps that are re-opened often, so the cap is too tight;
 - 5 or more budget-guard denials.
+- budget-guard's keep-alive cost more than it saved (at least 3 idle stretches), with how many stretches ended in a cache read and how many ran every ping without one.
 
 The lean-tools warning fires when more than 30% of at least 5 capped outputs were re-opened. The nudge warning needs 20 or more nudges in each arm and a follow rate that is no higher with the nudge.
 

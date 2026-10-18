@@ -1,6 +1,6 @@
 {
   "name": "lean-tools",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "Cuts what tool calls put into the context: caps huge shell output (full log kept on disk), bounds git log, and nudges toward parallel/batched calls, ranged reads, Edit over Write and no re-reads.",
   "author": {
     "name": "nbotond"

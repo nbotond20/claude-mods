@@ -72,10 +72,10 @@ Nothing is required: on first start the mod writes its config with defaults, reg
 | `/analytics digest` | last week against the week before: spend, sessions, cache hit, top project and model, new advisor suggestions. The same comes as a toast once a week (`weeklyDigest`) |
 | `/analytics summary [--days N] [--format md\|html] [--no-projects] [--out F]` | a shareable summary (totals, by day, models, project names without paths, mod verdicts; no prompts or code), saved under `<mods home>/usage-analytics/summaries/`. The dashboard's **Share summary** button opens the same page for the period on screen (shift-click: Markdown) |
 | `/analytics status` · `/analytics ingest` · `/analytics stop` or `/dashboard stop` | data and dashboard status · ingest now · stop the dashboard |
-| `/analytics [overview\|profiles\|daily\|models\|projects\|tools\|bash\|files\|agents\|sessions\|context\|hours\|cache\|prompts\|gateway\|all] [--days N] [--profile P] [--project x] [--limit N]` | terminal report (ingests first; `--days` defaults to 30, 0 is all time) |
+| `/analytics [overview\|profiles\|daily\|models\|projects\|tools\|bash\|files\|agents\|sessions\|context\|hours\|cache\|prompts\|gateway\|quality\|frustration\|all] [--days N] [--profile P] [--project x] [--limit N]` | terminal report (ingests first; `--days` defaults to 30, 0 is all time) |
 | `claude-usage ingest [--full] [--quiet]` · `report [what]` | fold new data in (`--full` rebuilds) · the terminal report from a shell |
 | `claude-usage serve [--port N] [--daemon] [--open] [--tab T] [--quiet] [--restart] [--idle-min N]` · `stop [--port N]` · `status` · `impact [--days N] [--profile P] [--json]` | the same from a shell |
-| `claude-usage setup [--json]` · `autostart on\|off\|status` | what was detected · start the server at login |
+| `claude-usage setup [--json]` · `autostart on\|off\|status\|sync` | what was detected · start the server at login (`sync` refreshes an installed login item to the current CLI; session start runs it) |
 | `claude-usage digest [--line\|--json]` · `summary [--days N] [--format md\|html] [--out F\|-]` | the weekly digest · a shareable summary (`GET /api/summary?days=&format=` on the dashboard) |
 | `claude-usage recurring [show\|brief\|record FILE\|set ID STATUS] [--days N] [--min N] [--json]` | the recurring asks and their labels from a shell |
 | `claude-usage advise [show\|brief\|record\|set\|get\|reproduce\|sql\|due\|notify\|fail]` | the advisor's store from a shell |
@@ -379,6 +379,7 @@ Environment: `CLAUDE_MODS_HOME` (above); `CLAUDE_USAGE_DIR` replaces `<mods home
 | `captureOtel` | true | also log Claude Code's own telemetry events |
 | `dashboard` | true | keep the one dashboard server running (started at session start and by `/analytics`) |
 | `port` | 8787 | dashboard port (127.0.0.1 only) |
+| `dashboardIdleMin` | 60 | the server closes itself after this many minutes with no page open and no request; 0 keeps it running |
 | `advisorModel` | `sonnet` | the model `/analytics advise bg` and `/analytics recurring classify bg` run on |
 | `advisorNotify` | true | toast (90s into an interactive session) when an applied recommendation gets a verdict |
 | `weeklyDigest` | true | once per ISO week, two minutes into an interactive session, a toast with last week's digest |
@@ -402,10 +403,12 @@ Environment: `CLAUDE_MODS_HOME` (above); `CLAUDE_USAGE_DIR` replaces `<mods home
 
 Before anything is written, the mod (event files) and the ingester (`usage.db`) blank anything that looks like a credential: API keys (`sk-…`, `ghp_…`, AWS, Slack), JWTs, `Bearer`/`Basic` values, `*TOKEN*=`/`*SECRET*:`/`--password=` values, URL passwords, private keys, and string values under keys such as `apiKey` or `authorization`. `claude-usage scrub` applies the same redaction to data stored earlier (DB rows and event files) and vacuums the DB. Claude Code's own transcripts in `~/.claude*/projects` are untouched.
 
+Nothing is sent anywhere. The server listens on 127.0.0.1 only. The only outside requests are the dashboard page loading Chart.js 4.4.1 from cdn.jsdelivr.net and, on a LiteLLM gateway, the spend sync with that gateway.
+
 ## Troubleshooting
 
 - **Dashboard shows old data:** click *Ingest now*, or run `claude-usage ingest`.
-- **Port in use:** set `port` in the config (or run `/analytics setup`), or `CLAUDE_USAGE_PORT` for the CLI.
+- **Port in use:** the server says which program holds the port (`dashboard: port 8787 is used by …`) and never stops it. Stop that program, or set `port` in the config (or run `/analytics setup`), or `CLAUDE_USAGE_PORT` for the CLI.
 - **Stop the dashboard:** `/analytics stop` or `claude-usage stop`. It comes back at the next session start unless `"dashboard": false`. After a mod update, the next session start replaces an older running server by itself.
 - **Sidebar says "reconnecting…":** the server stopped. Any `/analytics` command or new session starts it again, and the page reconnects on its own.
 - **Open on a tab:** `http://127.0.0.1:8787/#impact`.

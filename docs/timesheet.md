@@ -9,7 +9,7 @@ Needs Node 22.18 or newer (it uses `node:sqlite` and runs TypeScript directly).
 ## What you get
 
 - **Two figures per day.** *Real* is the time your sessions, commits and meetings actually cover. *Booked* is that time scaled to the daily target (8h by default) and rounded, which is what goes into NetSuite.
-- **A task category for every hour.** A headless Claude call reads each day's time blocks: the prompts, the commits and what changed (code, tests, CI, infra, docs). It puts each block in a NetSuite task category and writes a short summary of the day. CAPEX or OPEX follows from the category.
+- **A task category for every hour.** A headless Claude call reads each day's time blocks: the prompts, the commits and what changed (code, tests, CI, infra, docs). It puts each block in a NetSuite task category and writes a short summary of the day. CAPEX or OPEX follows from the category. The call runs lean: no tools, MCP servers or skills and a one-line system prompt, about 3.5k tokens of context per day.
 - **Hand edits that stick.** Override a category's hours, move a block to another category, or lock a day. Recomputes keep the edits, `timesheet history` lists them and `timesheet undo` reverts them.
 - **Checks before you submit.** `timesheet review` flags a day booked far above what was recorded, a day not computed, or a repo with no scope. `submit plan` shows what would be entered in Redmine and NetSuite without writing anything.
 
@@ -24,7 +24,7 @@ Installing the mod puts `~/.local/bin/timesheet` in place at the next session st
 | `/timesheet` · `/timesheet status` | target hours per day, whether calendar and GitHub are connected, launcher warnings |
 | `/timesheet setup` | a guided setup through the skill |
 | `/timesheet doctor` | the CLI's own checks |
-| `/timesheet open` (also `serve`, `web`) | starts the web app on port 4280 (log: `<mods home>/timesheet/web.log`) and opens it |
+| `/timesheet open` (also `serve`, `web`) | starts the web app on port 4280 (log: `<mods home>/timesheet/web.log`) and opens it. A running web app of this version or newer is reused, an older one is replaced, and anything else on the port is named (`TIMESHEET_PORT` picks another port) |
 | `/timesheet day\|week\|month [date]` | the timesheet for that period, through the skill |
 | `/timesheet <anything else>` | handed to the skill as a request |
 | `/timesheet install [--force]` | (re)installs the `timesheet` launcher |
@@ -105,7 +105,7 @@ Week of 2026-09-28:
 
 ## The launcher
 
-Plugins live in a per-version cache, so their folder changes on every update. At session start the mod writes the current plugin folder to `<mods home>/timesheet/entry` and installs `~/.local/bin/timesheet`, a small script that reads that file (or `$TIMESHEET_ENTRY`). An existing `~/.local/bin/timesheet` that is not ours is left alone; `/timesheet install --force` replaces it. If `~/.local/bin` is not on `PATH`, the status says so.
+Plugins live in a per-version cache, so their folder changes on every update. At session start the mod writes the current plugin folder to `<mods home>/timesheet/entry` and installs `~/.local/bin/timesheet`, a small script that reads that file (or `$TIMESHEET_ENTRY`). The entry never goes back to an older version: when profiles run different versions, it keeps pointing at the newest install that still exists, and an entry whose folder was removed by an update is rewritten. An existing `~/.local/bin/timesheet` that is not ours is left alone; `/timesheet install --force` replaces it. If `~/.local/bin` is not on `PATH`, the status says so.
 
 `playwright-core` (only for NetSuite submission) is installed into the plugin folder the first time a submit URL is configured, once per version.
 

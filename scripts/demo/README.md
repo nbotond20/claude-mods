@@ -46,13 +46,13 @@ sh observability/bin/claude-obs down
 
 ## Terminal scenes
 
-`terminal-scenes.html` draws the in-session UI (budget-guard's band, the savings pane, `/mods`, the session toast, a lean-tools capped result, an LSP lookup) in the mods' own text formats, with demo values.
+`terminal-scenes.html` draws the in-session UI (budget-guard's band, the savings pane, `/mods`, the session toast, a lean-tools capped result, an LSP lookup, a no-attribution refusal and its status) in the mods' own text formats, with demo values.
 
 ```sh
 cd scripts/demo && python3 -m http.server 8798
 # open http://127.0.0.1:8798/terminal-scenes.html?s=band-gateway
 ```
 
-Scene ids: `band-gateway`, `band-subscription`, `newtask-hold`, `budget-savings`, `mods-status`, `mods-toast`, `lean-cap`, `lsp-first`. Each page is exactly one scene. Size the viewport to the body and screenshot at 2x.
+Scene ids: `band-gateway`, `band-subscription`, `newtask-hold`, `budget-savings`, `mods-status`, `mods-toast`, `lean-cap`, `lsp-first`, `noattr-refused`, `noattr-status`. Each page is exactly one scene. Size the viewport to the body and screenshot at 2x.
 
 When a mod's output format changes, update its scene here so the screenshot stays accurate.

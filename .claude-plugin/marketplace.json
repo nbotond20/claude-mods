@@ -11,7 +11,7 @@
       "name": "budget-guard",
       "source": "./budget-guard",
       "description": "Keeps token spend down: Opus capped at medium effort, compaction at 200k, context guard, subagent cap, image/generated-file read guard, and a budget HUD above the prompt (with LiteLLM key spend).",
-      "version": "0.13.4",
+      "version": "0.13.5",
       "author": {
         "name": "nbotond"
       },
@@ -29,7 +29,7 @@
       "name": "usage-analytics",
       "source": "./usage-analytics",
       "description": "Records every model request, tool call, prompt, context breakdown, compaction and rate-limit reading from every profile into one store in the mods data folder, with a live dashboard, a weekly digest, shareable summaries, mod impact verdicts and a statistical advisor.",
-      "version": "0.14.3",
+      "version": "0.14.4",
       "author": {
         "name": "nbotond"
       },
@@ -47,7 +47,7 @@
       "name": "lsp-first",
       "source": "./lsp-first",
       "description": "Makes Claude actually use the TypeScript LSP: the LSP tool is loaded up front, the system prompt says when to prefer it, and symbol-shaped Greps over TS/JS get a nudge.",
-      "version": "0.5.2",
+      "version": "0.5.3",
       "author": {
         "name": "nbotond"
       },
@@ -64,7 +64,7 @@
       "name": "lean-tools",
       "source": "./lean-tools",
       "description": "Cuts what tool calls put into the context: caps huge shell output (full log kept on disk), bounds git log, and nudges toward parallel/batched calls, ranged reads, Edit over Write and no re-reads.",
-      "version": "0.5.2",
+      "version": "0.5.3",
       "author": {
         "name": "nbotond"
       },
@@ -81,7 +81,7 @@
       "name": "no-attribution",
       "source": "./no-attribution",
       "description": "Claude never credits itself: no Co-Authored-By, no 'Generated with Claude Code', no Claude author, in commits, PRs, files or tool calls",
-      "version": "0.3.2",
+      "version": "0.3.3",
       "author": {
         "name": "nbotond"
       },
@@ -98,7 +98,7 @@
       "name": "timesheet",
       "source": "./timesheet",
       "description": "NetSuite-ready timesheets from your Claude Code and OpenCode sessions, git and GitHub history and Google Calendar: the timesheet CLI and web app, the timesheet skill, and /timesheet.",
-      "version": "0.3.9",
+      "version": "0.3.10",
       "author": {
         "name": "nbotond"
       },
@@ -116,7 +116,7 @@
       "name": "observability",
       "source": "./observability",
       "description": "A free, local observability platform for Claude Code: Grafana with trace waterfalls, logs, metrics and dashboards (spend, latency, where time goes, errors, tools, hooks, MCP) for every profile, fed by Claude Code's own OpenTelemetry. Runs in Docker on 127.0.0.1; nothing leaves the machine.",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "author": {
         "name": "nbotond"
       },

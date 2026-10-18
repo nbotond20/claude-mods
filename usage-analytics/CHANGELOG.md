@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.14.4
+- Docs: a README for the mod with screenshots; the docs add `dashboardIdleMin`, the `quality` and `frustration` reports, `autostart sync`, the port message, what the dashboard loads from outside, and how keep-alive savings are measured in Mod impact.
+
 ## 0.14.3
 - Stopping the dashboard only signals a process whose own command line is the dashboard, never a pid that whatever answers on the port names.
 

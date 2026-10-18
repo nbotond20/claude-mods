@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.10
+- Docs: more screenshots in the README; the docs cover the lean classifier call, `TIMESHEET_PORT` and how the launcher keeps to the newest install.
+
 ## 0.3.9
 - `/timesheet open` works whatever is already running: it reuses a current or newer web app, replaces an older one, survives concurrent starts and names whatever else holds the port (`TIMESHEET_PORT` picks another). The `timesheet` launcher follows the newest install and heals itself after an update.
 

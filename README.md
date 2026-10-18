@@ -2,15 +2,15 @@
 
 Claude Code mods (function-hook plugins), shipped as the marketplace **`my-mods`**. They work with a single `~/.claude` setup and with several profiles (`CLAUDE_CONFIG_DIR=~/.claude-work`, `~/.claude-personal`, …).
 
-| Mod | What it does | Doc |
+| Mod | What it does | README · Doc |
 | --- | --- | --- |
-| **usage-analytics** | Logs every session, folds every profile's transcripts (including history from before the install) into one SQLite DB, `/analytics` reports and a live web dashboard | [docs/usage-analytics.md](docs/usage-analytics.md) |
-| **budget-guard** | Live spend/context band, model and subagent routing, context hold, budgets, output trimming, keep-alive, savings ledger, `/budget` | [docs/budget-guard.md](docs/budget-guard.md) |
-| **lean-tools** | Caps huge shell output, bounds `git log`, nudges toward batched calls, ranged reads and Edit over Write | [docs/lean-tools.md](docs/lean-tools.md) |
-| **lsp-first** | Keeps the LSP tool loaded and tells the model to use it for code symbols instead of grep + Read | [docs/lsp-first.md](docs/lsp-first.md) |
-| **no-attribution** | Claude never credits itself: engine attribution off, a prompt rule, tool calls with attribution refused, optional global git hooks | [docs/no-attribution.md](docs/no-attribution.md) |
-| **timesheet** | NetSuite-ready timesheets from your sessions, git, GitHub and Google Calendar: the `timesheet` CLI, a web app, a skill and `/timesheet` | [docs/timesheet.md](docs/timesheet.md) |
-| **observability** | Free, local Grafana for every profile, fed by Claude Code's own OpenTelemetry: trace waterfalls, logs, metrics, where time goes, errors, tools, a per-operation breakdown and an A/B compare of profiles (e.g. subscription vs LiteLLM); `/obs` (needs Docker) | [docs/observability.md](docs/observability.md) |
+| [**usage-analytics**](usage-analytics/README.md) | Logs every session, folds every profile's transcripts (including history from before the install) into one SQLite DB, `/analytics` reports and a live web dashboard | [README](usage-analytics/README.md) · [docs/usage-analytics.md](docs/usage-analytics.md) |
+| [**budget-guard**](budget-guard/README.md) | Live spend/context band, model and subagent routing, context hold, budgets, output trimming, keep-alive, savings ledger, `/budget` | [README](budget-guard/README.md) · [docs/budget-guard.md](docs/budget-guard.md) |
+| [**lean-tools**](lean-tools/README.md) | Caps huge shell output, bounds `git log`, nudges toward batched calls, ranged reads and Edit over Write | [README](lean-tools/README.md) · [docs/lean-tools.md](docs/lean-tools.md) |
+| [**lsp-first**](lsp-first/README.md) | Keeps the LSP tool loaded and tells the model to use it for code symbols instead of grep + Read | [README](lsp-first/README.md) · [docs/lsp-first.md](docs/lsp-first.md) |
+| [**no-attribution**](no-attribution/README.md) | Claude never credits itself: engine attribution off, a prompt rule, tool calls with attribution refused, optional global git hooks | [README](no-attribution/README.md) · [docs/no-attribution.md](docs/no-attribution.md) |
+| [**timesheet**](timesheet/README.md) | NetSuite-ready timesheets from your sessions, git, GitHub and Google Calendar: the `timesheet` CLI, a web app, a skill and `/timesheet` | [README](timesheet/README.md) · [docs/timesheet.md](docs/timesheet.md) |
+| [**observability**](observability/README.md) | Free, local Grafana for every profile, fed by Claude Code's own OpenTelemetry: trace waterfalls, logs, metrics, where time goes, errors, tools, a per-operation breakdown and an A/B compare of profiles (e.g. subscription vs LiteLLM); `/obs` (needs Docker) | [README](observability/README.md) · [docs/observability.md](docs/observability.md) |
 | *`/mods`* | One place for all of them: status, a combined setup, doctor, what changed, pause, update, install, uninstall | [docs/mods.md](docs/mods.md) |
 | *Mod impact* | Each mod leaves a random holdout of sessions untouched; `/analytics impact` says whether it saves money or costs more | [docs/mod-impact.md](docs/mod-impact.md) |
 
@@ -26,7 +26,7 @@ The screenshots use generated demo data ([scripts/demo](scripts/demo/README.md))
 
 ## Install
 
-Requires Claude Code with mod support, **python3** (standard library only) for usage-analytics and **Node 22.18+** for timesheet and **Docker** (any free runtime, such as colima or OrbStack) for observability. The installer says how to get either when it is missing.
+Requires Claude Code with mod support, **python3** (standard library only) for usage-analytics and **Node 22.18+** for timesheet and **Docker** (any free runtime, such as colima or OrbStack) for observability. The installer says how to get python3 or Node when one is missing; `/obs` says how to get Docker.
 
 One command adds every mod to every Claude Code profile on this machine (`~/.claude`, each `~/.claude-*` config folder, `$CLAUDE_CONFIG_DIR`):
 
@@ -71,7 +71,7 @@ Every mod works with no setup; the wizards only change defaults. Right after ins
 
 | Mod | On by default | Off until you turn it on |
 | --- | --- | --- |
-| **usage-analytics** | records every session (prompt text included), imports every profile's history, a dashboard on `127.0.0.1:8787` started with Claude Code, a weekly digest toast, LiteLLM gateway spend sync when a gateway is set | dashboard at login (`claude-usage autostart on`), advisor research (`/analytics advise`) |
+| [**usage-analytics**](usage-analytics/README.md) | records every session (prompt text included), imports every profile's history, a dashboard on `127.0.0.1:8787` started with Claude Code, a weekly digest toast, LiteLLM gateway spend sync when a gateway is set | dashboard at login (`claude-usage autostart on`), advisor research (`/analytics advise`) |
 | **budget-guard** | the spend/context band, model routing by task (Haiku/Sonnet/Opus), Opus effort capped at medium, compaction at 200k, subagent cap 3, context warning at 150k and hold at 300k, build/test output trim, image and generated-file read guards | daily/monthly budgets (`/budget setup`); keep-alive and gateway polling only apply behind a LiteLLM gateway |
 | **lean-tools** | Bash output cap (24 KB / 400 lines), `git log -n 30`, a short prompt guide, batching/ranged-read/Edit nudges | – |
 | **lsp-first** | LSP tool loaded up front, a navigation guide, a grep-for-symbol nudge (at most every 10 min) | everything, if no language server plugin is installed |

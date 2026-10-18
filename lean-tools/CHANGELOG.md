@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.3
+- Docs: a README for the mod with a screenshot.
+
 ## 0.5.2
 - `/mods` and `bin/mods install` know the new observability mod (local Grafana: traces, logs, metrics and dashboards for every profile).
 

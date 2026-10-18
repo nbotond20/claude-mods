@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.3
+- Docs: a README for the mod, and screenshots of a refused commit and of `/no-attribution`.
+
 ## 0.3.2
 - `/mods` and `bin/mods install` know the new observability mod (local Grafana: traces, logs, metrics and dashboards for every profile).
 

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.5
+- Docs: a README for the mod with screenshots, and how to remove the stack and telemetry env before uninstalling.
+
 ## 0.1.4
 - Screenshots in the docs and README, from generated demo data (`scripts/demo/observability-demo.py`, `scripts/demo/shoot-grafana.mjs`).
 - `CLAUDE_OBS_NAME` runs `claude-obs` against a second container next to the real one (used for the docs demo).

@@ -6,6 +6,8 @@ Source: `lean-tools/hooks/register.ts`. Tests: `lean-tools/tests/`.
 
 ![A capped Bash result: head and tail kept, the full output saved to a log the model can grep, and a nudge after a whole-file read](images/lean-tools/capped-output.png)
 
+The screenshots use generated demo data ([scripts/demo](../scripts/demo/README.md)).
+
 ## What it does
 
 | Hook | Behaviour |

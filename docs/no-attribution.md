@@ -2,6 +2,10 @@
 
 Claude never credits itself. That means no `Co-Authored-By: Claude …`, no `🤖 Generated with [Claude Code](…)`, no `Author: Claude`, no `noreply@anthropic.com`, and no commits with Claude as author. This covers commits, PR and issue bodies, code, docs and any tool call. Source: `no-attribution/hooks/register.ts`; tests: `no-attribution/tests/`.
 
+![A commit with an attribution trailer is refused with the clean command, and the model sends that instead](images/no-attribution/refused-and-resent.png)
+
+The screenshots use generated demo data ([scripts/demo](../scripts/demo/README.md)).
+
 ## On by default
 
 Layers 2 to 4 are always on and cannot be turned off or paused (`/mods pause` does not affect them). Only the git hooks and the settings entry are optional.
@@ -35,6 +39,8 @@ Ordinary mentions are kept, such as "Use the Claude API for summaries".
 
 ## Check it
 
+![/no-attribution: the layers, what this session refused, the git hooks](images/no-attribution/status.png)
+
 `/no-attribution` shows:
 - the layers;
 - what was refused this session;
@@ -67,5 +73,5 @@ There is no pause. To stop the mod, uninstall it (`/mods uninstall`); to turn of
 
 - A repository that sets its **own** `core.hooksPath` (Husky, lefthook) overrides the global one, so layer 5 does not run there. Layers 2–4 still apply to everything Claude does.
 - If another global `core.hooksPath` is already set, the installer leaves it alone, and `/no-attribution` says so.
-- Files whose path contains `no-attribution` are not rewritten, so this mod's own docs and source can quote the patterns.
+- Writes and edits to files whose path contains `no-attribution` are not refused, so this mod's own docs and source can quote the patterns.
 - To remove the git layer: `git config --global --unset core.hooksPath`.

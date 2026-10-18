@@ -49,6 +49,8 @@ Grafana is at http://127.0.0.1:3301 and needs no login to browse dashboards and 
 
 Anyone who can log in to this computer can reach 127.0.0.1 too. On a shared machine, turn `content` off or stop the stack when you're not using it.
 
+**Removing it:** `bin/mods uninstall` removes the plugin but not the stack or the telemetry env it wrote. Run `/obs telemetry off all` and `/obs down` first (`claude-obs reset confirm` also deletes the data).
+
 ## History: backfill
 
 Telemetry only covers sessions started after install. `claude-obs backfill --days 30` reads every profile's transcripts and sends each past session as traces (prompt → model calls and tools) and events (prompts, API errors, tool results). The default is the last 90 days. `--profile work` limits it to one profile, `--dry-run` counts without sending anything, and `--force` resends sessions backfilled before (identical events are deduplicated). A session that already reported live is never replayed. Backfilled data carries `claude.source=transcript`.

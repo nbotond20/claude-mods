@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.13.5
+- Docs: a README for the mod with screenshots; the full doc covers the subscription 5h text, the band's turn arrows and hold, the pause scope and the full list of trimmed commands.
+
 ## 0.13.4
 - `/mods` and `bin/mods install` know the new observability mod (local Grafana: traces, logs, metrics and dashboards for every profile).
 

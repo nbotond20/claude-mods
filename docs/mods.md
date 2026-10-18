@@ -21,19 +21,21 @@ The question only appears in a terminal; `--only`, `--except`, `--yes` or a non-
 
 Profiles are `~/.claude`, every `~/.claude-*` folder that looks like a config folder, `$CLAUDE_CONFIG_DIR`, and any profile a mod has recorded. Install checks for python3 (usage-analytics) and Node 22.18+ (timesheet) and says how to install what is missing; it never installs them itself. `MODS_SOURCE` points install and update at another marketplace (a local folder or `owner/repo`).
 
-Uninstall stops the dashboard server, removes its login item and the no-attribution git hooks, removes the `timesheet` launcher when it is ours, and uninstalls the mods from every profile. The data folder (`<mods home>`: `$CLAUDE_MODS_HOME`, else `~/.claude-shared` when it exists, else `~/.claude-mods`) stays unless you pass `--purge`. `~/.timesheet` and the timesheet's keychain tokens are always kept.
+Uninstall stops the dashboard server, removes its login item and the no-attribution git hooks, removes the `timesheet` launcher when it is ours, and uninstalls the mods from every profile. The data folder (`<mods home>`: `$CLAUDE_MODS_HOME`, else `~/.claude-shared` when it exists, else `~/.claude-mods`) stays unless you pass `--purge`. `~/.timesheet` and the timesheet's keychain tokens are always kept. observability's container and the telemetry env in each profile's `settings.json` are not touched: run `/obs telemetry off all` and `/obs down` before uninstalling it.
 
 ## `/mods` inside Claude Code
 
 ![/mods status: each mod with its version, a one-line state and its command, then today's spend and the dashboard address](images/mods/mods-status.png)
 
+The screenshots use generated demo data ([scripts/demo](../scripts/demo/README.md)).
+
 | Command | What it does |
 | --- | --- |
 | `/mods` · `/mods status` | each mod with its version and a one-line state, plus profiles that run different versions |
 | `/mods setup [mod…]` | one guided setup: asks which mods to tailor, then their questions together (every mod has one; `/<mod> setup` runs one alone) |
-| `/mods doctor` | checks: python3, node, the dashboard, the `timesheet` launcher, an old timesheet skill copy shadowing the plugin's, version drift, the `claude` CLI |
+| `/mods doctor` | checks: the data folder is writable, python3, the dashboard (and its login item), the no-attribution git hooks, typescript-language-server, node, the `timesheet` launcher, an old timesheet skill copy shadowing the plugin's, the `claude` CLI, version drift between profiles, mods not loaded in this profile |
 | `/mods changes` | the latest CHANGELOG lines of each mod |
-| `/mods pause <30m\|2h\|1d>` (a bare number is minutes) · `/mods resume` | budget-guard's levers, lean-tools and lsp-first step aside in every session (within 30 seconds). usage-analytics keeps recording; no-attribution keeps guarding |
+| `/mods pause <30m\|2h\|1d>` (a bare number is minutes) · `/mods resume` | budget-guard's levers, lean-tools and lsp-first step aside in every session (within 30 seconds). usage-analytics keeps recording, no-attribution keeps guarding and observability keeps sending telemetry |
 | `/mods update` · `/mods install [mod…]` | run `bin/mods` from inside a session |
 | `/mods uninstall [confirm] [purge]` | without `confirm` it only shows the plan |
 

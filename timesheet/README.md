@@ -4,13 +4,18 @@ NetSuite-ready timesheets built from your AI coding sessions (Claude Code, OpenC
 
 - **Two figures per day:** real activity (session time including waiting on the assistant, commits, meetings) and booked hours normalized to a daily target (default 8, per-weekday overrides, `--target`).
 - **Recorded minutes:** next to those, the exact minutes backed by timestamps only (session messages and meetings; no prompt/commit/GitHub lead-ins, history tails, block padding or rounding). Shown per day, category, block and piece of work in the CLI and, with the *Recorded minutes* switch, in the web app.
-- **Task categories:** every hour lands in one of the NetSuite task categories; CAPEX/OPEX follows the category. A headless Claude call classifies each day's time blocks and writes an internal daily summary. It judges the work by what changed, not just the prompts: commit types, lines and files per area (code, tests, lockfiles, CI, infra, docs) and, for AI sessions, which files the assistant edited, how much it only read, and which commands it ran (program and subcommand only).
+- **Task categories:** every hour lands in one of the NetSuite task categories; CAPEX/OPEX follows the category. A headless Claude call classifies each day's time blocks and writes an internal daily summary. It runs lean (no tools, MCP servers or skills, a one-line system prompt): about 3.5k tokens of context per day. It judges the work by what changed, not just the prompts: commit types, lines and files per area (code, tests, lockfiles, CI, infra, docs) and, for AI sessions, which files the assistant edited, how much it only read, and which commands it ran (program and subcommand only).
 - **Cached:** past days are computed once and cached in SQLite (`~/.timesheet/db.sqlite`). Days with errors, unclassified repos or a failed classification stay *partial* and are recomputed.
 - **Three front-ends over one core:** CLI, a local web app (timesheet, Loam Scheduler calendar, settings, setup wizard), and a Claude Code mod (`/timesheet` plus the skill).
 
-![The week view](../docs/images/timesheet/week-view.png)
+![The week view: booked hours against the target, real activity, the CAPEX/OPEX split and the NetSuite grid](../docs/images/timesheet/week-view.png)
 
-More screenshots: [docs/timesheet.md](../docs/timesheet.md#the-web-app).
+| | |
+| --- | --- |
+| ![Block details](../docs/images/timesheet/day-block-details.png) **Block details**: the work behind each block | ![Calendar](../docs/images/timesheet/calendar-week.png) **Calendar**: the week's blocks, drag to recategorize |
+| ![Submission preview](../docs/images/timesheet/submit-preview.png) **Submission preview**: what would go into Redmine and NetSuite | ![Settings](../docs/images/timesheet/settings-work-scope.png) **Settings**: work scope, categories, sources |
+
+More screenshots: [docs/timesheet.md](../docs/timesheet.md#the-web-app). The screenshots use generated demo data ([scripts/demo](../scripts/demo/README.md)).
 
 ## Install
 
@@ -71,7 +76,7 @@ timesheet month 2026-09 --format lines
 timesheet week --no-header --copy  # grid rows only, for pasting straight into cells
 timesheet week --target 7.5        # normalize to a different target
 timesheet week --real              # book real (rounded) hours instead
-timesheet serve --open             # web app at http://127.0.0.1:4280 (reuses a running server of this version, replaces an older one; --restart always replaces)
+timesheet serve --open             # web app at http://127.0.0.1:4280 (reuses a running server of this version or newer, replaces an older one; --restart always replaces; --port or TIMESHEET_PORT for another port)
 ```
 
 Adjustments survive recomputes:
