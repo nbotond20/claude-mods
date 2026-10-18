@@ -532,7 +532,9 @@ function hubHooks(on: Parameters<Register>[0]) {
  * survives updates), and the bundled skill teaches Claude to use the CLI. /timesheet answers status,
  * setup, doctor and open itself and hands anything else (week last, fix Tuesday…) to Claude and the skill.
  */
-const PORT = 4280
+const DEFAULT_PORT = 4280
+/** TIMESHEET_PORT picks another port when 4280 is taken (the CLI's `serve --port` reads it too). */
+const webPort = async ($: EngineInterface) => Number(await $.env.get('TIMESHEET_PORT')) || DEFAULT_PORT
 
 let launcher = ''
 let firstRun = false
@@ -566,9 +568,37 @@ async function installLauncher($: EngineInterface, force = false) {
   return { state: launcher, path: rest.find(l => l.startsWith('path:'))?.slice(6) }
 }
 
-async function webRunning($: EngineInterface) {
-  const r = await hubRun($, ['curl', '-s', '-m', '1', '-o', '/dev/null', '-w', '%{http_code}', `http://127.0.0.1:${PORT}/api/meta`])
-  return r.stdout.trim() === '200'
+/** The version this plugin ships (the web app reports the same from its package.json). */
+async function ourVersion($: EngineInterface) {
+  return (await hubJson<{ version?: string }>($, `${$.plugin.root}/package.json`))?.version ?? '0.0.0'
+}
+
+/** What answers on the web app's port: nothing, a timesheet server (and its version), or something else. */
+async function webState($: EngineInterface, port: number): Promise<{ kind: 'free' } | { kind: 'timesheet'; version: string | null } | { kind: 'other' }> {
+  const r = await hubRun($, ['curl', '-s', '-m', '1', '-w', '\n%{http_code}', `http://127.0.0.1:${port}/api/version`])
+  const [body = '', code = ''] = (() => {
+    const s = r.stdout.trimEnd()
+    const i = s.lastIndexOf('\n')
+    return i < 0 ? ['', s] : [s.slice(0, i), s.slice(i + 1)]
+  })()
+  if (!code || code === '000') return { kind: 'free' }
+  try {
+    const v = JSON.parse(body) as { app?: string; version?: string }
+    if (code === '200' && v.app === 'timesheet') return { kind: 'timesheet', version: v.version ?? null }
+  } catch {}
+  // servers before 0.3.3 have no /api/version
+  const m = await hubRun($, ['curl', '-s', '-m', '1', '-o', '/dev/null', '-w', '%{http_code}', `http://127.0.0.1:${port}/api/meta`])
+  return m.stdout.trim() === '200' && code === '404' ? { kind: 'timesheet', version: null } : { kind: 'other' }
+}
+
+async function webLine($: EngineInterface) {
+  const port = await webPort($)
+  const s = await webState($, port)
+  if (s.kind === 'free') return 'off (/timesheet open)'
+  if (s.kind === 'other') return `port ${port} is taken by another program (TIMESHEET_PORT picks another)`
+  const ours = await ourVersion($)
+  const old = !s.version || semverCmp(s.version, ours) < 0
+  return `on http://127.0.0.1:${port}/ (${s.version ?? 'old'}${old ? `, older than ${ours}: /timesheet open replaces it` : ''})`
 }
 
 /** The CLI with the plugin's own entry point (the launcher may be someone else's). */
@@ -611,17 +641,40 @@ async function ensureDeps($: EngineInterface) {
   return r?.exitCode === 0 ? 'installed' : 'failed'
 }
 
-async function openWeb($: EngineInterface) {
-  if (await webRunning($)) {
-    await hubRun($, [(await hubRun($, ['uname'])).stdout.trim() === 'Darwin' ? 'open' : 'xdg-open', `http://127.0.0.1:${PORT}/`])
-    return `The timesheet web app is on http://127.0.0.1:${PORT}/ (opened it in your browser).`
-  }
+/**
+ * Opens the web app in whatever state it is in. The CLI's `serve` makes the call (see decide in src/web/port.ts):
+ * it reuses a server of this version or newer, replaces an older one or one whose install is gone, and refuses
+ * a port held by another program. This waits until a new enough server answers, or reports why none does.
+ */
+async function openWeb($: EngineInterface, sleepMs = 400, tries = 50) {
+  const port = await webPort($)
+  const url = `http://127.0.0.1:${port}/`
+  const ours = await ourVersion($)
+  const before = await webState($, port)
   const log = `${await modsHome($)}/timesheet/web.log`
   const entry = `${$.plugin.root}/bin/timesheet.js`
-  const r = await hubRun($, ['sh', '-c', 'nohup node --experimental-sqlite --no-warnings "$0" serve --port "$1" --open >"$2" 2>&1 &', entry, String(PORT), log])
-  return r.exitCode === 0
-    ? `Starting the timesheet web app on http://127.0.0.1:${PORT}/ (it opens in your browser; log: ${log}).`
-    : `Could not start the web app: ${r.stderr.trim() || 'unknown error'}. Try \`timesheet serve --open\` in a terminal.`
+  // Appended, never truncated: a running server keeps writing to this file.
+  const start = await hubRun($, [
+    'sh', '-c',
+    'mkdir -p "$(dirname "$2")"; o=0; [ -f "$2" ] && o=$(wc -c <"$2" | tr -d " "); nohup node --experimental-sqlite --no-warnings "$0" serve --port "$1" --open >>"$2" 2>&1 & echo "$! $o"',
+    entry, String(port), log,
+  ])
+  const [pid, offset] = start.stdout.trim().split(/\s+/)
+  if (start.exitCode !== 0 || !pid) return `Could not start the web app: ${start.stderr.trim() || 'unknown error'}. Try \`timesheet serve --open\` in a terminal.`
+  for (let i = 0; i < tries; i++) {
+    const now = await webState($, port)
+    if (now.kind === 'timesheet' && now.version && semverCmp(now.version, ours) >= 0) {
+      if (before.kind === 'timesheet' && before.version === now.version) return `The timesheet web app ${now.version} was already running on ${url} (opened it in your browser).`
+      if (before.kind === 'timesheet') return `Replaced the timesheet web app ${before.version ?? '(old)'} with ${now.version} on ${url} (opened it in your browser).`
+      return `Started the timesheet web app ${now.version} on ${url} (opened it in your browser; log: ${log}).`
+    }
+    const alive = (await hubRun($, ['kill', '-0', pid])).exitCode === 0
+    if (!alive) break
+    await hubRun($, ['sleep', String(sleepMs / 1000)])
+  }
+  const out = (await hubRun($, ['sh', '-c', 'tail -c +$(($1 + 1)) "$0" | tail -n 5', log, offset || '0'])).stdout.trim()
+  const err = out.split('\n').reverse().find(l => /error|in use|taken|did not stop/i.test(l))?.replace(/^.*?Error:\s*/, '').replace(/^timesheet:\s*/, '')
+  return `Could not start the web app on ${url}: ${err || out || 'it did not answer'}. Log: ${log}.`
 }
 
 type Review = {
@@ -706,6 +759,9 @@ export const register: Register = on => {
   on('command.run', { command: 'timesheet' }, async ($, e) => {
     const args = e.args.trim()
     const [what] = args.split(/\s+/)
+    // Every command first points ~/.local/bin/timesheet at the newest installed version (a plugin update
+    // mid-session would otherwise leave it on a deleted folder until the next session).
+    if (what !== 'install') await installLauncher($).catch(() => {})
     const ask = (text: string, note: string) => {
       // Submitted once this command has returned (a command hook cannot wait on the turn it would start).
       $.clock.after(50, () => void $.prompt.submit({ text }).catch(() => {}))
@@ -716,7 +772,7 @@ export const register: Register = on => {
       const c = await tsConfig($)
       const lines = [
         `timesheet ${hubSelf?.version ?? ''} · ${await statusLine($)}`,
-        `node ${node.version || 'missing'}${node.ok ? '' : ' (needs 22.18+)'} · launcher ~/.local/bin/timesheet: ${launcher || 'unknown'} · web app ${(await webRunning($)) ? `on http://127.0.0.1:${PORT}/` : 'off (/timesheet open)'}`,
+        `node ${node.version || 'missing'}${node.ok ? '' : ' (needs 22.18+)'} · launcher ~/.local/bin/timesheet: ${launcher || 'unknown'} · web app ${await webLine($)}`,
         `data in ${await tsHome($)}`,
       ]
       if (!c) lines.push('Not set up yet: /timesheet setup')

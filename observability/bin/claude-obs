@@ -102,20 +102,93 @@ rotate_default_admin() {
   return 0
 }
 
+VERSION=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$ROOT/.claude-plugin/plugin.json" | head -1)
+# true when dotted version $1 is newer than $2
+ver_gt() { [ -n "$1" ] && [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)" = "$1" ]; }
+
+ready() { grafana_ok && otlp_ok && docker exec "$NAME" test -f /tmp/ready 2>/dev/null; }
+# waits up to $1 seconds for the stack to answer; fails at once if the container stops
+wait_ready() {
+  i=0
+  while [ $i -lt "$1" ]; do
+    ready && return 0
+    running || return 2
+    sleep 1; i=$((i + 1))
+  done
+  return 1
+}
+
+# Docker installed but its runtime stopped: start the one that is installed, and wait for it.
+ensure_docker() {
+  have_docker && return 0
+  command -v docker >/dev/null 2>&1 || die "$(docker_hint)"
+  if command -v colima >/dev/null 2>&1; then say "starting colima…"; colima start >/dev/null 2>&1
+  elif [ -d /Applications/OrbStack.app ]; then say "starting OrbStack…"; open -ga OrbStack
+  elif [ -d /Applications/Docker.app ]; then say "starting Docker Desktop…"; open -ga Docker
+  else die "$(docker_hint)"; fi
+  i=0
+  until have_docker; do
+    [ $i -ge 120 ] && die "$(docker_hint)"
+    sleep 1; i=$((i + 1))
+  done
+}
+
+# One `up` at a time across sessions and profiles; a lock left by a killed run expires after 10 minutes.
+LOCK=$OBS/.up.lock
+take_lock() {
+  mkdir -p "$OBS"
+  i=0
+  while ! mkdir "$LOCK" 2>/dev/null; do
+    if [ -n "$(find "$LOCK" -maxdepth 0 -mmin +10 2>/dev/null)" ]; then rm -rf "$LOCK"; continue; fi
+    [ $i -ge 600 ] && die "another 'claude-obs up' has held $LOCK for 10 minutes"
+    sleep 1; i=$((i + 1))
+  done
+  trap 'rmdir "$LOCK" 2>/dev/null' EXIT
+  trap 'rmdir "$LOCK" 2>/dev/null; exit 1' INT TERM
+}
+
+# What holds a port, when it is not our container: another container, or a process.
+port_owner() {
+  c=$(docker ps --filter "publish=$1" --format '{{.Names}}' 2>/dev/null | grep -vx "$NAME" | head -1)
+  [ -n "$c" ] && { echo "container $c"; return; }
+  command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | awk 'NR==2 {print $1 " (pid " $2 ")"}'
+}
+check_ports() {
+  for p in "$GRAFANA_PORT" "$OTLP_HTTP" "$OTLP_GRPC"; do
+    o=$(port_owner "$p")
+    [ -n "$o" ] && die "port $p on 127.0.0.1 is taken by $o: stop it, or set grafanaPort/otlpHttpPort/otlpGrpcPort in $CFG"
+  done
+  return 0
+}
+
+# Brings the stack to this plugin's setup in any state: not there, stopped, running current, running an
+# older setup (replaced), running a newer one from a profile already updated (kept: never downgraded),
+# or running but not answering (restarted). Safe to run any number of times, from several sessions at once.
 cmd_up() {
-  have_docker || die "$(docker_hint)"
+  ensure_docker
+  take_lock
   sig=$(wanted_sig)
-  if running && [ "$(label dev.claude-mods.sig)" = "$sig" ]; then
-    sync_dashboards; say "claude-obs is running: $URL"; return 0
+  if running; then
+    have=$(label dev.claude-mods.version)
+    if [ "$(label dev.claude-mods.sig)" = "$sig" ] || ver_gt "$have" "$VERSION"; then
+      [ "$(label dev.claude-mods.sig)" = "$sig" ] && sync_dashboards
+      if wait_ready 60; then
+        if ver_gt "$have" "$VERSION"; then say "claude-obs $have is running (newer than this session's $VERSION): $URL"
+        else say "claude-obs is running: $URL"; fi
+        return 0
+      fi
+      say "claude-obs is not answering; restarting it…"
+    fi
   fi
   docker rm -f "$NAME" >/dev/null 2>&1
+  check_ports
   sync_stack
   ensure_admin_password
   docker image inspect "$IMAGE" >/dev/null 2>&1 || { say "pulling $IMAGE (once, ~1 GB)…"; docker pull -q "$IMAGE" >/dev/null || die "could not pull $IMAGE"; }
   ret_h=$((RETENTION_DAYS * 24))h
   S=$OBS/stack
   docker run -d --name "$NAME" --restart unless-stopped \
-    --label "dev.claude-mods.sig=$sig" \
+    --label "dev.claude-mods.sig=$sig" --label "dev.claude-mods.version=$VERSION" \
     -p "127.0.0.1:$GRAFANA_PORT:3000" -p "127.0.0.1:$OTLP_GRPC:4317" -p "127.0.0.1:$OTLP_HTTP:4318" \
     -v "$OBS/data:/data" \
     -v "$S/tempo.yaml:/otel-lgtm/tempo-config.yaml:ro" \
@@ -137,15 +210,16 @@ cmd_up() {
     -e GF_SECURITY_DISABLE_GRAVATAR=true -e GF_SNAPSHOTS_EXTERNAL_ENABLED=false \
     -e GF_USERS_DEFAULT_THEME=system -e GF_FEATURE_TOGGLES_ENABLE=traceqlEditor \
     -e GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/claude-obs/dashboards/overview.json \
-    "$IMAGE" >/dev/null || die "docker run failed (is port $GRAFANA_PORT, $OTLP_HTTP or $OTLP_GRPC taken? set grafanaPort/otlpHttpPort/otlpGrpcPort in $CFG)"
+    "$IMAGE" >/dev/null 2>"$OBS/.run.err" || {
+      err=$(tail -c 300 "$OBS/.run.err"); docker rm -f "$NAME" >/dev/null 2>&1
+      die "docker run failed: $err (set grafanaPort/otlpHttpPort/otlpGrpcPort in $CFG if a port is taken)"
+    }
   say "starting claude-obs…"
-  i=0
-  while [ $i -lt 120 ]; do
-    if grafana_ok && otlp_ok && docker exec "$NAME" test -f /tmp/ready 2>/dev/null; then rotate_default_admin; say "claude-obs is up: $URL"; return 0; fi
-    running || die "the container stopped; 'claude-obs logs' shows why"
-    sleep 1; i=$((i + 1))
-  done
-  say "claude-obs is still starting; 'claude-obs status' to check"
+  wait_ready 180; rc=$?
+  [ $rc = 2 ] && die "the container stopped; 'claude-obs logs' shows why"
+  [ $rc = 0 ] || { say "claude-obs is still starting; 'claude-obs status' to check"; return 0; }
+  rotate_default_admin
+  say "claude-obs is up: $URL"
 }
 
 cmd_down() {
@@ -187,7 +261,7 @@ cmd_open() {
     explore) p=/explore ;;
     *) p=/d/claude-overview ;;
   esac
-  grafana_ok || QUIET=1 cmd_up
+  (QUIET=1 cmd_up) || exit 1
   if command -v open >/dev/null 2>&1; then open "$URL$p"
   elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$URL$p" >/dev/null 2>&1
   fi
@@ -195,6 +269,7 @@ cmd_open() {
 }
 
 cmd_backfill() {
+  case " $* " in *" -h "*|*" --help "*) ;; *) (QUIET=1 cmd_up) || exit 1 ;; esac
   python3 "$HERE/backfill.py" --endpoint "http://127.0.0.1:$OTLP_HTTP" --grafana "$URL" --dir "$OBS" --days "$RETENTION_DAYS" "$@" || return
   case " $* " in *" --dry-run "*|*" -h "*|*" --help "*) return ;; esac
   # old events sit in Loki's ingester, which queries skip for anything older than a few hours: flush them
@@ -236,6 +311,7 @@ case "${1:-status}" in
   backfill) shift; cmd_backfill "$@" ;;
   reset) shift; cmd_reset "$@" ;;
   env) shift; cmd_env "$@" ;;
+  hint) have_docker && echo "Docker is running." || docker_hint ;;
   -h|--help|help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) die "unknown command '$1' (claude-obs --help)" ;;
 esac

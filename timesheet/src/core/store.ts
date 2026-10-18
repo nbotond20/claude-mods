@@ -77,8 +77,9 @@ export class Store {
   constructor(path = join(HOME, 'db.sqlite')) {
     if (path !== ':memory:') mkdirSync(HOME, { recursive: true });
     this.db = new DatabaseSync(path);
-    // The CLI and the web server may write at the same time.
-    if (path !== ':memory:') this.db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000;');
+    // The CLI and the web server may write at the same time. The timeout comes first: switching to WAL takes a
+    // lock too, and without it a second process opening the database at that moment fails with "database is locked".
+    if (path !== ':memory:') this.db.exec('PRAGMA busy_timeout = 5000; PRAGMA journal_mode = WAL;');
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS days (
         date TEXT PRIMARY KEY,

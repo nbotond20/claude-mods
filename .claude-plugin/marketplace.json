@@ -29,7 +29,7 @@
       "name": "usage-analytics",
       "source": "./usage-analytics",
       "description": "Records every model request, tool call, prompt, context breakdown, compaction and rate-limit reading from every profile into one store in the mods data folder, with a live dashboard, a weekly digest, shareable summaries, mod impact verdicts and a statistical advisor.",
-      "version": "0.14.1",
+      "version": "0.14.2",
       "author": {
         "name": "nbotond"
       },
@@ -98,7 +98,7 @@
       "name": "timesheet",
       "source": "./timesheet",
       "description": "NetSuite-ready timesheets from your Claude Code and OpenCode sessions, git and GitHub history and Google Calendar: the timesheet CLI and web app, the timesheet skill, and /timesheet.",
-      "version": "0.3.8",
+      "version": "0.3.9",
       "author": {
         "name": "nbotond"
       },
@@ -116,7 +116,7 @@
       "name": "observability",
       "source": "./observability",
       "description": "A free, local observability platform for Claude Code: Grafana with trace waterfalls, logs, metrics and dashboards (spend, latency, where time goes, errors, tools, hooks, MCP) for every profile, fed by Claude Code's own OpenTelemetry. Runs in Docker on 127.0.0.1; nothing leaves the machine.",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "author": {
         "name": "nbotond"
       },

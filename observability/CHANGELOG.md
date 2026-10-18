@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.2
+- `/obs up`, `open` and `backfill` work whatever is already running. They reuse a current or newer stack, replace an older one, restart one that doesn't answer, start an installed Docker runtime (colima, OrbStack, Docker Desktop), run one at a time across sessions, and name whatever else holds a port.
+
 ## 0.1.1
 - Grafana without a login is a Viewer that can explore and try edits but save nothing, so a web page cannot change it (CSRF). The admin password is passed to Grafana as a mounted file, never on a command line; saving needs the admin login.
 

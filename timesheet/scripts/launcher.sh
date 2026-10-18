@@ -9,6 +9,21 @@
 ENTRY="${TIMESHEET_ENTRY:-}"
 [ -z "$ENTRY" ] && [ -f "__ENTRY_FILE__" ] && ENTRY=$(cat "__ENTRY_FILE__")
 [ -z "$ENTRY" ] && ENTRY="__ENTRY__"
+# A plugin update deletes the old version's folder: fall back to the newest timesheet installed in any profile.
+if [ -z "${TIMESHEET_ENTRY:-}" ] && [ ! -f "$ENTRY" ]; then
+  best=; bestv=
+  for f in "__ENTRY__" "$HOME"/.claude*/plugins/cache/*/timesheet/*/bin/timesheet.js; do
+    [ -f "$f" ] || continue
+    v=$(sed -n 's/^ *"version": *"\([0-9.]*\)".*/\1/p' "$(dirname "$(dirname "$f")")/package.json" 2>/dev/null | head -n 1)
+    if [ -z "$best" ] || printf '%s\n%s\n' "$bestv" "$v" | awk -F. 'NR==1{split($0,a,".")} NR==2{for(i=1;i<=4;i++){if(a[i]+0!=$i+0){exit !($i+0>a[i]+0)}} exit 1}'; then
+      best=$f; bestv=$v
+    fi
+  done
+  if [ -n "$best" ]; then
+    ENTRY=$best
+    printf '%s' "$ENTRY" > "__ENTRY_FILE__" 2>/dev/null
+  fi
+fi
 
 new_enough() {
   "$1" -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=18)?0:1)' 2>/dev/null

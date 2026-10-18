@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.3.9
+- `/timesheet open` works whatever is already running: it reuses a current or newer web app, replaces an older one, survives concurrent starts and names whatever else holds the port (`TIMESHEET_PORT` picks another). The `timesheet` launcher follows the newest install and heals itself after an update.
+
 ## 0.3.8
 - `/mods` and `bin/mods install` know the new observability mod (local Grafana: traces, logs, metrics and dashboards for every profile).
 

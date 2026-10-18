@@ -3,7 +3,8 @@ import { nodeOk, reminderText, setupPrompt } from '../hooks/register.ts'
 
 const ENTRY = '/h/.claude-mods/timesheet/entry'
 
-function engine(on: any, opts: { node?: string; launcher?: string; config?: object } = {}) {
+type Out = { stdout: string; exitCode?: number }
+function engine(on: any, opts: { node?: string; launcher?: string; config?: object; pkg?: string; web?: (argv: string[]) => Out | undefined } = {}) {
   const files = new Map<string, string>()
   if (opts.config) files.set('/h/.timesheet/config.json', JSON.stringify(opts.config))
   const runs: string[][] = []
@@ -17,7 +18,9 @@ function engine(on: any, opts: { node?: string; launcher?: string; config?: obje
   on('store.set', () => ({ value: undefined }))
   on('prompt.submit', ($: any, e: any) => (submitted.push(e.text), { text: e.text }))
   on('env.get', ($: any, e: any) => ({ value: e.name === 'HOME' ? '/h' : e.name === 'CLAUDE_CONFIG_DIR' ? '/h/.claude-my' : undefined }))
-  on('fs.read', ($: any, e: any) => (files.has(e.path) ? { value: files.get(e.path) } : { deny: 'ENOENT' }))
+  on('fs.read', ($: any, e: any) =>
+    files.has(e.path) ? { value: files.get(e.path) } : opts.pkg && e.path.endsWith('/package.json') ? { value: JSON.stringify({ version: opts.pkg }) } : { deny: 'ENOENT' },
+  )
   on('fs.write', ($: any, e: any) => (files.set(e.path, e.text), { value: undefined }))
   on('fs.exists', ($: any, e: any) => ({ value: [...files.keys()].some(f => f === e.path || f.startsWith(`${e.path}/`)) }))
   on('fs.list', ($: any, e: any) => {
@@ -37,6 +40,8 @@ function engine(on: any, opts: { node?: string; launcher?: string; config?: obje
       files.set(ENTRY, 'x')
       return out(opts.launcher ?? 'installed')
     }
+    const w = opts.web?.(argv)
+    if (w) return out(w.stdout, w.exitCode ?? 0)
     if (argv[0] === 'curl') return out('000', 7)
     if (argv.includes('doctor')) return out('Config: ~/.timesheet/config.json\n  ✓ git')
     return out('')
@@ -47,7 +52,86 @@ function engine(on: any, opts: { node?: string; launcher?: string; config?: obje
 const cmd = ($: any, args: string) => $.command.run({ command: 'timesheet', args, origin: { kind: 'user' }, presentation: 'text' })
 const settle = () => new Promise(r => setTimeout(r, 0))
 
+/** A fake port 4280: what answers there, changed by the start the hook runs (`onStart`). */
+function port(initial: string | null, onStart: (state: { version: string | null; foreign: boolean; alive: boolean; log: string }) => void) {
+  const st = { version: initial, foreign: false, alive: true, log: '' }
+  let polls = 0
+  const web = (argv: string[]): Out | undefined => {
+    if (argv[0] === 'curl' && String(argv.at(-1)).endsWith('/api/version')) {
+      polls++
+      if (st.foreign) return { stdout: '<html></html>\n200' }
+      return st.version ? { stdout: `${JSON.stringify({ app: 'timesheet', version: st.version, pid: 7 })}\n200` } : { stdout: '\n000', exitCode: 7 }
+    }
+    if (argv[0] === 'curl' && String(argv.at(-1)).endsWith('/api/meta')) return { stdout: st.foreign ? '404' : '000' }
+    if (argv[0] === 'sh' && String(argv[2]).includes('serve --port')) return onStart(st), { stdout: '4242 10' }
+    if (argv[0] === 'kill') return { stdout: '', exitCode: st.alive ? 0 : 1 }
+    if (argv[0] === 'sh' && String(argv[2]).startsWith('tail')) return { stdout: st.log }
+    if (argv[0] === 'sleep') return { stdout: '' }
+    return undefined
+  }
+  return { web, polls: () => polls }
+}
+
 describe('timesheet', () => {
+  test('/timesheet open starts the web app when nothing runs, and waits until it answers', async ($, on) => {
+    const p = port(null, st => (st.version = '0.3.8'))
+    engine(on, { node: '22.20.0', pkg: '0.3.8', web: p.web })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
+    expect((await cmd($, 'open')).text).toMatch(/^Started the timesheet web app 0\.3\.8 on http:\/\/127\.0\.0\.1:4280\//)
+  })
+
+  test('/timesheet open reuses a running web app of this version or newer: never a downgrade', async ($, on) => {
+    const same = port('0.3.8', () => {})
+    engine(on, { node: '22.20.0', pkg: '0.3.8', web: (a: string[]) => same.web(a) })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
+    expect((await cmd($, 'open')).text).toMatch(/^The timesheet web app 0\.3\.8 was already running/)
+  })
+
+  test('/timesheet open from an older profile leaves a newer web app running', async ($, on) => {
+    const newer = port('0.4.0', () => {})
+    engine(on, { node: '22.20.0', pkg: '0.3.8', web: newer.web })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
+    expect((await cmd($, 'open')).text).toMatch(/^The timesheet web app 0\.4\.0 was already running/)
+  })
+
+  test('/timesheet open replaces an older web app and reports it', async ($, on) => {
+    let n = 0
+    const old = port('0.3.7', () => {})
+    engine(on, {
+      node: '22.20.0',
+      pkg: '0.3.8',
+      // the old server answers for a few polls while it shuts down, then the new one
+      web: (a: string[]) => (a[0] === 'curl' && String(a.at(-1)).endsWith('/api/version') && ++n === 4 ? { stdout: `${JSON.stringify({ app: 'timesheet', version: '0.3.8' })}\n200` } : old.web(a)),
+    })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
+    const before = old.polls()
+    expect((await cmd($, 'open')).text).toMatch(/^Replaced the timesheet web app 0\.3\.7 with 0\.3\.8/)
+    expect(old.polls() - before).toBeGreaterThan(1)
+  })
+
+  test('/timesheet open says what holds the port and how to pick another', async ($, on) => {
+    const p = port(null, st => {
+      st.foreign = true
+      st.alive = false
+      st.log = 'timesheet: port 4280 is in use by another program (pid 9: python3 -m http.server 4280); stop it, or pick another port with --port <n> (or TIMESHEET_PORT=<n> for /timesheet open)'
+    })
+    engine(on, { node: '22.20.0', pkg: '0.3.8', web: p.web })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
+    const t = (await cmd($, 'open')).text
+    expect(t).toContain('Could not start the web app on http://127.0.0.1:4280/: port 4280 is in use by another program (pid 9: python3')
+    expect(t).toContain('TIMESHEET_PORT=<n>')
+  })
+
+  test('every /timesheet command first points the launcher at the newest install', async ($, on) => {
+    const { runs } = engine(on, { node: '22.20.0' })
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/w' } as any)
+    const launches = () => runs.filter(a => a[0] === 'sh' && String(a[1]).endsWith('install-launcher.sh')).length
+    const before = launches()
+    await cmd($, 'status')
+    await cmd($, 'doctor')
+    expect(launches() - before).toBe(2)
+  })
+
   test('Node 22.18 or newer', () => {
     expect(nodeOk('22.18.0')).toBe(true)
     expect(nodeOk('v24.1.0')).toBe(true)

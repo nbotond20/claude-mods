@@ -28,7 +28,7 @@ import { capture, INSPECT_DIR } from '../core/submit/inspect.ts';
 import { buildPlan, describeTarget } from '../core/submit/plan.ts';
 import { isSystem, listCaptures, startUrl, SubmitSession } from '../core/submit/session.ts';
 import { Abort } from '../core/submit/adapter.ts';
-import { APP_VERSION, compareVersions, probe, stopServer } from './port.ts';
+import { APP_ROOT, APP_VERSION, decide, portTakenMessage, probe, stopServer } from './port.ts';
 import { Busy, SubmitRunner } from '../core/submit/run.ts';
 import { SYSTEMS, type SubmitRule, type SystemId } from '../core/submit/types.ts';
 
@@ -368,7 +368,7 @@ export function createApp(opts: AppOptions) {
 
       switch (`${req.method} ${pathname}`) {
         case 'GET /api/version':
-          return json(res, 200, { app: 'timesheet', version: APP_VERSION, pid: process.pid });
+          return json(res, 200, { app: 'timesheet', version: APP_VERSION, pid: process.pid, root: APP_ROOT });
         case 'GET /api/meta':
           return json(res, 200, meta());
         case 'GET /api/report':
@@ -581,19 +581,20 @@ export function createApp(opts: AppOptions) {
 const openUrl = (url: string) => execFile(process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open', [url], () => {});
 
 /**
- * Starts the web app. A timesheet server already on the port is reused when it is this version or newer,
- * and replaced when it is older (or `restart` is set); anything else on the port is an error.
+ * Starts the web app. A timesheet server already on the port is reused when it is newer, or the same version
+ * from an install that still exists; it is replaced when older, gone from disk, or `restart` is set (see decide).
+ * Anything else on the port is an error. Two starts at once end with one server: the loser reuses the winner.
  */
 export async function serve(opts: AppOptions, port: number, open = false, restart = false): Promise<void> {
   const url = `http://127.0.0.1:${port}`;
+  const reuse = (version: string | null) => {
+    console.log(`Timesheet ${version} already running: ${url}`);
+    if (open) openUrl(url);
+  };
   const holder = await probe(port);
-  if (holder.kind === 'foreign') throw new Error(`port ${port} is in use by something else; pick another with --port`);
+  if (holder.kind === 'foreign') throw new Error(portTakenMessage(port, holder));
   if (holder.kind === 'timesheet') {
-    if (!restart && holder.version && compareVersions(holder.version, APP_VERSION) >= 0) {
-      console.log(`Timesheet ${holder.version} already running: ${url}`);
-      if (open) openUrl(url);
-      return;
-    }
+    if (decide(holder, APP_VERSION, restart) === 'reuse') return reuse(holder.version);
     console.log(`Replacing timesheet ${holder.version ?? '(older)'} on ${url} with ${APP_VERSION}`);
     await stopServer(port, holder);
   }
@@ -607,9 +608,20 @@ export async function serve(opts: AppOptions, port: number, open = false, restar
     };
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
-    server.on('error', (e: NodeJS.ErrnoException) =>
-      reject(e.code === 'EADDRINUSE' ? new Error(`port ${port} was taken while starting; run serve again`) : e),
-    );
+    server.on('error', (e: NodeJS.ErrnoException) => {
+      if (e.code !== 'EADDRINUSE') return reject(e);
+      // Another start won the port in the meantime: use its server when it will do, rather than fail.
+      void (async () => {
+        await new Promise((r) => setTimeout(r, 300));
+        const now = await probe(port);
+        if (now.kind === 'timesheet' && decide(now, APP_VERSION) === 'reuse') {
+          reuse(now.version);
+          // the app was already made (its job runner and database): close it and leave
+          return stop();
+        }
+        reject(new Error(now.kind === 'foreign' ? portTakenMessage(port, now) : `port ${port} was taken while starting; run serve again`));
+      })();
+    });
     server.listen(port, '127.0.0.1', () => {
       console.log(`Timesheet ${APP_VERSION}: ${url}  (Ctrl+C to stop)`);
       if (open) openUrl(url);

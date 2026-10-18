@@ -1102,7 +1102,7 @@ async function main() {
     case 'init':
       if (flags.web) {
         const { serve } = await import('./web/server.ts');
-        return serve({ engine: engine(), rebuild: (config) => engine(config) }, Number(flags.port ?? 4280), true);
+        return serve({ engine: engine(), rebuild: (config) => engine(config) }, Number(flags.port ?? process.env.TIMESHEET_PORT ?? 4280), true);
       }
       return init();
     case 'scope':
@@ -1146,7 +1146,7 @@ async function main() {
     }
     case 'serve': {
       const { serve } = await import('./web/server.ts');
-      return serve({ engine: engine(), rebuild: (config) => engine(config) }, Number(flags.port ?? 4280), flags.open, flags.restart);
+      return serve({ engine: engine(), rebuild: (config) => engine(config) }, Number(flags.port ?? process.env.TIMESHEET_PORT ?? 4280), flags.open, flags.restart);
     }
     case 'install-skill':
       return installSkill();

@@ -20,7 +20,7 @@ Commands:
   reprice                             recompute cost_usd after editing pricing.json
   serve   [--port N] [--daemon] [--open]      the web dashboard (127.0.0.1 only; port from config, default 8787)
   setup   [--json]                    what was detected (profiles, history, python, dashboard) for the setup wizard
-  autostart on|off|status             also keep the dashboard running from login (launchd on macOS, systemd on Linux)
+  autostart on|off|status|sync        also keep the dashboard running from login (launchd on macOS, systemd on Linux)
   advise  [show|brief|record FILE|-|set ID STATUS|get ID|reproduce ID|due|notify|sql Q] [--json]
                                       the self-improving advisor: metrics, findings, recommendations and their verdicts
   recurring [show ID|brief|record FILE|-|set ID STATUS] [--days N] [--profile P] [--project X] [--min N] [--json]
@@ -1207,21 +1207,57 @@ def cmd_setup(args):
 LABEL = 'dev.claude-mods.usage-dashboard'
 
 
+def _cli_version(cli):
+    try:
+        with open(os.path.join(os.path.dirname(os.path.dirname(cli)), '.claude-plugin', 'plugin.json')) as f:
+            return json.load(f)['version']
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _vt(v):
+    return tuple(int(x) for x in re.findall(r'\d+', v or '0'))
+
+
+def _claim_cli_path():
+    """Point cli-path at this copy unless it names a newer one that still exists (never downgrade: a profile not
+    yet restarted after an update must not send the login item back to its older copy)."""
+    me = os.path.realpath(__file__)
+    path = os.path.join(DATA, 'cli-path')
+    try:
+        cur = open(path).read().strip()
+    except OSError:
+        cur = ''
+    if cur and cur != me and os.path.isfile(cur) and _vt(_cli_version(cur)) > _vt(_cli_version(me)):
+        return cur
+    if cur != me:
+        os.makedirs(DATA, exist_ok=True)
+        with open(path + '.tmp', 'w') as f:
+            f.write(me)
+        os.replace(path + '.tmp', path)
+    return me
+
+
 def _shim():
     """A stable launcher in the data dir that runs the newest installed copy of this CLI (plugin updates move it)."""
     path = os.path.join(DATA, 'bin', 'claude-usage')
     os.makedirs(os.path.dirname(path), exist_ok=True)
     me = os.path.realpath(__file__)
-    with open(path, 'w') as f:
-        f.write(f"""#!/bin/sh
+    text = f"""#!/bin/sh
 # Written by `claude-usage autostart on`: runs the newest installed claude-usage (the mod updates cli-path).
 cli=$(cat "{DATA}/cli-path" 2>/dev/null)
-[ -x "$cli" ] || cli="{me}"
+[ -f "$cli" ] || cli="{me}"
 exec python3 "$cli" "$@"
-""")
+"""
+    try:
+        same = open(path).read() == text
+    except OSError:
+        same = False
+    if not same:
+        with open(path, 'w') as f:
+            f.write(text)
     os.chmod(path, 0o755)
-    with open(os.path.join(DATA, 'cli-path'), 'w') as f:
-        f.write(me)
+    _claim_cli_path()
     return path
 
 
@@ -1254,32 +1290,28 @@ def cmd_autostart(args):
             os.remove(unit)
         print('autostart off')
         return 0
+    if args.state == 'sync':
+        # Keep an installed login item on the current launcher and unit text; nothing to do when it is off.
+        _claim_cli_path()
+        if not os.path.exists(unit):
+            return 0
+        shim = _shim()
+        try:
+            same = open(unit).read() == _unit_text(shim)
+        except OSError:
+            same = False
+        if same:
+            return 0
     shim = _shim()
     os.makedirs(os.path.dirname(unit), exist_ok=True)
     if sys.platform == 'darwin':
         with open(unit, 'w') as f:
-            f.write(f"""<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-  <key>Label</key><string>{LABEL}</string>
-  <key>ProgramArguments</key><array><string>/bin/sh</string><string>{shim}</string><string>serve</string><string>--daemon</string><string>--quiet</string></array>
-  <key>RunAtLoad</key><true/>
-  <key>StartInterval</key><integer>600</integer>
-  <key>EnvironmentVariables</key><dict><key>CLAUDE_USAGE_DIR</key><string>{DATA}</string><key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string></dict>
-</dict></plist>
-""")
+            f.write(_unit_text(shim))
         subprocess.run(['launchctl', 'unload', unit], capture_output=True)
         r = subprocess.run(['launchctl', 'load', unit], capture_output=True, text=True)
     else:
         with open(unit, 'w') as f:
-            f.write(f"""[Unit]
-Description=claude-usage dashboard (starts one if none runs)
-
-[Service]
-Type=oneshot
-Environment=CLAUDE_USAGE_DIR={DATA}
-ExecStart=/bin/sh {shim} serve --daemon --quiet
-""")
+            f.write(_unit_text(shim))
         with open(unit[:-len('.service')] + '.timer', 'w') as f:
             f.write("""[Unit]
 Description=keep the claude-usage dashboard running
@@ -1296,8 +1328,33 @@ WantedBy=timers.target
     if r.returncode != 0:
         print(f'autostart written to {unit}, but loading it failed: {(r.stderr or r.stdout).strip()}')
         return 1
+    if args.state == 'sync':
+        print(f'autostart refreshed ({unit})')
+        return 0
     print(f'autostart on: the dashboard starts at login and is checked every 10 minutes ({unit})')
     return 0
+
+
+def _unit_text(shim):
+    if sys.platform == 'darwin':
+        return f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>{LABEL}</string>
+  <key>ProgramArguments</key><array><string>/bin/sh</string><string>{shim}</string><string>serve</string><string>--daemon</string><string>--quiet</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>StartInterval</key><integer>600</integer>
+  <key>EnvironmentVariables</key><dict><key>CLAUDE_USAGE_DIR</key><string>{DATA}</string><key>PATH</key><string>/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin</string></dict>
+</dict></plist>
+"""
+    return f"""[Unit]
+Description=claude-usage dashboard (starts one if none runs)
+
+[Service]
+Type=oneshot
+Environment=CLAUDE_USAGE_DIR={DATA}
+ExecStart=/bin/sh {shim} serve --daemon --quiet
+"""
 
 
 def cmd_impact(args):
@@ -1513,7 +1570,7 @@ def main(argv=None):
     su = sub.add_parser('setup', help='what the setup wizard needs to know: profiles, history on disk, dashboard')
     su.add_argument('--json', action='store_true'); su.set_defaults(fn=cmd_setup)
     au = sub.add_parser('autostart', help='keep the dashboard running from login too')
-    au.add_argument('state', choices=['on', 'off', 'status']); au.set_defaults(fn=cmd_autostart)
+    au.add_argument('state', choices=['on', 'off', 'status', 'sync']); au.set_defaults(fn=cmd_autostart)
     sub.add_parser('path').set_defaults(fn=lambda a: print(DATA) or 0)
     dg = sub.add_parser('digest', help='last week against the week before (the weekly toast)')
     dg.add_argument('--json', action='store_true'); dg.add_argument('--line', action='store_true', help='one line, for a toast')

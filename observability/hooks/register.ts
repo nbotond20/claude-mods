@@ -779,8 +779,8 @@ async function statusText($: EngineInterface) {
   const lines: string[] = []
   if (!s) lines.push('Stack: could not run bin/claude-obs.')
   else if (!s.docker) {
-    const r = await obs($, ['up', '--quiet'], 15_000).catch(() => null)
-    lines.push(`Stack: Docker is not available. ${(r?.stderr || '').replace(/^claude-obs: /, '').trim()}`)
+    const r = await obs($, ['hint'], 15_000).catch(() => null)
+    lines.push(`Stack: Docker is not available. ${(r?.stdout || '').trim()} /obs up starts an installed runtime.`)
   } else {
     lines.push(
       s.running && s.grafana

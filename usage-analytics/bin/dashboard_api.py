@@ -529,7 +529,7 @@ def make_handler(db, html_path, coster, ingest, live=None, version=None, activit
                 if u.path in ('/', '/index.html'):
                     return self.send(200, open(html_path, 'rb').read(), 'text/html; charset=utf-8')
                 if u.path == '/api/ping':
-                    return self.send(200, {'ok': True, 'app': 'claude-usage', 'pid': os.getpid(), 'version': version,
+                    return self.send(200, {'ok': True, 'app': 'claude-usage', 'pid': os.getpid(), 'version': version, 'html': html_path,
                                            'live': live.version if live else None, 'progress': live.progress if live else None})
                 if u.path == '/api/stream':
                     return self.stream()
@@ -720,22 +720,75 @@ def vtuple(v):
     return tuple(int(x) for x in re.findall(r'\d+', v or '0'))
 
 
-def stop(port=8787):
-    """Stop a dashboard started with --daemon (found by its listening port)."""
+def listeners(port):
+    """{pid: command line} of the processes listening on 127.0.0.1:port."""
     import subprocess
-    if not port_answers(port):
-        return False
-    pids = subprocess.run(['lsof', '-t', f'-iTCP:{port}', '-sTCP:LISTEN'], capture_output=True, text=True).stdout.split()
+    try:
+        pids = subprocess.run(['lsof', '-t', f'-iTCP:{port}', '-sTCP:LISTEN'], capture_output=True, text=True, timeout=5).stdout.split()
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    out = {}
     for pid in pids:
         try:
-            os.kill(int(pid), 15)
-        except (OSError, ValueError):
-            pass
-    for _ in range(30):
-        if not port_answers(port):
+            out[int(pid)] = subprocess.run(['ps', '-o', 'command=', '-p', pid], capture_output=True, text=True, timeout=5).stdout.strip()
+        except (OSError, ValueError, subprocess.SubprocessError):
+            out[int(pid)] = ''
+    return out
+
+
+def is_ours(cmd):
+    return 'claude-usage' in cmd and ' serve' in cmd
+
+
+def port_free(port):
+    with socket.socket() as s:
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # as the server binds: closed connections don't count
+        try:
+            s.bind(('127.0.0.1', port))
             return True
-        time.sleep(0.1)
-    return False
+        except OSError:
+            return False
+
+
+def _kill(pids, port):
+    """SIGTERM, then SIGKILL whatever still holds the port after 3 seconds."""
+    for sig, wait in ((15, 30), (9, 20)):
+        for pid in pids:
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                pass
+        for _ in range(wait):
+            if port_free(port):
+                return True
+            time.sleep(0.1)
+    return port_free(port)
+
+
+def stop(port=8787):
+    """Stop the dashboard on this port (found by its listening port): a running one, or a hung one that no longer
+    answers. Never touches another program that happens to use the port."""
+    pids = [pid for pid, cmd in listeners(port).items() if is_ours(cmd)]
+    if not pids:  # lsof found none (or is missing): a running dashboard says its own pid
+        p = ping(port)
+        pids = [p['pid']] if p and p.get('pid') else []
+    return bool(pids) and _kill(pids, port)
+
+
+def decide(running, version, restart=False, html_exists=True):
+    """What to do with the dashboard on the port: 'start' (nothing there), 'reuse' or 'replace'. Never downgrades:
+    a server newer than this copy (a session not yet restarted after an update) is kept even when `restart` is set;
+    an older one is replaced, and so is one whose files an update removed, whatever its version."""
+    if not running:
+        return 'start'
+    if not html_exists:  # broken whatever its version: an update deleted the copy it serves
+        return 'replace'
+    mine, theirs = vtuple(version), vtuple(running.get('version'))
+    if version and theirs > mine:
+        return 'reuse'
+    if (version and theirs < mine) or restart:
+        return 'replace'
+    return 'reuse'
 
 
 def serve(db, html_path, coster, ingest, port=8787, open_browser=False, daemon=False, log_path=None, tab=None,
@@ -750,21 +803,46 @@ def serve(db, html_path, coster, ingest, port=8787, open_browser=False, daemon=F
     fcntl.flock(guard, fcntl.LOCK_EX)  # held only while deciding and starting
     try:
         running = ping(port)
-        if running and (restart or version and vtuple(running.get('version')) < vtuple(version)):
+        action = decide(running, version, restart, not running or not running.get('html') or os.path.exists(running['html']))
+        if action == 'replace':
             say(f'restarting dashboard {running.get("version") or "?"}' + (f' as {version}' if version and version != running.get('version') else ''))
-            stop(port)
+            if not stop(port):
+                print(f'dashboard: could not stop the running dashboard on port {port}', file=sys.stderr)
+                return 1
             running = None
         if running:
+            if restart and action == 'reuse' and version and running.get('version') != version:
+                say(f'dashboard {running.get("version")} is newer than this copy ({version}): keeping it')
             say(f'dashboard already running: {url}')
             if open_browser:
                 webbrowser.open(url)
             return 0
+        if not port_free(port):
+            # Something holds the port without answering as a dashboard: a hung dashboard is replaced,
+            # anything else is left alone and named.
+            held = listeners(port)
+            if held and all(is_ours(c) for c in held.values()):
+                say('restarting a dashboard that stopped answering')
+                _kill(list(held), port)
+            if not port_free(port):
+                who = ', '.join(f'{os.path.basename(c.split()[0]) if c else "?"} (pid {p})' for p, c in held.items()) or 'another program'
+                print(f'dashboard: port {port} is used by {who}. Stop it, or set "port" in '
+                      f'{os.path.join(os.path.dirname(db), "config.json")} (or CLAUDE_USAGE_PORT) to another port.', file=sys.stderr)
+                return 1
         if daemon:
             if os.fork() > 0:
-                for _ in range(50):  # wait until it answers so the caller can open it
+                for _ in range(150):  # wait until it answers so the caller can open it
                     if port_answers(port):
                         break
                     time.sleep(0.1)
+                else:
+                    tail = ''
+                    try:
+                        tail = open(log_path).read().strip().splitlines()[-1] if log_path else ''
+                    except (OSError, IndexError):
+                        pass
+                    print(f'dashboard: did not start on port {port}' + (f': {tail}' if tail else '') + (f' (log: {log_path})' if log_path else ''), file=sys.stderr)
+                    return 1
                 say(f'dashboard running: {url}')
                 if open_browser:
                     webbrowser.open(url)

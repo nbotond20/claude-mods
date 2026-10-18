@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.14.2
+- The dashboard server starts reliably in every state: a newer one is never replaced by an older session, an older, hung or broken one is replaced, a port held by another program is named with how to change it, and the login item (when on) is kept on the newest CLI.
+
 ## 0.14.1
 - `/mods` and `bin/mods install` know the new observability mod (local Grafana: traces, logs, metrics and dashboards for every profile).
 

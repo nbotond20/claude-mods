@@ -720,10 +720,15 @@ async function cli($: EngineInterface, args: string[], timeoutMs: number) {
 }
 
 let pythonWarned = false
-/** Starts the dashboard server unless one already answers (the CLI holds a machine-wide lock while deciding). */
-async function ensureDashboard($: EngineInterface) {
+/**
+ * Starts the dashboard server unless a current one already answers. The CLI holds a machine-wide lock while
+ * deciding: it reuses a server of this version or newer, replaces an older or hung one, and names whatever else
+ * holds the port. At session start it first points the login item (when on) at the newest installed CLI.
+ */
+async function ensureDashboard($: EngineInterface, syncLoginItem = false) {
+  if (syncLoginItem) await cli($, ['autostart', 'sync'], 15_000).catch(() => {})
   if (!cfg.dashboard) return
-  const r = await cli($, ['serve', '--daemon', '--quiet'], 15_000).catch((err: unknown) => ({ exitCode: -1, stdout: '', stderr: String(err) }))
+  const r = await cli($, ['serve', '--daemon', '--quiet'], 25_000).catch((err: unknown) => ({ exitCode: -1, stdout: '', stderr: String(err) }))
   if (r.exitCode !== 0 && !pythonWarned && /python3|ENOENT|not found|No such file/i.test(r.stderr)) {
     pythonWarned = true
     $.ui.toast('usage-analytics needs python3 on PATH for its database and dashboard; events are still recorded.')
@@ -1397,9 +1402,9 @@ export const register: Register = on => {
     trialSid = ''
     trialProject = projectOf(e.cwd, home)
     const firstRun = await loadConfig($)
-    // So `claude-usage` finds this profile's transcripts wherever its config dir is, and the login item the newest CLI.
+    // So `claude-usage` finds this profile's transcripts wherever its config dir is. (The login item's cli-path
+    // is claimed by `claude-usage autostart sync`, which never points it at an older copy.)
     await $.fs.write(`${root}/profiles/${profile}.json`, JSON.stringify({ profile, configDir: configDir || `${home}/.claude` }) + '\n').catch(() => {})
-    await $.fs.write(`${root}/cli-path`, `${$.plugin.root}/bin/claude-usage`).catch(() => {})
 
     await $.command.register({
       name: 'analytics',
@@ -1475,7 +1480,7 @@ export const register: Register = on => {
     }
 
     $.clock.every(FLUSH_MS, () => void flush($).catch(() => {}))
-    $.clock.after(1500, () => void ensureDashboard($))
+    $.clock.after(1500, () => void ensureDashboard($, true))
     $.clock.after(20_000, () => void syncGateway($).catch(() => {}))
     if (cfg.autoIngest) {
       $.clock.after(45_000, () => void ingest($))
@@ -1715,7 +1720,8 @@ export const register: Register = on => {
 async function analytics($: EngineInterface, sub: string | undefined, rest: string[]) {
   const run = async (args: string[], timeoutMs: number) => {
     const r = await cli($, args, timeoutMs)
-    return (r.stdout || r.stderr || `claude-usage exited ${r.exitCode}`).trimEnd()
+    const out = r.exitCode === 0 ? r.stdout || r.stderr : [r.stdout, r.stderr].filter(t => t.trim()).join('\n')
+    return (out || `claude-usage exited ${r.exitCode}`).trimEnd()
   }
   if (sub !== 'dashboard' && sub !== 'stop' && sub !== 'setup') void ensureDashboard($)
   switch (sub) {
