@@ -1,0 +1,5914 @@
+{
+ "uid": "claude-compare",
+ "title": "Claude Code \u00b7 Compare",
+ "description": "Two sides, A and B, each a set of profiles and models: which is faster, cheaper and fails less, and by how much. Every number shows A, B and \"B vs A\" = (B \u2212 A) / A; green means B is better, red worse, within \u00b15% a draw. Rates and per-request figures are fair even when one side was used far more.",
+ "tags": [
+  "claude-code",
+  "compare"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "graphTooltip": 1,
+ "schemaVersion": 41,
+ "version": 1,
+ "refresh": "30s",
+ "time": {
+  "from": "now-24h",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "10s",
+   "30s",
+   "1m",
+   "5m",
+   "15m"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "a_profile",
+    "label": "A: profile",
+    "type": "query",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "query": "label_values(claude_profile)",
+    "definition": "label_values(claude_profile)",
+    "includeAll": true,
+    "multi": true,
+    "allValue": ".*",
+    "refresh": 2,
+    "sort": 1,
+    "description": "The profile(s) on side A; pick several to pool them.",
+    "current": {
+     "text": [
+      "claude",
+      "claude-db",
+      "claude-my"
+     ],
+     "value": [
+      "claude",
+      "claude-db",
+      "claude-my"
+     ]
+    }
+   },
+   {
+    "name": "a_model",
+    "label": "A: model",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "query": {
+     "query": "label_values(claude_code_token_usage_tokens_total, model)",
+     "refId": "a_model"
+    },
+    "definition": "label_values(claude_code_token_usage_tokens_total, model)",
+    "includeAll": true,
+    "multi": true,
+    "allValue": ".*",
+    "refresh": 2,
+    "sort": 1,
+    "current": {
+     "text": [
+      "All"
+     ],
+     "value": [
+      "$__all"
+     ]
+    }
+   },
+   {
+    "name": "b_profile",
+    "label": "B: profile",
+    "type": "query",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "query": "label_values(claude_profile)",
+    "definition": "label_values(claude_profile)",
+    "includeAll": true,
+    "multi": true,
+    "allValue": ".*",
+    "refresh": 2,
+    "sort": 1,
+    "description": "The profile(s) on side B; pick several to pool them.",
+    "current": {
+     "text": [
+      "claude-infi"
+     ],
+     "value": [
+      "claude-infi"
+     ]
+    }
+   },
+   {
+    "name": "b_model",
+    "label": "B: model",
+    "type": "query",
+    "datasource": {
+     "type": "prometheus",
+     "uid": "prometheus"
+    },
+    "query": {
+     "query": "label_values(claude_code_token_usage_tokens_total, model)",
+     "refId": "b_model"
+    },
+    "definition": "label_values(claude_code_token_usage_tokens_total, model)",
+    "includeAll": true,
+    "multi": true,
+    "allValue": ".*",
+    "refresh": 2,
+    "sort": 1,
+    "current": {
+     "text": [
+      "All"
+     ],
+     "value": [
+      "$__all"
+     ]
+    }
+   }
+  ]
+ },
+ "annotations": {
+  "list": [
+   {
+    "name": "API errors",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "enable": false,
+    "iconColor": "red",
+    "expr": "{service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"api_error\"}",
+    "titleFormat": "API error {{status_code}}",
+    "textFormat": "{{error}}",
+    "tagKeys": "model,claude_profile"
+   }
+  ]
+ },
+ "links": [
+  {
+   "title": "Claude Code",
+   "type": "dashboards",
+   "tags": [
+    "claude-code"
+   ],
+   "asDropdown": false,
+   "includeVars": true,
+   "keepTime": true
+  }
+ ],
+ "panels": [
+  {
+   "type": "row",
+   "title": "Speed",
+   "collapsed": false,
+   "panels": [],
+   "id": 1,
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Model latency p50",
+   "description": "Whole model request, first byte to last. Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by ()) - (quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by ())) / (quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by ())",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 2,
+   "gridPos": {
+    "x": 0,
+    "y": 1,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Model latency p95",
+   "description": "The slow tail of model requests. Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by ()) - (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by ())) / (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by ())",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 3,
+   "gridPos": {
+    "x": 6,
+    "y": 1,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Time to first token p50",
+   "description": "How long before the answer starts. Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__range]) by ()) - (quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by ())) / (quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by ())",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 4,
+   "gridPos": {
+    "x": 12,
+    "y": 1,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Time to first token p95",
+   "description": " Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__range]) by ()) - (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by ())) / (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by ())",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 5,
+   "gridPos": {
+    "x": 18,
+    "y": 1,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Output tokens per second p50",
+   "description": "Generation speed after the first token, for responses over 50 tokens. Higher is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | output_tokens > 50 | label_format tps=`{{ divf (mulf .output_tokens 1000) (subf .duration_ms .ttft_ms) }}` | unwrap tps [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | output_tokens > 50 | label_format tps=`{{ divf (mulf .output_tokens 1000) (subf .duration_ms .ttft_ms) }}` | unwrap tps [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | output_tokens > 50 | label_format tps=`{{ divf (mulf .output_tokens 1000) (subf .duration_ms .ttft_ms) }}` | unwrap tps [$__range]) by ()) - (quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | output_tokens > 50 | label_format tps=`{{ divf (mulf .output_tokens 1000) (subf .duration_ms .ttft_ms) }}` | unwrap tps [$__range]) by ())) / (quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | output_tokens > 50 | label_format tps=`{{ divf (mulf .output_tokens 1000) (subf .duration_ms .ttft_ms) }}` | unwrap tps [$__range]) by ())",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 1
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "red",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "green",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 6,
+   "gridPos": {
+    "x": 0,
+    "y": 6,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Mean model request",
+   "description": " Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by ()) - (avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by ())) / (avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by ())",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 7,
+   "gridPos": {
+    "x": 6,
+    "y": 6,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Tool run p95",
+   "description": "Tools run on this machine, so this mostly reflects the work, not the route. Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__range]) by ()",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__range]) by ()) - (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__range]) by ())) / (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__range]) by ())",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 8,
+   "gridPos": {
+    "x": 12,
+    "y": 6,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Mean prompt turn (live)",
+   "description": "Submit to final answer, from span metrics: live sessions only. Ignores the model filter. Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(traces_spanmetrics_latency_sum{claude_profile=~\"$a_profile\", span_name=\"claude_code.interaction\"}[$__range])) / sum(increase(traces_spanmetrics_latency_count{claude_profile=~\"$a_profile\", span_name=\"claude_code.interaction\"}[$__range]))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(traces_spanmetrics_latency_sum{claude_profile=~\"$b_profile\", span_name=\"claude_code.interaction\"}[$__range])) / sum(increase(traces_spanmetrics_latency_count{claude_profile=~\"$b_profile\", span_name=\"claude_code.interaction\"}[$__range]))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "((sum(increase(traces_spanmetrics_latency_sum{claude_profile=~\"$b_profile\", span_name=\"claude_code.interaction\"}[$__range])) / sum(increase(traces_spanmetrics_latency_count{claude_profile=~\"$b_profile\", span_name=\"claude_code.interaction\"}[$__range]))) - (sum(increase(traces_spanmetrics_latency_sum{claude_profile=~\"$a_profile\", span_name=\"claude_code.interaction\"}[$__range])) / sum(increase(traces_spanmetrics_latency_count{claude_profile=~\"$a_profile\", span_name=\"claude_code.interaction\"}[$__range])))) / (sum(increase(traces_spanmetrics_latency_sum{claude_profile=~\"$a_profile\", span_name=\"claude_code.interaction\"}[$__range])) / sum(increase(traces_spanmetrics_latency_count{claude_profile=~\"$a_profile\", span_name=\"claude_code.interaction\"}[$__range])))",
+     "legendFormat": "",
+     "instant": true,
+     "range": false
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 1
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 9,
+   "gridPos": {
+    "x": 18,
+    "y": 6,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "row",
+   "title": "Reliability",
+   "collapsed": false,
+   "panels": [],
+   "id": 10,
+   "gridPos": {
+    "x": 0,
+    "y": 11,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "stat",
+   "title": "API error rate",
+   "description": "API errors per model request. Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_error\"} | model=~\"$a_model\" [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_error\"} | model=~\"$b_model\" [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(((sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_error\"} | model=~\"$b_model\" [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))) - ((sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_error\"} | model=~\"$a_model\" [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))) / ((sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_error\"} | model=~\"$a_model\" [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 2
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 11,
+   "gridPos": {
+    "x": 0,
+    "y": 12,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Retries exhausted per request",
+   "description": "Requests that gave up after every retry. Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_retries_exhausted\"} [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_retries_exhausted\"} [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(((sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_retries_exhausted\"} [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))) - ((sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_retries_exhausted\"} [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))) / ((sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_retries_exhausted\"} [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 2
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 12,
+   "gridPos": {
+    "x": 6,
+    "y": 12,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Tool failure rate",
+   "description": "Failed tool runs per tool run. Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | success=\"false\" [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | success=\"false\" [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(((sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | success=\"false\" [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} [$__range]))) - ((sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | success=\"false\" [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} [$__range])))) / ((sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | success=\"false\" [$__range])) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 2
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 13,
+   "gridPos": {
+    "x": 12,
+    "y": 12,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "API errors",
+   "description": "Total count; compare the rate for fairness.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_error\"} | model=~\"$a_model\" [$__range])) or vector(0))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_error\"} | model=~\"$b_model\" [$__range])) or vector(0))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 14,
+   "gridPos": {
+    "x": 18,
+    "y": 12,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "row",
+   "title": "Cost and tokens",
+   "collapsed": false,
+   "panels": [],
+   "id": 15,
+   "gridPos": {
+    "x": 0,
+    "y": 17,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Cost per model request",
+   "description": "List-price cost. Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cost_usd [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cost_usd [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cost_usd [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))) - (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cost_usd [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))) / (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cost_usd [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 4
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 16,
+   "gridPos": {
+    "x": 0,
+    "y": 18,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Cost per prompt",
+   "description": "Everything a prompt set off (model calls, subagents), at list price. Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cost_usd [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"user_prompt\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cost_usd [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"user_prompt\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cost_usd [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"user_prompt\"} [$__range]))) - (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cost_usd [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"user_prompt\"} [$__range])))) / (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cost_usd [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"user_prompt\"} [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 3
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 17,
+   "gridPos": {
+    "x": 6,
+    "y": 18,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Cache hit",
+   "description": "Share of input tokens read from the prompt cache. Higher is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_read_tokens [$__range])) / (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap input_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_read_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_creation_tokens [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cache_read_tokens [$__range])) / (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap input_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cache_read_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cache_creation_tokens [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cache_read_tokens [$__range])) / (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap input_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cache_read_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cache_creation_tokens [$__range])))) - (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_read_tokens [$__range])) / (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap input_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_read_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_creation_tokens [$__range]))))) / (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_read_tokens [$__range])) / (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap input_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_read_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_creation_tokens [$__range]))))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 1
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "red",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "green",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 18,
+   "gridPos": {
+    "x": 12,
+    "y": 18,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Context per request",
+   "description": "Input + cache tokens sent per request. Lower is better: a red difference means B is worse.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap input_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_read_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_creation_tokens [$__range]))) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap input_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cache_read_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cache_creation_tokens [$__range]))) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(((sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap input_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cache_read_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cache_creation_tokens [$__range]))) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))) - ((sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap input_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_read_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_creation_tokens [$__range]))) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))) / ((sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap input_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_read_tokens [$__range])) + sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cache_creation_tokens [$__range]))) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "thresholds"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 19,
+   "gridPos": {
+    "x": 18,
+    "y": 18,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Output tokens per request",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap output_tokens [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap output_tokens [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "D",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap output_tokens [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))) - (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap output_tokens [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))) / (sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap output_tokens [$__range])) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 0
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "D"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B vs A"
+       },
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "text"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 20,
+   "gridPos": {
+    "x": 0,
+    "y": 23,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Total cost",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cost_usd [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cost_usd [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     },
+     "decimals": 2
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 21,
+   "gridPos": {
+    "x": 6,
+    "y": 23,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Model requests",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 22,
+   "gridPos": {
+    "x": 12,
+    "y": 23,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "stat",
+   "title": "Prompts",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"user_prompt\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"user_prompt\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "noValue": "\u2013",
+     "color": {
+      "mode": "fixed",
+      "fixedColor": "text"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "",
+     "values": false
+    },
+    "colorMode": "value",
+    "graphMode": "none",
+    "textMode": "value_and_name",
+    "justifyMode": "center",
+    "wideLayout": true,
+    "showPercentChange": false,
+    "orientation": "auto",
+    "text": {
+     "titleSize": 12,
+     "valueSize": 22
+    }
+   },
+   "id": 23,
+   "gridPos": {
+    "x": 18,
+    "y": 23,
+    "w": 6,
+    "h": 5
+   }
+  },
+  {
+   "type": "row",
+   "title": "Over time",
+   "collapsed": false,
+   "panels": [],
+   "id": 24,
+   "gridPos": {
+    "x": 0,
+    "y": 28,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Model latency p95",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__interval] offset -$__interval) by ()",
+     "legendFormat": "A",
+     "queryType": "range"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__interval] offset -$__interval) by ()",
+     "legendFormat": "B",
+     "queryType": "range"
+    }
+   ],
+   "interval": "1m",
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "gradientMode": "none",
+      "showPoints": "never",
+      "spanNulls": true,
+      "barAlignment": 1,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "lineInterpolation": "smooth",
+      "insertNulls": false
+     },
+     "color": {
+      "mode": "palette-classic"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "mean",
+      "max"
+     ],
+     "showLegend": true,
+     "sortBy": "Mean",
+     "sortDesc": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 25,
+   "gridPos": {
+    "x": 0,
+    "y": 29,
+    "w": 12,
+    "h": 8
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Time to first token p95",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__interval] offset -$__interval) by ()",
+     "legendFormat": "A",
+     "queryType": "range"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__interval] offset -$__interval) by ()",
+     "legendFormat": "B",
+     "queryType": "range"
+    }
+   ],
+   "interval": "1m",
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "gradientMode": "none",
+      "showPoints": "never",
+      "spanNulls": true,
+      "barAlignment": 1,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "lineInterpolation": "smooth",
+      "insertNulls": false
+     },
+     "color": {
+      "mode": "palette-classic"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "mean",
+      "max"
+     ],
+     "showLegend": true,
+     "sortBy": "Mean",
+     "sortDesc": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 26,
+   "gridPos": {
+    "x": 12,
+    "y": 29,
+    "w": 12,
+    "h": 8
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "API error rate",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_error\"} | model=~\"$a_model\" [$__interval] offset -$__interval)) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__interval] offset -$__interval))",
+     "legendFormat": "A",
+     "queryType": "range"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_error\"} | model=~\"$b_model\" [$__interval] offset -$__interval)) or vector(0)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__interval] offset -$__interval))",
+     "legendFormat": "B",
+     "queryType": "range"
+    }
+   ],
+   "interval": "1m",
+   "fieldConfig": {
+    "defaults": {
+     "unit": "percentunit",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "gradientMode": "none",
+      "showPoints": "never",
+      "spanNulls": true,
+      "barAlignment": 1,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "lineInterpolation": "smooth",
+      "insertNulls": false
+     },
+     "color": {
+      "mode": "palette-classic"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "mean",
+      "max"
+     ],
+     "showLegend": true,
+     "sortBy": "Mean",
+     "sortDesc": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 27,
+   "gridPos": {
+    "x": 0,
+    "y": 37,
+    "w": 12,
+    "h": 8
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Output tokens per second p50",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | output_tokens > 50 | label_format tps=`{{ divf (mulf .output_tokens 1000) (subf .duration_ms .ttft_ms) }}` | unwrap tps [$__interval] offset -$__interval) by ()",
+     "legendFormat": "A",
+     "queryType": "range"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | output_tokens > 50 | label_format tps=`{{ divf (mulf .output_tokens 1000) (subf .duration_ms .ttft_ms) }}` | unwrap tps [$__interval] offset -$__interval) by ()",
+     "legendFormat": "B",
+     "queryType": "range"
+    }
+   ],
+   "interval": "1m",
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "gradientMode": "none",
+      "showPoints": "never",
+      "spanNulls": true,
+      "barAlignment": 1,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "lineInterpolation": "smooth",
+      "insertNulls": false
+     },
+     "color": {
+      "mode": "palette-classic"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "mean",
+      "max"
+     ],
+     "showLegend": true,
+     "sortBy": "Mean",
+     "sortDesc": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 28,
+   "gridPos": {
+    "x": 12,
+    "y": 37,
+    "w": 12,
+    "h": 8
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Cost per model request",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cost_usd [$__interval] offset -$__interval)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__interval] offset -$__interval))",
+     "legendFormat": "A",
+     "queryType": "range"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cost_usd [$__interval] offset -$__interval)) / sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__interval] offset -$__interval))",
+     "legendFormat": "B",
+     "queryType": "range"
+    }
+   ],
+   "interval": "1m",
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "gradientMode": "none",
+      "showPoints": "never",
+      "spanNulls": true,
+      "barAlignment": 1,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "lineInterpolation": "smooth",
+      "insertNulls": false
+     },
+     "color": {
+      "mode": "palette-classic"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "mean",
+      "max"
+     ],
+     "showLegend": true,
+     "sortBy": "Mean",
+     "sortDesc": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 29,
+   "gridPos": {
+    "x": 0,
+    "y": 45,
+    "w": 12,
+    "h": 8
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Model requests",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__interval] offset -$__interval))",
+     "legendFormat": "A",
+     "queryType": "range"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__interval] offset -$__interval))",
+     "legendFormat": "B",
+     "queryType": "range"
+    }
+   ],
+   "interval": "1m",
+   "maxDataPoints": 90,
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 2,
+      "fillOpacity": 80,
+      "gradientMode": "none",
+      "showPoints": "never",
+      "spanNulls": true,
+      "barAlignment": 1,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "lineInterpolation": "smooth",
+      "insertNulls": false
+     },
+     "color": {
+      "mode": "palette-classic"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byFrameRefID",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "bottom",
+     "calcs": [
+      "sum"
+     ],
+     "showLegend": true,
+     "sortBy": "Sum",
+     "sortDesc": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 30,
+   "gridPos": {
+    "x": 12,
+    "y": 45,
+    "w": 12,
+    "h": 8
+   }
+  },
+  {
+   "type": "row",
+   "title": "Distribution",
+   "collapsed": false,
+   "panels": [],
+   "id": 31,
+   "gridPos": {
+    "x": 0,
+    "y": 53,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "barchart",
+   "title": "Model latency percentiles",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "label_replace(quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by (), \"q\", \"p50\", \"\", \"\") or label_replace(quantile_over_time(0.75, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by (), \"q\", \"p75\", \"\", \"\") or label_replace(quantile_over_time(0.9, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by (), \"q\", \"p90\", \"\", \"\") or label_replace(quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by (), \"q\", \"p95\", \"\", \"\") or label_replace(quantile_over_time(0.99, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by (), \"q\", \"p99\", \"\", \"\")",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "label_replace(quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by (), \"q\", \"p50\", \"\", \"\") or label_replace(quantile_over_time(0.75, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by (), \"q\", \"p75\", \"\", \"\") or label_replace(quantile_over_time(0.9, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by (), \"q\", \"p90\", \"\", \"\") or label_replace(quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by (), \"q\", \"p95\", \"\", \"\") or label_replace(quantile_over_time(0.99, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by (), \"q\", \"p99\", \"\", \"\")",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "q": "Percentile",
+       "Value #A": "A",
+       "Value #B": "B"
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "min": 0,
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "fillOpacity": 85,
+      "lineWidth": 0,
+      "gradientMode": "none"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "xField": "Percentile",
+    "orientation": "vertical",
+    "groupWidth": 0.7,
+    "barWidth": 0.9,
+    "showValue": "auto",
+    "stacking": "none",
+    "xTickLabelRotation": 0,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "id": 32,
+   "gridPos": {
+    "x": 0,
+    "y": 54,
+    "w": 12,
+    "h": 9
+   }
+  },
+  {
+   "type": "barchart",
+   "title": "Time to first token percentiles",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "label_replace(quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by (), \"q\", \"p50\", \"\", \"\") or label_replace(quantile_over_time(0.75, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by (), \"q\", \"p75\", \"\", \"\") or label_replace(quantile_over_time(0.9, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by (), \"q\", \"p90\", \"\", \"\") or label_replace(quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by (), \"q\", \"p95\", \"\", \"\") or label_replace(quantile_over_time(0.99, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by (), \"q\", \"p99\", \"\", \"\")",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "B",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "label_replace(quantile_over_time(0.5, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__range]) by (), \"q\", \"p50\", \"\", \"\") or label_replace(quantile_over_time(0.75, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__range]) by (), \"q\", \"p75\", \"\", \"\") or label_replace(quantile_over_time(0.9, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__range]) by (), \"q\", \"p90\", \"\", \"\") or label_replace(quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__range]) by (), \"q\", \"p95\", \"\", \"\") or label_replace(quantile_over_time(0.99, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__range]) by (), \"q\", \"p99\", \"\", \"\")",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "q": "Percentile",
+       "Value #A": "A",
+       "Value #B": "B"
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "min": 0,
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "fillOpacity": 85,
+      "lineWidth": 0,
+      "gradientMode": "none"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "A"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "A"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#5794F2"
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "B"
+      },
+      "properties": [
+       {
+        "id": "displayName",
+        "value": "B"
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "#FF9830"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "xField": "Percentile",
+    "orientation": "vertical",
+    "groupWidth": 0.7,
+    "barWidth": 0.9,
+    "showValue": "auto",
+    "stacking": "none",
+    "xTickLabelRotation": 0,
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "showLegend": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "none"
+    }
+   },
+   "id": 33,
+   "gridPos": {
+    "x": 12,
+    "y": 54,
+    "w": 12,
+    "h": 9
+   }
+  },
+  {
+   "type": "row",
+   "title": "Breakdown",
+   "collapsed": false,
+   "panels": [],
+   "id": 34,
+   "gridPos": {
+    "x": 0,
+    "y": 63,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "table",
+   "title": "By model",
+   "description": " A and B side by side; \"B vs A\" is (B \u2212 A) / A.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "a0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "a1",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by (model)",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b1",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by (model)",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "d1",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range]) by (model)) - (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by (model))) / (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range]) by (model))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "a2",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by (model)",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b2",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__range]) by (model)",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "d2",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap ttft_ms [$__range]) by (model)) - (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by (model))) / (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap ttft_ms [$__range]) by (model))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "a3",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_error\"} | model=~\"$a_model\" [$__range])) or sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])) * 0) / sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b3",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_error\"} | model=~\"$b_model\" [$__range])) or sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range])) * 0) / sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "a4",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (model) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cost_usd [$__range])) / sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b4",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (model) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cost_usd [$__range])) / sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "d4",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((sum by (model) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap cost_usd [$__range])) / sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" [$__range]))) - (sum by (model) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cost_usd [$__range])) / sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))) / (sum by (model) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap cost_usd [$__range])) / sum by (model) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "model": "Model",
+       "Value #a0": "Requests A",
+       "Value #b0": "Requests B",
+       "Value #a1": "p95 ms A",
+       "Value #b1": "p95 ms B",
+       "Value #d1": "p95 ms B vs A",
+       "Value #a2": "TTFT p95 A",
+       "Value #b2": "TTFT p95 B",
+       "Value #d2": "TTFT p95 B vs A",
+       "Value #a3": "Error rate A",
+       "Value #b3": "Error rate B",
+       "Value #a4": "$/request A",
+       "Value #b4": "$/request B",
+       "Value #d4": "$/request B vs A"
+      },
+      "indexByName": {
+       "Model": 0,
+       "Requests A": 1,
+       "Requests B": 2,
+       "p95 ms A": 3,
+       "p95 ms B": 4,
+       "p95 ms B vs A": 5,
+       "TTFT p95 A": 6,
+       "TTFT p95 B": 7,
+       "TTFT p95 B vs A": 8,
+       "Error rate A": 9,
+       "Error rate B": 10,
+       "$/request A": 11,
+       "$/request B": 12,
+       "$/request B vs A": 13
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      },
+      "filterable": true
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Model"
+      },
+      "properties": [
+       {
+        "id": "custom.minWidth",
+        "value": 260
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Requests A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Requests B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "p95 ms A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "ms"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "p95 ms B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "ms"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "p95 ms B vs A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "TTFT p95 A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "ms"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "TTFT p95 B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "ms"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "TTFT p95 B vs A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Error rate A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Error rate B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "$/request A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "currencyUSD"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "$/request B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "currencyUSD"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "$/request B vs A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "footer": {
+     "show": false
+    },
+    "sortBy": [
+     {
+      "displayName": "Requests A",
+      "desc": true
+     }
+    ]
+   },
+   "id": 35,
+   "gridPos": {
+    "x": 0,
+    "y": 64,
+    "w": 24,
+    "h": 9
+   }
+  },
+  {
+   "type": "table",
+   "title": "By tool",
+   "description": " A and B side by side; \"B vs A\" is (B \u2212 A) / A.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "a0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (tool_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (tool_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "a1",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__range]) by (tool_name)",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b1",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__range]) by (tool_name)",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "d1",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__range]) by (tool_name)) - (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__range]) by (tool_name))) / (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__range]) by (tool_name))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "a2",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum by (tool_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | success=\"false\" [$__range])) or sum by (tool_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} [$__range])) * 0) / sum by (tool_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b2",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum by (tool_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | success=\"false\" [$__range])) or sum by (tool_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} [$__range])) * 0) / sum by (tool_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "tool_name": "Tool",
+       "Value #a0": "Runs A",
+       "Value #b0": "Runs B",
+       "Value #a1": "p95 ms A",
+       "Value #b1": "p95 ms B",
+       "Value #d1": "p95 ms B vs A",
+       "Value #a2": "Failure rate A",
+       "Value #b2": "Failure rate B"
+      },
+      "indexByName": {
+       "Tool": 0,
+       "Runs A": 1,
+       "Runs B": 2,
+       "p95 ms A": 3,
+       "p95 ms B": 4,
+       "p95 ms B vs A": 5,
+       "Failure rate A": 6,
+       "Failure rate B": 7
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      },
+      "filterable": true
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Tool"
+      },
+      "properties": [
+       {
+        "id": "custom.minWidth",
+        "value": 260
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Runs A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Runs B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "p95 ms A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "ms"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "p95 ms B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "ms"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "p95 ms B vs A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Failure rate A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Failure rate B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "footer": {
+     "show": false
+    },
+    "sortBy": [
+     {
+      "displayName": "Runs A",
+      "desc": true
+     }
+    ]
+   },
+   "id": 36,
+   "gridPos": {
+    "x": 0,
+    "y": 73,
+    "w": 24,
+    "h": 10
+   }
+  },
+  {
+   "type": "table",
+   "title": "By operation",
+   "description": "Every model, tool, hook event and MCP server. A and B side by side; \"B vs A\" is (B \u2212 A) / A.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "a0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "a1",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range]) by (op)",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b1",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range]) by (op)",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "d1",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range]) by (op)) - (avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range]) by (op))) / (avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range]) by (op) or avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range]) by (op))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "a2",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range]) by (op)",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b2",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range]) by (op)",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "d2",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range]) by (op)) - (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range]) by (op))) / (quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range]) by (op) or quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range]) by (op))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "a3",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_error\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` [$__range])) * 0) or (sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | success=\"false\" | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` [$__range])) * 0) or (sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | num_non_blocking_error > 0 | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` [$__range])) * 0) or (sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status=~\"failed|error\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` [$__range])) * 0)) / (sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b3",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_error\"} | model=~\"$b_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` [$__range])) * 0) or (sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | success=\"false\" | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` [$__range])) * 0) or (sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"hook_execution_complete\"} | num_non_blocking_error > 0 | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` [$__range])) * 0) or (sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"mcp_server_connection\"} | status=~\"failed|error\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` [$__range])) * 0)) / (sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` [$__range])) or sum by (op) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "a4",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range])) / 1000) / on() group_left sum(sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range])) / 1000)",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b4",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "(sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range])) / 1000) / on() group_left sum(sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | label_format op=`model \u00b7 {{ if or (not .model) (eq .model \"<synthetic>\") }}unknown (imported errors){{ else }}{{.model}}{{ end }}`, kind=`model` | unwrap duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | label_format op=`tool \u00b7 {{.tool_name}}`, kind=`tool` | unwrap duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"hook_execution_complete\"} | label_format op=`hook \u00b7 {{.hook_event}}`, kind=`hook` | unwrap total_duration_ms [$__range])) / 1000 or sum by (op) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"mcp_server_connection\"} | status!=\"disconnected\" | label_format op=`MCP connect \u00b7 {{.server_name}}`, kind=`MCP` | unwrap duration_ms [$__range])) / 1000)",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "op": "Operation",
+       "Value #a0": "Calls A",
+       "Value #b0": "Calls B",
+       "Value #a1": "Mean ms A",
+       "Value #b1": "Mean ms B",
+       "Value #d1": "Mean ms B vs A",
+       "Value #a2": "p95 ms A",
+       "Value #b2": "p95 ms B",
+       "Value #d2": "p95 ms B vs A",
+       "Value #a3": "Failure rate A",
+       "Value #b3": "Failure rate B",
+       "Value #a4": "Share of time A",
+       "Value #b4": "Share of time B"
+      },
+      "indexByName": {
+       "Operation": 0,
+       "Calls A": 1,
+       "Calls B": 2,
+       "Mean ms A": 3,
+       "Mean ms B": 4,
+       "Mean ms B vs A": 5,
+       "p95 ms A": 6,
+       "p95 ms B": 7,
+       "p95 ms B vs A": 8,
+       "Failure rate A": 9,
+       "Failure rate B": 10,
+       "Share of time A": 11,
+       "Share of time B": 12
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      },
+      "filterable": true
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Operation"
+      },
+      "properties": [
+       {
+        "id": "custom.minWidth",
+        "value": 260
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Calls A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Calls B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Mean ms A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "ms"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Mean ms B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "ms"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Mean ms B vs A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "p95 ms A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "ms"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "p95 ms B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "ms"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "p95 ms B vs A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Failure rate A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Failure rate B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Share of time A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Share of time B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "footer": {
+     "show": false
+    },
+    "sortBy": [
+     {
+      "displayName": "Calls A",
+      "desc": true
+     }
+    ]
+   },
+   "id": 37,
+   "gridPos": {
+    "x": 0,
+    "y": 83,
+    "w": 24,
+    "h": 12
+   }
+  },
+  {
+   "type": "table",
+   "title": "By event",
+   "description": "How often each event happens per prompt, a fair rate even when one side was used far more. A and B side by side; \"B vs A\" is (B \u2212 A) / A.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "a0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (event_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=~\".+\"} [$__range])) / on() group_left sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"user_prompt\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (event_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=~\".+\"} [$__range])) / on() group_left sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"user_prompt\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "d0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((sum by (event_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=~\".+\"} [$__range])) / on() group_left sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"user_prompt\"} [$__range]))) - (sum by (event_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=~\".+\"} [$__range])) / on() group_left sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"user_prompt\"} [$__range])))) / (sum by (event_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=~\".+\"} [$__range])) / on() group_left sum(count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"user_prompt\"} [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "a1",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (event_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=~\".+\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b1",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (event_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=~\".+\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "event_name": "Event",
+       "Value #a0": "Per prompt A",
+       "Value #b0": "Per prompt B",
+       "Value #d0": "Per prompt B vs A",
+       "Value #a1": "Count A",
+       "Value #b1": "Count B"
+      },
+      "indexByName": {
+       "Event": 0,
+       "Per prompt A": 1,
+       "Per prompt B": 2,
+       "Per prompt B vs A": 3,
+       "Count A": 4,
+       "Count B": 5
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      },
+      "filterable": true
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Event"
+      },
+      "properties": [
+       {
+        "id": "custom.minWidth",
+        "value": 260
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Per prompt A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Per prompt B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Per prompt B vs A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Count A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Count B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "footer": {
+     "show": false
+    },
+    "sortBy": [
+     {
+      "displayName": "Per prompt A",
+      "desc": true
+     }
+    ]
+   },
+   "id": 38,
+   "gridPos": {
+    "x": 0,
+    "y": 95,
+    "w": 12,
+    "h": 10
+   }
+  },
+  {
+   "type": "table",
+   "title": "API errors by status",
+   "description": " A and B side by side; \"B vs A\" is (B \u2212 A) / A.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "a0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (status) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_error\"} | model=~\"$a_model\" | label_format status=`{{ or .status_code \"from transcript\" }}` [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (status) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_error\"} | model=~\"$b_model\" | label_format status=`{{ or .status_code \"from transcript\" }}` [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "status": "Status",
+       "Value #a0": "Errors A",
+       "Value #b0": "Errors B"
+      },
+      "indexByName": {
+       "Status": 0,
+       "Errors A": 1,
+       "Errors B": 2
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      },
+      "filterable": true
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Status"
+      },
+      "properties": [
+       {
+        "id": "custom.minWidth",
+        "value": 260
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Errors A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Errors B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "footer": {
+     "show": false
+    },
+    "sortBy": [
+     {
+      "displayName": "Errors A",
+      "desc": true
+     }
+    ]
+   },
+   "id": 39,
+   "gridPos": {
+    "x": 12,
+    "y": 95,
+    "w": 12,
+    "h": 8
+   }
+  },
+  {
+   "type": "table",
+   "title": "Where time goes",
+   "description": "Summed durations; imported history counts permission waits as tool time. A and B side by side; \"B vs A\" is (B \u2212 A) / A.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "a0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"model\", \"\", \"\") or label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | tool_name!~\"AskUserQuestion|ExitPlanMode|EnterPlanMode\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"tools\", \"\", \"\") or label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | tool_name=~\"AskUserQuestion|ExitPlanMode|EnterPlanMode\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"answering Claude\", \"\", \"\")",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "b0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"model\", \"\", \"\") or label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | tool_name!~\"AskUserQuestion|ExitPlanMode|EnterPlanMode\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"tools\", \"\", \"\") or label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | tool_name=~\"AskUserQuestion|ExitPlanMode|EnterPlanMode\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"answering Claude\", \"\", \"\")",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "d0",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "((label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"api_request\"} | model=~\"$b_model\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"model\", \"\", \"\") or label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | tool_name!~\"AskUserQuestion|ExitPlanMode|EnterPlanMode\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"tools\", \"\", \"\") or label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$b_profile\", event_name=\"tool_result\"} | tool_name=~\"AskUserQuestion|ExitPlanMode|EnterPlanMode\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"answering Claude\", \"\", \"\")) - (label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"model\", \"\", \"\") or label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | tool_name!~\"AskUserQuestion|ExitPlanMode|EnterPlanMode\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"tools\", \"\", \"\") or label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | tool_name=~\"AskUserQuestion|ExitPlanMode|EnterPlanMode\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"answering Claude\", \"\", \"\"))) / (label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"api_request\"} | model=~\"$a_model\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"model\", \"\", \"\") or label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | tool_name!~\"AskUserQuestion|ExitPlanMode|EnterPlanMode\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"tools\", \"\", \"\") or label_replace(sum(sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$a_profile\", event_name=\"tool_result\"} | tool_name=~\"AskUserQuestion|ExitPlanMode|EnterPlanMode\" | unwrap duration_ms [$__range])) / 1000, \"activity\", \"answering Claude\", \"\", \"\"))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "activity": "Activity",
+       "Value #a0": "Seconds A",
+       "Value #b0": "Seconds B",
+       "Value #d0": "Seconds B vs A"
+      },
+      "indexByName": {
+       "Activity": 0,
+       "Seconds A": 1,
+       "Seconds B": 2,
+       "Seconds B vs A": 3
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      },
+      "filterable": true
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Activity"
+      },
+      "properties": [
+       {
+        "id": "custom.minWidth",
+        "value": 260
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Seconds A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "s"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Seconds B"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "s"
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Seconds B vs A"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "percentunit"
+       },
+       {
+        "id": "decimals",
+        "value": 1
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "green",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": -0.05
+          },
+          {
+           "color": "red",
+           "value": 0.05
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "footer": {
+     "show": false
+    },
+    "sortBy": [
+     {
+      "displayName": "Seconds A",
+      "desc": true
+     }
+    ]
+   },
+   "id": 40,
+   "gridPos": {
+    "x": 0,
+    "y": 105,
+    "w": 12,
+    "h": 8
+   }
+  }
+ ]
+}

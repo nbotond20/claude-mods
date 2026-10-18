@@ -23,7 +23,7 @@ The mod only changes settings keys it wrote. It marks them with `CLAUDE_OBS_MANA
 | Command | What it does |
 | --- | --- |
 | `/obs` · `/obs status` | stack state, Grafana URL, data size and retention; per profile whether telemetry is on |
-| `/obs open [overview\|traces\|time\|errors\|logs\|sessions\|tools\|explore]` | opens Grafana on that dashboard |
+| `/obs open [overview\|traces\|time\|errors\|logs\|sessions\|tools\|compare\|breakdown\|explore]` | opens Grafana on that dashboard |
 | `/obs up` · `/obs down` | starts (or replaces an outdated) stack · stops it; data is kept |
 | `/obs backfill [--days N] [--profile P] [--dry-run]` | replays past transcripts as traces and events |
 | `/obs telemetry on\|off [all]` | writes or removes the telemetry env in this profile, or in every profile with `all` |
@@ -53,7 +53,7 @@ Telemetry only covers sessions started after install. `claude-obs backfill --day
 
 ## Dashboards
 
-All dashboards share a **profile** filter and the time picker. Every session id and trace id is a link.
+All dashboards except Compare share a **profile** filter and the time picker. Every session id and trace id is a link.
 
 | Dashboard | Shows |
 | --- | --- |
@@ -64,6 +64,12 @@ All dashboards share a **profile** filter and the time picker. Every session id 
 | **Logs** | every event, searchable: prompts, tool results, API requests and errors |
 | **Session** | one session: its prompts, each prompt's waterfall in place, cost over time, tools used |
 | **Tools** | tool calls and durations, Bash commands, hooks, MCP servers, skills and plugins loaded |
+| **Breakdown** | every event and every timed operation (each model, tool, hook event, MCP server) in one table: calls, total time and share, mean, p50, p95, max, failures and failure rate; what takes longest, what fails most, where the time goes |
+| **Compare** | side A against side B, each a set of profiles and models: every figure as A, B and "B vs A" in percent, green when B is better and red when worse |
+
+### Compare
+
+Compare puts two sides next to each other: by default every direct (subscription) profile as A and `claude-infi` (LiteLLM) as B. Pick any profiles and models for each side in the pickers. It answers which side is faster and by how much (latency and time to first token at p50 and p95, tokens per second, prompt turn length), which fails more (API error, retry and tool failure rates), and which costs more (per request and per prompt, cache hits). It shows the same metrics over time and per model, tool, operation, event and error status. "B vs A" is (B − A) / A; within ±5% counts as a draw. Rates and per-request figures stay fair when one side was used far more. Time to first token and prompt turn length need live sessions: transcripts don't record them.
 
 ## Caveats
 

@@ -812,7 +812,7 @@ async function statusText($: EngineInterface) {
 }
 
 const USAGE =
-  'Usage: /obs [status | open [overview|traces|time|errors|logs|sessions|tools|explore] | up | down | backfill [--days N] [--profile P] [--dry-run] | telemetry on|off [all] | content on|off | setup]'
+  'Usage: /obs [status | open [overview|traces|time|errors|logs|sessions|tools|compare|breakdown|explore] | up | down | backfill [--days N] [--profile P] [--dry-run] | telemetry on|off [all] | content on|off | setup]'
 
 export function setupPrompt(configFile: string, cli: string, current: Config) {
   return `Set up the observability mod with me. Keep it short.

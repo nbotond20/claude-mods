@@ -257,6 +257,8 @@ cmd_open() {
     errors) p=/d/claude-errors ;;
     sessions|session) p=/d/claude-session ;;
     tools|hooks|mcp) p=/d/claude-tools ;;
+    compare|vs|ab) p=/d/claude-compare ;;
+    breakdown|events|ops) p=/d/claude-breakdown ;;
     time) p=/d/claude-time ;;
     explore) p=/explore ;;
     *) p=/d/claude-overview ;;

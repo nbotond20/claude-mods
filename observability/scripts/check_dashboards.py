@@ -13,13 +13,13 @@ ap.add_argument('--session', default='')
 ap.add_argument('--trace', default='')
 a = ap.parse_args()
 
-VARS = {'profile': '.*', 'model': '.*', 'event': '.+', 'search': '', 'session': a.session, 'trace': a.trace}
+VARS = {'profile': '.*', 'model': '.*', 'a_profile': 'claude|claude-db|claude-my', 'b_profile': 'claude-infi', 'a_model': '.*', 'b_model': '.*', 'event': '.+', 'search': '', 'session': a.session, 'trace': a.trace}
 
 
 def interp(s):
     s = re.sub(r'\$\{(\w+):regex\}', lambda m: VARS.get(m.group(1), m.group(0)), s)
     s = re.sub(r'\$\{(\w+)\}', lambda m: VARS.get(m.group(1), m.group(0)), s)
-    return re.sub(r'\$(profile|model|event|search|session|trace)\b', lambda m: VARS[m.group(1)], s)
+    return re.sub(r'\$(a_profile|b_profile|a_model|b_model|profile|model|event|search|session|trace)\b', lambda m: VARS[m.group(1)], s)
 
 
 now = int(time.time() * 1000)

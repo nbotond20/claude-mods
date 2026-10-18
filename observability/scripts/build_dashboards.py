@@ -94,6 +94,20 @@ class Dash:
                               'query': 'label_values(event_name)', 'definition': 'label_values(event_name)',
                               'includeAll': True, 'multi': True, 'allValue': '.+', 'refresh': 2, 'sort': 1,
                               'current': {'text': ['All'], 'value': ['$__all']}})
+            elif v in ('a_profile', 'b_profile'):
+                side = v[0].upper()
+                tvars.append({'name': v, 'label': f'{side}: profile', 'type': 'query', 'datasource': LOKI,
+                              'query': 'label_values(claude_profile)', 'definition': 'label_values(claude_profile)',
+                              'includeAll': True, 'multi': True, 'allValue': '.*', 'refresh': 2, 'sort': 1,
+                              'description': f'The profile(s) on side {side}; pick several to pool them.',
+                              'current': CMP_DEFAULT[v]})
+            elif v in ('a_model', 'b_model'):
+                side = v[0].upper()
+                q = 'label_values(claude_code_token_usage_tokens_total, model)'
+                tvars.append({'name': v, 'label': f'{side}: model', 'type': 'query', 'datasource': PROM,
+                              'query': {'query': q, 'refId': v}, 'definition': q,
+                              'includeAll': True, 'multi': True, 'allValue': '.*', 'refresh': 2, 'sort': 1,
+                              'current': {'text': ['All'], 'value': ['$__all']}})
             elif v == 'search':
                 tvars.append({'name': 'search', 'label': 'Search prompts, commands, errors', 'type': 'textbox',
                               'query': '', 'current': {'text': '', 'value': ''}})
@@ -653,12 +667,352 @@ def tools():
                                      order=('plugin_name', 'plugin_version', 'marketplace_name', 'has_hooks', 'has_mcp'))]), 12, 9)
     return d
 
+# ---- Operations: every timed thing Claude Code does, on one scale ----------------------------------
+
+# (kind, event, name template, duration field, failure event, failure filter, extra filter for timing)
+OPS = (
+    ('model', 'api_request', 'model · {{ if or (not .model) (eq .model "<synthetic>") }}unknown (imported errors){{ else }}{{.model}}{{ end }}', 'duration_ms', 'api_error', '', ''),
+    ('tool', 'tool_result', 'tool · {{.tool_name}}', 'duration_ms', 'tool_result', ' | success="false"', ''),
+    ('hook', 'hook_execution_complete', 'hook · {{.hook_event}}', 'total_duration_ms', 'hook_execution_complete', ' | num_non_blocking_error > 0', ''),
+    ('MCP', 'mcp_server_connection', 'MCP connect · {{.server_name}}', 'duration_ms', 'mcp_server_connection', ' | status=~"failed|error"', ' | status!="disconnected"'),
+)
+
+
+def op_expr(selfn, metric, w='[$__range]', by='op'):
+    """One series per operation across every kind: `metric` is count, total, mean, max, p50, p95 or fail;
+    `selfn(event, extra, model)` is the stream selector; `by` is 'op' (each one) or 'kind' (model, tool, ...)."""
+    parts = []
+    for kind, ev, name, dur, fev, ffilter, tfilter in OPS:
+        lab = f' | label_format op=`{name}`, kind=`{kind}`'
+        stream = selfn(ev, tfilter + lab, kind == 'model')
+        if metric == 'count':
+            parts.append(f'sum by ({by}) (count_over_time({stream} {w}))')
+        elif metric == 'total':
+            parts.append(f'sum by ({by}) (sum_over_time({stream} | unwrap {dur} {w})) / 1000')
+        elif metric == 'mean':
+            parts.append(f'avg_over_time({stream} | unwrap {dur} {w}) by ({by})')
+        elif metric == 'max':
+            parts.append(f'max_over_time({stream} | unwrap {dur} {w}) by ({by})')
+        elif metric in ('p50', 'p95'):
+            parts.append(f'quantile_over_time(0.{metric[1:]}, {stream} | unwrap {dur} {w}) by ({by})')
+        elif metric == 'fail':
+            fstream = selfn(fev, ffilter + lab, kind == 'model')
+            # zero for operations that never failed, so rates exist for every row
+            parts.append(f'(sum by ({by}) (count_over_time({fstream} {w})) or sum by ({by}) (count_over_time({stream} {w})) * 0)')
+    return ' or '.join(parts)
+
+
+def op_rate(selfn, w='[$__range]', by='op'):
+    return f'({op_expr(selfn, "fail", w, by)}) / ({op_expr(selfn, "count", w, by)})'
+
+
+def op_share(selfn, by='op'):
+    t = op_expr(selfn, 'total', by=by)
+    return f'({t}) / on() group_left sum({t})'
+
+
+def plain_sel(event, extra='', model=False):
+    return sel(event, (M if model else '') + extra)
+
+
+def breakdown():
+    d = Dash('claude-breakdown', 'Claude Code · Breakdown',
+             'Every event and every timed operation (model calls per model, tools, hooks, MCP connects) on one scale: '
+             'what happens most, what takes longest, what fails most, and where the time goes.',
+             tags=('breakdown',))
+    S = plain_sel
+    d.row('Where Claude spends its time')
+    d.add(pie('Time by kind', loki_t(op_expr(S, 'total', by='kind'), '{{kind}}', instant=True), 's',
+              'Summed durations: model calls, tools (imported history includes permission waits), hooks and MCP connects.'), 8, 9)
+    d.add(pie('Model time by source', loki_t(f'sum by (query_source) (sum_over_time({S("api_request", "", True)} | unwrap duration_ms [$__range])) / 1000',
+                                             '{{query_source}}', instant=True), 's',
+              'Which part of Claude Code asked: the main loop, subagents, compaction, titles…'), 8, 9)
+    d.add(ts('Time by kind over time', [loki_t(op_expr(S, 'total', '[$__interval]', 'kind'), '{{kind}}')], 's',
+             bars=True, stack=True, legend_calcs=('sum',)), 8, 9)
+
+    d.row('Every operation')
+    cols = [('Calls', 'count', 'short'), ('Total', 'total', 's'), ('Share of time', None, 'percentunit'), ('Mean', 'mean', 'ms'),
+            ('p50', 'p50', 'ms'), ('p95', 'p95', 'ms'), ('Max', 'max', 'ms'), ('Failures', 'fail', 'short'), ('Failure rate', None, 'percentunit')]
+    targets, rename, order = [], {'op': 'Operation', 'kind': 'Kind'}, ['Operation']
+    ovr = [{'matcher': {'id': 'byName', 'options': 'Operation'}, 'properties': [{'id': 'custom.minWidth', 'value': 300}]}]
+    for i, (name, metric, unit) in enumerate(cols):
+        expr = op_share(S) if name == 'Share of time' else op_rate(S) if name == 'Failure rate' else op_expr(S, metric)
+        targets.append(loki_t(expr, instant=True, ref=f'c{i}'))
+        rename[f'Value #c{i}'] = name
+        order.append(name)
+        props = [{'id': 'unit', 'value': unit}]
+        if name == 'Share of time':
+            props += [{'id': 'custom.cellOptions', 'value': {'type': 'gauge', 'mode': 'basic', 'valueDisplayMode': 'text'}},
+                      {'id': 'max', 'value': 1}, {'id': 'min', 'value': 0}, {'id': 'decimals', 'value': 1},
+                      {'id': 'color', 'value': {'mode': 'continuous-BlPu'}}]
+        if name == 'Failure rate':
+            props += [{'id': 'decimals', 'value': 1}, {'id': 'custom.cellOptions', 'value': {'type': 'color-text'}},
+                      {'id': 'thresholds', 'value': {'mode': 'absolute', 'steps': [{'color': 'text', 'value': None},
+                                                     {'color': 'orange', 'value': 0.02}, {'color': 'red', 'value': 0.1}]}}]
+        if unit == 'ms':
+            props.append({'id': 'decimals', 'value': 0})
+        ovr.append({'matcher': {'id': 'byName', 'options': name}, 'properties': props})
+    d.add(table('Every operation', targets, 'One row per model, tool, hook event and MCP server; sort by any column. '
+                'Failures: API errors for models, failed runs for tools, hook errors, failed MCP connects.',
+                transforms=[merge(), organize(rename, order=order, exclude=('Time',))], overrides=ovr,
+                sort={'displayName': 'Total', 'desc': True}), 24, 14)
+
+    d.row('What takes longest')
+    d.add(bar('Most total time', loki_t(f'sort_desc({op_expr(S, "total")})', '{{op}}', instant=True), 's',
+              'Where the hours went: frequency × duration.'), 8, 10)
+    d.add(bar('Slowest p95', loki_t(f'sort_desc({op_expr(S, "p95")})', '{{op}}', instant=True), 'ms',
+              'The slow tail of each operation, however rare.'), 8, 10)
+    d.add(bar('Slowest single call', loki_t(f'sort_desc({op_expr(S, "max")})', '{{op}}', instant=True), 'ms'), 8, 10)
+    d.add(ts('p95 over time, by kind', [loki_t(op_expr(S, 'p95', '[$__interval]', 'kind'), '{{kind}}')], 'ms',
+             legend_calcs=('mean', 'max')), 24, 8)
+
+    d.row('Most error prone')
+    d.add(bar('Highest failure rate', loki_t(f'sort_desc(({op_rate(S)}) > 0)', '{{op}}', instant=True), 'percentunit',
+              'Failures per call; rare operations can rank high on few calls, so check the count next to it.'), 8, 10)
+    d.add(bar('Most failures', loki_t(f'sort_desc(({op_expr(S, "fail")}) > 0)', '{{op}}', instant=True), 'short'), 8, 10)
+    d.add(ts('Failure rate over time, by kind', [loki_t(op_rate(S, '[$__interval]', 'kind'), '{{kind}}')], 'percentunit',
+             legend_calcs=('mean', 'max')), 8, 10)
+
+    d.row('Every event')
+    d.add(table('Events by type', [loki_t(f'sum by (event_name) (count_over_time({sel()} [$__range]))', instant=True, ref='n'),
+                                   loki_t(f'sum by (event_name) (count_over_time({sel()} [$__range])) / on() group_left sum(count_over_time({sel()} [$__range]))', instant=True, ref='s'),
+                                   loki_t(f'sum by (event_name) (count_over_time({sel()} [$__range])) / on() group_left sum(count_over_time({sel("user_prompt")} [$__range]))', instant=True, ref='p')],
+                'Everything Claude Code reported, by type.',
+                transforms=[merge(), organize({'event_name': 'Event', 'Value #n': 'Count', 'Value #s': 'Share', 'Value #p': 'Per prompt'},
+                                              order=['Event', 'Count', 'Share', 'Per prompt'], exclude=('Time',))],
+                overrides=[{'matcher': {'id': 'byName', 'options': 'Share'}, 'properties': [{'id': 'unit', 'value': 'percentunit'}, {'id': 'decimals', 'value': 2}]},
+                           {'matcher': {'id': 'byName', 'options': 'Per prompt'}, 'properties': [{'id': 'decimals', 'value': 2}]}],
+                sort={'displayName': 'Count', 'desc': True}), 8, 10)
+    d.add(ts('Events over time', [loki_t(f'sum by (event_name) (count_over_time({sel()} [$__interval]))', '{{event_name}}')], 'short',
+             bars=True, stack=True, legend_calcs=('sum',)), 16, 10)
+    d.add(table('Permission decisions', [loki_t(f'sum by (tool_name, decision, source) (count_over_time({sel("tool_decision")} [$__range]))', instant=True)],
+                'Accepted or rejected tool calls, and who decided (config, hook, the user).',
+                transforms=[merge(), organize({'tool_name': 'Tool', 'decision': 'Decision', 'source': 'Decided by', 'Value': 'Count'}, exclude=('Time',))],
+                sort={'displayName': 'Count', 'desc': True}), 12, 8)
+    d.add(table('Errors by type', [loki_t(f'sum by (event_name) (count_over_time({sel("api_error|api_refusal|api_retries_exhausted|internal_error")} [$__range]))', instant=True)],
+                'Every error-kind event.',
+                transforms=[merge(), organize({'event_name': 'Event', 'Value': 'Count'}, exclude=('Time',))],
+                sort={'displayName': 'Count', 'desc': True}), 12, 8)
+    return d
+
+
+# Out of the box: every direct (subscription) profile against the LiteLLM one
+CMP_DEFAULT = {'a_profile': {'text': ['claude', 'claude-db', 'claude-my'], 'value': ['claude', 'claude-db', 'claude-my']},
+               'b_profile': {'text': ['claude-infi'], 'value': ['claude-infi']}}
+
+# ---- Compare ---------------------------------------------------------------------------------------
+
+A_COLOR, B_COLOR = '#5794F2', '#FF9830'
+
+
+def csel(side, event, extra='', model=True):
+    """The stream selector for one side of the comparison: its profiles, and its models for model events."""
+    ev = f', event_name=~"{event}"' if any(c in event for c in '|.*+') else f', event_name="{event}"'
+    s = '{service_name=~"claude-code.*", claude_profile=~"$' + side + '_profile"' + ev + '}'
+    return s + (f' | model=~"${side}_model"' if model else '') + extra
+
+
+def side_name(side):
+    return side.upper()  # the profiles of each side are in the pickers above
+
+
+def by_ref(ref, *props):
+    return {'matcher': {'id': 'byFrameRefID', 'options': ref}, 'properties': list(props)}
+
+
+def delta_steps(better):
+    """Colors for "B vs A": within ±5% is a draw; past it, green when B is better, red when worse."""
+    good, bad = ('green', 'red') if better == 'lower' else ('red', 'green')
+    return {'mode': 'absolute', 'steps': [{'color': good, 'value': None}, {'color': 'text', 'value': -0.05},
+                                          {'color': bad, 'value': 0.05}]}
+
+
+def cmp_stat(title, expr, unit='short', better=None, desc='', decimals=None):
+    """A, B and how B compares (B − A) / A, for one metric: `expr(side)` is a label-less instant expression."""
+    a, b = expr('a'), expr('b')
+    ds = LOKI if '{service_name' in a else PROM
+    t = (lambda e, ref: loki_t(e, instant=True, ref=ref)) if ds == LOKI else (lambda e, ref: prom_t(e, instant=True, ref=ref))
+    targets = [t(a, 'A'), t(b, 'B')]
+    overrides = [by_ref('A', {'id': 'displayName', 'value': side_name('a')}, {'id': 'color', 'value': {'mode': 'fixed', 'fixedColor': A_COLOR}}),
+                 by_ref('B', {'id': 'displayName', 'value': side_name('b')}, {'id': 'color', 'value': {'mode': 'fixed', 'fixedColor': B_COLOR}})]
+    if better != 'volume':
+        targets.append(t(f'(({b}) - ({a})) / ({a})', 'D'))
+        overrides.append(by_ref('D', {'id': 'displayName', 'value': 'B vs A'}, {'id': 'unit', 'value': 'percentunit'},
+                                {'id': 'decimals', 'value': 1},
+                                {'id': 'color', 'value': {'mode': 'thresholds'} if better else {'mode': 'fixed', 'fixedColor': 'text'}},
+                                *([{'id': 'thresholds', 'value': delta_steps(better)}] if better else [])))
+    word = {'lower': ' Lower is better: a red difference means B is worse.', 'higher': ' Higher is better: a red difference means B is worse.'}.get(better, '')
+    p = stat(title, targets[0], unit, desc + word, decimals)
+    p['targets'], p['datasource'] = targets, ds
+    p['fieldConfig']['defaults']['noValue'] = '–'
+    p['fieldConfig']['overrides'] = overrides
+    p['options'].update(textMode='value_and_name', orientation='horizontal' if False else 'auto', justifyMode='center')
+    p['options']['text'] = {'titleSize': 12, 'valueSize': 22}
+    return p
+
+
+def cmp_ts(title, expr, unit='short', desc='', bars=False, legend_calcs=('mean', 'max')):
+    """One line (or bar series) per side: `expr(side)` is a label-less range expression over [$__interval]."""
+    p = ts(title, [loki_t(expr('a'), side_name('a'), ref='A'), loki_t(expr('b'), side_name('b'), ref='B')], unit, desc,
+           bars=bars, legend_calcs=legend_calcs)
+    p['fieldConfig']['overrides'] = [by_ref('A', {'id': 'color', 'value': {'mode': 'fixed', 'fixedColor': A_COLOR}}),
+                                     by_ref('B', {'id': 'color', 'value': {'mode': 'fixed', 'fixedColor': B_COLOR}})]
+    p['options']['legend']['placement'] = 'bottom'
+    return p
+
+
+def cmp_quantiles(title, field, event='api_request', model=True, unit='ms', desc=''):
+    """p50…p99 of a field, A next to B."""
+    qs = (('p50', 0.5), ('p75', 0.75), ('p90', 0.9), ('p95', 0.95), ('p99', 0.99))
+    q = lambda side: ' or '.join(f'label_replace(quantile_over_time({v}, {csel(side, event, model=model)} | unwrap {field} [$__range]) by (), "q", "{n}", "", "")'
+                                 for n, v in qs)
+    return {'type': 'barchart', 'title': title, 'description': desc, 'datasource': LOKI,
+            'targets': [loki_t(q('a'), instant=True, ref='A'), loki_t(q('b'), instant=True, ref='B')],
+            'transformations': [merge(), organize({'q': 'Percentile', 'Value #A': 'A', 'Value #B': 'B'}, exclude=('Time',))],
+            'fieldConfig': {'defaults': {'unit': unit, 'min': 0, 'color': {'mode': 'palette-classic'},
+                                         'custom': {'fillOpacity': 85, 'lineWidth': 0, 'gradientMode': 'none'}},
+                            'overrides': [{'matcher': {'id': 'byName', 'options': 'A'}, 'properties': [
+                                              {'id': 'displayName', 'value': side_name('a')}, {'id': 'color', 'value': {'mode': 'fixed', 'fixedColor': A_COLOR}}]},
+                                          {'matcher': {'id': 'byName', 'options': 'B'}, 'properties': [
+                                              {'id': 'displayName', 'value': side_name('b')}, {'id': 'color', 'value': {'mode': 'fixed', 'fixedColor': B_COLOR}}]}]},
+            'options': {'xField': 'Percentile', 'orientation': 'vertical', 'groupWidth': 0.7, 'barWidth': 0.9,
+                        'showValue': 'auto', 'stacking': 'none', 'xTickLabelRotation': 0,
+                        'legend': {'displayMode': 'list', 'placement': 'bottom', 'showLegend': True},
+                        'tooltip': {'mode': 'multi', 'sort': 'none'}}}
+
+
+def cmp_table(title, key, header, cols, desc=''):
+    """One row per `key` value: `cols` is [(name, expr(side) grouped by key, unit, better or None, delta?)]."""
+    targets, rename, order = [], {key: header}, [header]
+    overrides = [{'matcher': {'id': 'byName', 'options': header}, 'properties': [{'id': 'custom.minWidth', 'value': 260}]}]
+    for i, (name, expr, unit, better, delta) in enumerate(cols):
+        for side in ('a', 'b'):
+            ref = f'{side}{i}'
+            targets.append(loki_t(expr(side), instant=True, ref=ref))
+            rename[f'Value #{ref}'] = f'{name} {side.upper()}'
+            order.append(f'{name} {side.upper()}')
+            overrides.append({'matcher': {'id': 'byName', 'options': f'{name} {side.upper()}'},
+                              'properties': [{'id': 'unit', 'value': unit}]})
+        if delta:
+            ref = f'd{i}'
+            targets.append(loki_t(f'(({expr("b")}) - ({expr("a")})) / ({expr("a")})', instant=True, ref=ref))
+            rename[f'Value #{ref}'] = f'{name} B vs A'
+            order.append(f'{name} B vs A')
+            overrides.append({'matcher': {'id': 'byName', 'options': f'{name} B vs A'}, 'properties': [
+                {'id': 'unit', 'value': 'percentunit'}, {'id': 'decimals', 'value': 1},
+                *([{'id': 'custom.cellOptions', 'value': {'type': 'color-text'}},
+                   {'id': 'thresholds', 'value': delta_steps(better)}] if better else [])]})
+    return table(title, targets, desc + ' A and B side by side; "B vs A" is (B − A) / A.',
+                 transforms=[merge(), organize(rename, order=order, exclude=('Time',))], overrides=overrides,
+                 sort={'displayName': order[1], 'desc': True})
+
+
+def compare():
+    d = Dash('claude-compare', 'Claude Code · Compare',
+             'Two sides, A and B, each a set of profiles and models: which is faster, cheaper and fails less, and by how much. '
+             'Every number shows A, B and "B vs A" = (B − A) / A; green means B is better, red worse, within ±5% a draw. '
+             'Rates and per-request figures are fair even when one side was used far more.',
+             vars_=('a_profile', 'a_model', 'b_profile', 'b_model'), tags=('compare',))
+    api = lambda s, extra='': csel(s, 'api_request', extra)
+    req = lambda s, w='[$__range]': f'sum(count_over_time({api(s)} {w}))'
+    tr = lambda s, extra='': csel(s, 'tool_result', extra, model=False)
+    errs = lambda s, w='[$__range]': f'(sum(count_over_time({csel(s, "api_error")} {w})) or vector(0))'
+    q = lambda p, field, extra='': (lambda s: f'quantile_over_time({p}, {api(s, extra)} | unwrap {field} [$__range]) by ()')
+    tps = ' | output_tokens > 50 | label_format tps=`{{ divf (mulf .output_tokens 1000) (subf .duration_ms .ttft_ms) }}`'
+    cost = lambda s, w='[$__range]': f'sum(sum_over_time({api(s)} | unwrap cost_usd {w}))'
+    ctx = lambda s, w='[$__range]': (f'(sum(sum_over_time({api(s)} | unwrap input_tokens {w})) + sum(sum_over_time({api(s)} | unwrap cache_read_tokens {w}))'
+                                     f' + sum(sum_over_time({api(s)} | unwrap cache_creation_tokens {w})))')
+
+    d.row('Speed')
+    d.add(cmp_stat('Model latency p50', q(0.5, 'duration_ms'), 'ms', 'lower', 'Whole model request, first byte to last.', 0), 6, 5)
+    d.add(cmp_stat('Model latency p95', q(0.95, 'duration_ms'), 'ms', 'lower', 'The slow tail of model requests.', 0), 6, 5)
+    d.add(cmp_stat('Time to first token p50', q(0.5, 'ttft_ms'), 'ms', 'lower', 'How long before the answer starts.', 0), 6, 5)
+    d.add(cmp_stat('Time to first token p95', q(0.95, 'ttft_ms'), 'ms', 'lower', '', 0), 6, 5)
+    d.add(cmp_stat('Output tokens per second p50', q(0.5, 'tps', tps), 'short', 'higher',
+                   'Generation speed after the first token, for responses over 50 tokens.', 1), 6, 5)
+    d.add(cmp_stat('Mean model request', lambda s: f'avg_over_time({api(s)} | unwrap duration_ms [$__range]) by ()', 'ms', 'lower', '', 0), 6, 5)
+    d.add(cmp_stat('Tool run p95', lambda s: f'quantile_over_time(0.95, {tr(s)} | unwrap duration_ms [$__range]) by ()', 'ms', 'lower',
+                   'Tools run on this machine, so this mostly reflects the work, not the route.', 0), 6, 5)
+    sp = lambda s: f'claude_profile=~"${s}_profile", span_name="claude_code.interaction"'
+    d.add(cmp_stat('Mean prompt turn (live)', lambda s: f'sum(increase(traces_spanmetrics_latency_sum{{{sp(s)}}}[$__range])) / sum(increase(traces_spanmetrics_latency_count{{{sp(s)}}}[$__range]))',
+                   's', 'lower', 'Submit to final answer, from span metrics: live sessions only. Ignores the model filter.', 1), 6, 5)
+
+    d.row('Reliability')
+    d.add(cmp_stat('API error rate', lambda s: f'{errs(s)} / {req(s)}', 'percentunit', 'lower', 'API errors per model request.', 2), 6, 5)
+    d.add(cmp_stat('Retries exhausted per request', lambda s: f'(sum(count_over_time({csel(s, "api_retries_exhausted", model=False)} [$__range])) or vector(0)) / {req(s)}',
+                   'percentunit', 'lower', 'Requests that gave up after every retry.', 2), 6, 5)
+    d.add(cmp_stat('Tool failure rate', lambda s: f'(sum(count_over_time({tr(s, chr(32) + "| success=" + chr(34) + "false" + chr(34))} [$__range])) or vector(0)) / sum(count_over_time({tr(s)} [$__range]))',
+                   'percentunit', 'lower', 'Failed tool runs per tool run.', 2), 6, 5)
+    d.add(cmp_stat('API errors', lambda s: errs(s), 'short', 'volume', 'Total count; compare the rate for fairness.'), 6, 5)
+
+    d.row('Cost and tokens')
+    d.add(cmp_stat('Cost per model request', lambda s: f'{cost(s)} / {req(s)}', 'currencyUSD', 'lower', 'List-price cost.', 4), 6, 5)
+    d.add(cmp_stat('Cost per prompt', lambda s: f'{cost(s)} / sum(count_over_time({csel(s, "user_prompt", model=False)} [$__range]))',
+                   'currencyUSD', 'lower', 'Everything a prompt set off (model calls, subagents), at list price.', 3), 6, 5)
+    d.add(cmp_stat('Cache hit', lambda s: f'sum(sum_over_time({api(s)} | unwrap cache_read_tokens [$__range])) / {ctx(s)}',
+                   'percentunit', 'higher', 'Share of input tokens read from the prompt cache.', 1), 6, 5)
+    d.add(cmp_stat('Context per request', lambda s: f'{ctx(s)} / {req(s)}', 'short', 'lower', 'Input + cache tokens sent per request.', 0), 6, 5)
+    d.add(cmp_stat('Output tokens per request', lambda s: f'sum(sum_over_time({api(s)} | unwrap output_tokens [$__range])) / {req(s)}', 'short', None, '', 0), 6, 5)
+    d.add(cmp_stat('Total cost', cost, 'currencyUSD', 'volume', '', 2), 6, 5)
+    d.add(cmp_stat('Model requests', req, 'short', 'volume'), 6, 5)
+    d.add(cmp_stat('Prompts', lambda s: f'sum(count_over_time({csel(s, "user_prompt", model=False)} [$__range]))', 'short', 'volume'), 6, 5)
+
+    d.row('Over time')
+    d.add(cmp_ts('Model latency p95', lambda s: f'quantile_over_time(0.95, {api(s)} | unwrap duration_ms [$__interval]) by ()', 'ms'), 12, 8)
+    d.add(cmp_ts('Time to first token p95', lambda s: f'quantile_over_time(0.95, {api(s)} | unwrap ttft_ms [$__interval]) by ()', 'ms'), 12, 8)
+    d.add(cmp_ts('API error rate', lambda s: f'{errs(s, "[$__interval]")} / {req(s, "[$__interval]")}', 'percentunit'), 12, 8)
+    d.add(cmp_ts('Output tokens per second p50', lambda s: f'quantile_over_time(0.5, {api(s, tps)} | unwrap tps [$__interval]) by ()', 'short'), 12, 8)
+    d.add(cmp_ts('Cost per model request', lambda s: f'{cost(s, "[$__interval]")} / {req(s, "[$__interval]")}', 'currencyUSD'), 12, 8)
+    d.add(cmp_ts('Model requests', lambda s: req(s, '[$__interval]'), 'short', bars=True, legend_calcs=('sum',)), 12, 8)
+
+    d.row('Distribution')
+    d.add(cmp_quantiles('Model latency percentiles', 'duration_ms'), 12, 9)
+    d.add(cmp_quantiles('Time to first token percentiles', 'ttft_ms'), 12, 9)
+
+    d.row('Breakdown')
+    d.add(cmp_table('By model', 'model', 'Model', [
+        ('Requests', lambda s: f'sum by (model) (count_over_time({api(s)} [$__range]))', 'short', None, False),
+        ('p95 ms', lambda s: f'quantile_over_time(0.95, {api(s)} | unwrap duration_ms [$__range]) by (model)', 'ms', 'lower', True),
+        ('TTFT p95', lambda s: f'quantile_over_time(0.95, {api(s)} | unwrap ttft_ms [$__range]) by (model)', 'ms', 'lower', True),
+        ('Error rate', lambda s: f'(sum by (model) (count_over_time({csel(s, "api_error")} [$__range])) or sum by (model) (count_over_time({api(s)} [$__range])) * 0)'
+                                 f' / sum by (model) (count_over_time({api(s)} [$__range]))', 'percentunit', 'lower', False),
+        ('$/request', lambda s: f'sum by (model) (sum_over_time({api(s)} | unwrap cost_usd [$__range])) / sum by (model) (count_over_time({api(s)} [$__range]))',
+         'currencyUSD', 'lower', True)]), 24, 9)
+    d.add(cmp_table('By tool', 'tool_name', 'Tool', [
+        ('Runs', lambda s: f'sum by (tool_name) (count_over_time({tr(s)} [$__range]))', 'short', None, False),
+        ('p95 ms', lambda s: f'quantile_over_time(0.95, {tr(s)} | unwrap duration_ms [$__range]) by (tool_name)', 'ms', 'lower', True),
+        ('Failure rate', lambda s: f'(sum by (tool_name) (count_over_time({tr(s, chr(32) + "| success=" + chr(34) + "false" + chr(34))} [$__range])) or sum by (tool_name) (count_over_time({tr(s)} [$__range])) * 0)'
+                                   f' / sum by (tool_name) (count_over_time({tr(s)} [$__range]))', 'percentunit', 'lower', False)]), 24, 10)
+    sideop = lambda side: (lambda ev, extra='', model=False: csel(side, ev, extra, model))
+    d.add(cmp_table('By operation', 'op', 'Operation', [
+        ('Calls', lambda s: op_expr(sideop(s), 'count'), 'short', None, False),
+        ('Mean ms', lambda s: op_expr(sideop(s), 'mean'), 'ms', 'lower', True),
+        ('p95 ms', lambda s: op_expr(sideop(s), 'p95'), 'ms', 'lower', True),
+        ('Failure rate', lambda s: op_rate(sideop(s)), 'percentunit', 'lower', False),
+        ('Share of time', lambda s: op_share(sideop(s)), 'percentunit', None, False)],
+        'Every model, tool, hook event and MCP server.'), 24, 12)
+    d.add(cmp_table('By event', 'event_name', 'Event', [
+        ('Per prompt', lambda s: f'sum by (event_name) (count_over_time({csel(s, ".+", model=False)} [$__range])) / on() group_left sum(count_over_time({csel(s, "user_prompt", model=False)} [$__range]))',
+         'short', None, True),
+        ('Count', lambda s: f'sum by (event_name) (count_over_time({csel(s, ".+", model=False)} [$__range]))', 'short', None, False)],
+        'How often each event happens per prompt, a fair rate even when one side was used far more.'), 12, 10)
+    st = ' | label_format status=`{{ or .status_code "from transcript" }}`'
+    d.add(cmp_table('API errors by status', 'status', 'Status', [
+        ('Errors', lambda s: f'sum by (status) (count_over_time({csel(s, "api_error", st)} [$__range]))', 'short', 'lower', False)]), 12, 8)
+    ask = 'AskUserQuestion|ExitPlanMode|EnterPlanMode'
+    d.add(cmp_table('Where time goes', 'activity', 'Activity', [
+        ('Seconds', lambda s: (f'label_replace(sum(sum_over_time({api(s)} | unwrap duration_ms [$__range])) / 1000, "activity", "model", "", "")'
+                               f' or label_replace(sum(sum_over_time({tr(s, " | tool_name!~" + chr(34) + ask + chr(34))} | unwrap duration_ms [$__range])) / 1000, "activity", "tools", "", "")'
+                               f' or label_replace(sum(sum_over_time({tr(s, " | tool_name=~" + chr(34) + ask + chr(34))} | unwrap duration_ms [$__range])) / 1000, "activity", "answering Claude", "", "")'),
+         's', 'lower', True)], 'Summed durations; imported history counts permission waits as tool time.'), 12, 8)
+    return d
+
 
 def main():
     os.makedirs(OUT, exist_ok=True)
-    built = [overview(), traces(), time_goes(), errors(), logs_dash(), session(), tools()]
+    built = [overview(), traces(), time_goes(), errors(), logs_dash(), session(), tools(), compare(), breakdown()]
     names = {'claude-overview': 'overview', 'claude-traces': 'traces', 'claude-time': 'time', 'claude-errors': 'errors',
-             'claude-logs': 'logs', 'claude-session': 'session', 'claude-tools': 'tools'}
+             'claude-logs': 'logs', 'claude-session': 'session', 'claude-tools': 'tools', 'claude-compare': 'compare', 'claude-breakdown': 'breakdown'}
     for f in os.listdir(OUT):
         if f.endswith('.json'):
             os.remove(os.path.join(OUT, f))

@@ -1,6 +1,6 @@
 {
   "name": "observability",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A free, local observability platform for Claude Code: Grafana with trace waterfalls, logs, metrics and dashboards (spend, latency, where time goes, errors, tools, hooks, MCP) for every profile, fed by Claude Code's own OpenTelemetry. Runs in Docker on 127.0.0.1; nothing leaves the machine.",
   "author": {
     "name": "nbotond"
