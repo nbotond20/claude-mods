@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0
+- Approvals: when the subagent cap, the image guard or the generated-file guard would refuse a call, an interactive session asks first: allow once, for this turn, for this session, or deny. Parallel calls share one dialog. `/budget` lists what is allowed; `/budget reset` takes it back. `-p` and SDK runs refuse as before.
+- `/budget` limits and switches (and approvals) last until the session ends or is cleared: a `/clear` puts limits, approvals, routing and the subagent count back to the starting values. `--save` also writes the change to config.json for every new session.
+- A held prompt (context hold or new-task check) goes back into the prompt box. Sending a held new-task prompt again lets it through.
+
 ## 0.14.0
 - The subagent cap counts subagents running at the same time, not every Agent call of the session. `maxAgents` (default 3) is now a parallelism limit; a finished subagent frees its slot. `/budget` shows `subagents <running>/<max> running (<n> this session)`.
 

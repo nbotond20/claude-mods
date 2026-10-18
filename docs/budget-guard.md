@@ -25,7 +25,7 @@ On a Claude subscription the money is API-equivalent (`≈`) and the plan's 5-ho
 - context tokens and the share of the window, the change in the last turn (`▲`/`▼`, yellow past `bigTurn`), and `compacts ~200k · hold 300k`: the mod's `compactAt` (or `autoCompactWindow` when that is lower) and the `block` limit;
 - live subagents with the model each one actually runs on, and background tasks.
 
-When a new-task prompt is held, the band shows the choice `[c] clear · [k] compact · [y] keep`.
+When a new-task prompt is held, the band shows the choice `[c] clear · [k] compact · [y] keep`. A held prompt (new task or context hold) goes back into the prompt box, so nothing typed is lost; pressing Enter on a held new-task prompt again sends it as is.
 
 ![A prompt held as a new task with 96k of earlier context loaded](images/budget-guard/new-task-hold.png)
 
@@ -58,13 +58,26 @@ sh bin/mods install --only budget-guard     # every profile on this machine; or,
 | **Opus effort cap** | Every Opus request, main loop and subagents, is capped at `opusMaxEffort` (default `medium`). A rule: it applies in holdout sessions too. | (none) |
 | **Compaction at `compactAt`** | When a turn ends with the context at or over `compactAt` (default 200k), the conversation is compacted before the next prompt, whatever `autoCompactWindow` says. Each session also switches the engine's auto-compact back on if it was turned off. A rule: it applies in holdout sessions too. `/budget compact off` leaves compaction to the engine. | (none) |
 | **Subagent routing** | `Explore`, `claude-code-guide` and `statusline-setup` run on Haiku. `fork` keeps its model. Every other subagent runs on Sonnet. Engine forks (compaction, memory) are left alone. | `route-agents` |
-| **Subagent cap** | At most `maxAgents` (default 3) subagents running at the same time; a further Agent call is denied with a message until one finishes. | (not counted) |
+| **Subagent cap** | At most `maxAgents` (default 3) subagents running at the same time; a further Agent call asks you first (see Approvals) and is otherwise denied with a message until one finishes. | (not counted) |
 | **New-task check** | With at least `newTaskAt` (default 60k) of context loaded, a substantial prompt that Haiku judges to be a new task is held. You then choose clear, compact or keep. | `new-task` |
-| **Context hold** | At `block` (default 300k) prompts are held until you /compact or /clear. Prefix a prompt with `force:` to send it anyway. | (none) |
-| **Read guards** | Reads of images are denied (unless `/budget images on`), as are reads of generated or vendored files: `node_modules`, `dist`, `build`, `.next`, `coverage`, lockfiles, `*.min.*`, `*.map`, `*.log`. | (not counted) |
+| **Context hold** | At `block` (default 300k) prompts are held until you /compact or /clear; the prompt goes back into the prompt box. Prefix a prompt with `force:` to send it anyway. | (none) |
+| **Read guards** | Reads of images are refused (unless `/budget images on`), as are reads of generated or vendored files: `node_modules`, `dist`, `build`, `.next`, `coverage`, lockfiles, `*.min.*`, `*.map`, `*.log`. In an interactive session you are asked first (see Approvals). | (not counted) |
 | **Build/test output trim** | Noisy commands keep only their last 300 lines in context; the full log goes to `$TMPDIR/budget-guard.XXXXXX`. Noisy means npm/pnpm/yarn/bun run test/build/lint/typecheck/check/e2e, jest, vitest, playwright test, tsc, eslint, biome, next build, pytest, mvn, gradle, go test/build/vet, cargo test/build/clippy, docker build and compose up/logs/build. Commands with a pipe or redirect, `head`/`tail`, or in the background are left alone. | `output-trim` |
 | **Keep-alive** | On gateway profiles only, one tiny fork ping after 270s idle (with at least 30k of context) keeps the prompt cache warm for another 5 minutes. It turns itself off if a ping misses the cache. A saving is counted only when you are back while that cache is still warm. | `keep-alive` |
 | **Spend polling** | On gateway profiles, it reads LiteLLM `/key/info` every 60s for key spend, max budget and reset time. | (none) |
+
+## Approvals
+
+When the subagent cap, the image guard or the generated-file guard would refuse a call in an interactive session, budget-guard asks first, like a permission prompt:
+
+| Pick | Effect |
+| --- | --- |
+| Allow once | this call goes through; the next one asks again |
+| Allow for this turn | that guard steps aside until the current turn ends |
+| Allow for this session | that guard steps aside until the session ends or is cleared (`/clear`) |
+| Deny | the call is refused with the usual message to Claude |
+
+Parallel calls wait for the one dialog, so a turn or session answer covers them. `/budget` lists what is allowed; `/budget reset` takes it back. Under `-p` and the SDK nobody is asked and the guards refuse as before.
 
 ## On by default
 
@@ -101,6 +114,7 @@ lean-tools works alongside this. It caps *other* large shell output and leaves b
 /budget daily|monthly <$|off>    soft per-profile budget (gauge and toasts, never blocking), saved to budgets.json
 /budget warn|block|agents|bigturn|newtask <n>    e.g. /budget block 250k
 /budget images|keepalive|trim|agentroute on|off
+/budget <any of the above> --save  also make it the starting value of every new session (config.json)
 /budget reset                    session limits back to defaults
 /budget refresh                  re-read LiteLLM spend now
 /budget compact <n>|off          compact at n tokens of context (n at least 50k; default 200k), saved to config.json
@@ -111,7 +125,7 @@ lean-tools works alongside this. It caps *other* large shell output and leaves b
 
 While paused, the cost levers are off as in a holdout session (routing, subagent routing and cap, new-task check, image guard, trimming, keep-alive), and so are the effort cap and compaction. A pause keeps the budgets, the band, the generated-file guard and the context hold: it is for a stretch of work that needs Opus at full effort, not for turning the guard off. `/mods pause` pauses budget-guard with the other mods. budget-guard also takes part in `/mods status`, `setup`, `doctor` and `uninstall`.
 
-Limits set with `/budget` last for the current session. Budgets, `compact` and `holdout` persist. To change the starting values of every session, put them under `limits` in config.json or run `/budget setup`.
+Limits set with `/budget` and approvals last for the current session, until it ends or is cleared: a `/clear` puts the session limits, approvals, routing and the subagent count back to the starting values. Add `--save` to a limit or switch to keep it for new sessions too (written under `limits` in config.json). Budgets, `compact` and `holdout` persist. `/budget setup` changes the starting values as well.
 
 **Turning it off or on.** There is no single off switch. `/budget pause` steps the cost levers aside for a while. For good, turn each lever off: `/budget route off`, `agentroute off`, `trim off`, `keepalive off`, `compact off`, `newtask`/`agents` raised, and `opusMaxEffort` `max`, saved as `limits` in config.json. `/mods uninstall` removes the mod. `/budget reset` puts the session limits back to the starting values.
 

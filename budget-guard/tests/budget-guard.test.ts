@@ -1,15 +1,15 @@
-import { describe, expect, test } from 'claude-code/testing'
+import { describe, expect, mock, test } from 'claude-code/testing'
 
 const QUICK = 'quick question, explanation, lookup, or a tiny one-file edit'
 const TRIVIAL = 'trivial: a greeting, a yes/no, run or start a command or server, open a file or URL, a one-line factual answer'
 const usage = { input_tokens: 10, output_tokens: 2_000, cache_read_input_tokens: 40_000, cache_creation_input_tokens: 20_000 }
 
 // What the engine answers beneath the plugin in every test.
-function engine(on: any, extra: { classify?: string; agents?: any[]; holdout?: number; env?: Record<string, string>; now?: number } = {}) {
+function engine(on: any, extra: { classify?: string; agents?: any[]; holdout?: number; env?: Record<string, string>; now?: number; clock?: false } = {}) {
   on('session.start', ($: any, e: any) => ({ cwd: e.cwd }))
   on('command.register', () => ({ value: undefined }))
   on('env.get', ($: any, e: any) => ({ value: extra.env?.[e.name] }))
-  on('clock.now', () => ({ value: extra.now ?? 1_000_000 }))
+  if (extra.clock !== false) on('clock.now', () => ({ value: extra.now ?? 1_000_000 }))
   on('classic.Stop', () => ({}))
   on('session.measure', ($: any, e: any) => ({ changed: e.changed }))
   on('prompt.submit', ($: any, e: any) => ({ text: e.text }))
@@ -48,7 +48,8 @@ describe('budget-guard', () => {
     const running: any[] = []
     engine(on, { agents: running })
     on('tool.call', () => ({ result: 'ran', text: 'ran' }) as any)
-    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    // Headless: no one to ask, so the guards deny outright.
+    await $.session.start({ surface: null, isInteractive: false, cwd: '/work' } as any)
 
     // Only running subagents count: finished ones free their slot.
     const agent = () => $.tool.call({ tool: 'Agent', description: 'x', prompt: 'x' } as any)
@@ -409,5 +410,98 @@ describe('budget-guard', () => {
     const after = String((await $.command.run({ command: 'budget', args: '' } as any)).text)
     expect(after).not.toMatch(/PAUSED/)
     expect(after.split('\n')[2]).toBe(before.split('\n')[2])
+  })
+
+  test('a guard asks before it denies: once, this turn, this session (until /clear), or deny', async ($, on) => {
+    const running = [1, 2, 3].map(i => ({ id: `a${i}`, type: 'Explore', description: 'x', status: 'running' }))
+    engine(on, { agents: running })
+    on('session.end', ($: any, e: any) => ({ sessionId: e.sessionId }))
+    on('turn.complete', () => ({ text: '' }))
+    const answers: string[] = []
+    const asked: string[] = []
+    on('tool.call', { tool: 'AskUserQuestion' }, ($: any, e: any) => {
+      const q = e.questions[0].question
+      asked.push(q)
+      return { result: { questions: e.questions, answers: { [q]: answers.shift() ?? 'Deny' } } } as any
+    })
+    on('tool.call', () => ({ result: 'ran', text: 'ran' }) as any)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const agent = () => $.tool.call({ tool: 'Agent', description: 'x', prompt: 'x' } as any)
+    const png = () => $.tool.call({ tool: 'Read', file_path: '/work/shot.png' } as any)
+    const done = () => $.turn.complete({ turnId: 't1', answer: '', durationMs: 1, isAborted: false, reason: 'answer' } as any)
+
+    answers.push('Deny')
+    const denied = async (r: any) => String((await r).deny ?? (await r).text)
+    expect(await denied(agent())).toMatch(/3\/3 subagents already running/)
+    answers.push('Allow once')
+    expect((await agent()).deny).toBeUndefined()
+    expect(asked).toHaveLength(2)
+    answers.push('Allow for this turn')
+    expect((await agent()).deny).toBeUndefined()
+    expect((await agent()).deny).toBeUndefined()
+    expect(asked).toHaveLength(3)
+    expect(await $.command.run({ command: 'budget', args: '' } as any)).toMatchObject({ text: expect.stringMatching(/subagents over the cap \(this turn\)/) })
+    await done()
+    answers.push('Deny')
+    expect(await denied(agent())).toMatch(/already running/)
+    expect(asked).toHaveLength(4)
+
+    answers.push('Allow for this session')
+    expect((await png()).deny).toBeUndefined()
+    await done()
+    expect((await png()).deny).toBeUndefined()
+    expect(asked).toHaveLength(5)
+
+    // A /clear ends the session's approvals; the next image read asks again.
+    await $.session.end({ sessionId: 's1', reason: 'clear' } as any)
+    answers.push('Deny')
+    expect(await denied(png())).toMatch(/reading images is off/)
+    expect(asked).toHaveLength(6)
+  })
+
+  test('/budget changes last until /clear unless --save keeps them for new sessions', async ($, on) => {
+    const files = engine(on)
+    on('session.end', ($: any, e: any) => ({ sessionId: e.sessionId }))
+    on('tool.call', () => ({ result: 'ran', text: 'ran' }) as any)
+    await $.session.start({ surface: null, isInteractive: false, cwd: '/work' } as any)
+    const status = async (args = '') => String(((await $.command.run({ command: 'budget', args } as any)) as any).text)
+    const config = () => JSON.parse([...files.entries()].find(([f]) => f.endsWith('/budget-guard/config.json'))![1])
+
+    expect(await status('images on')).toMatch(/this session only \(until \/clear\)/)
+    expect(await status('agents 5')).toMatch(/0\/5 running/)
+    expect((await $.tool.call({ tool: 'Read', file_path: '/work/shot.png' } as any)).deny).toBeUndefined()
+    expect(config().limits).toEqual({})
+    await $.session.end({ sessionId: 's1', reason: 'clear' } as any)
+    expect(await status()).toMatch(/0\/3 running.*images off/)
+
+    expect(await status('agents 6 --save')).toMatch(/saved: maxAgents now start every new session/)
+    expect(config().limits).toEqual({ maxAgents: 6 })
+    await $.session.end({ sessionId: 's1', reason: 'clear' } as any)
+    expect(await status()).toMatch(/0\/6 running/)
+  })
+
+  test('a held prompt goes back into the prompt box; sent again, a new-task hold lets it through', async ($, on) => {
+    const clock = mock.clock(on)
+    engine(on, { classify: 'an unrelated new task', clock: false })
+    let box = ''
+    on('prompt.read', () => ({ value: { text: box, cursor: box.length } }) as any)
+    on('prompt.fill', ($: any, e: any) => ((box = e.text), { isFilled: true, text: box, cursor: box.length }) as any)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const say = (text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } } as any) as any
+
+    await measure($, 320_000)
+    expect((await say('do more')).drop).toMatch(/context is 320k/)
+    await clock.advance(100)
+    expect(box).toBe('do more')
+
+    box = ''
+    await measure($, 10_000)
+    await say('add validation to the signup form fields')
+    await measure($, 120_000)
+    const task = 'write a migration script for the billing tables'
+    expect((await say(task)).drop).toMatch(/new task/)
+    await clock.advance(100)
+    expect(box).toBe(task)
+    expect((await say(task)).text).toBe(task)
   })
 })

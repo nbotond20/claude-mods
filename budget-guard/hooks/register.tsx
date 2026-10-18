@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, ModelUsage, Register, Timer } from 'claude-code'
 
-import type { Billing, Budgets, Context, History, Limit, Limits, LiveAgent, LiveTask, Periods, Route, Sample, SavingCategory, Savings, Spend } from '../types'
+import type { Billing, Budgets, Context, GrantKind, GrantScope, History, Limit, Limits, LiveAgent, LiveTask, Periods, Route, Sample, SavingCategory, Savings, Spend } from '../types'
 
 /**
  * The folder the mods share (data, configs, event log): $CLAUDE_MODS_HOME, else ~/.claude-shared when it
@@ -712,6 +712,7 @@ const liveAgents = atom({ plugin: 'budget-guard', key: 'liveAgents' } as const, 
 const liveTasks = atom({ plugin: 'budget-guard', key: 'liveTasks' } as const, [])
 const budgets = atom({ plugin: 'budget-guard', key: 'budgets' } as const, { daily: null, monthly: null })
 const periods = atom({ plugin: 'budget-guard', key: 'periods' } as const, null)
+const grants = atom({ plugin: 'budget-guard', key: 'grants' } as const, {})
 
 // The current generation only.
 const OPUS = 'claude-opus-5-5'
@@ -735,6 +736,7 @@ const IMAGE = /\.(png|jpe?g|gif|webp|bmp)$/i
 const GENERATED = /(^|\/)(node_modules|dist|build|\.next|coverage)\/|(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?|\.min\.(js|css)|\.map|\.log)$/
 const SCREENSHOT = /take_screenshot|screenshot$/
 const FORCE = /^force:\s*/i
+const SAVE_FLAG = /^--(save|always|global)$/
 const NOISY = /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(test|build|lint|typecheck|check|e2e)\b|\b(jest|vitest|playwright\s+test|tsc|eslint|biome|next\s+build|pytest|mvn|gradle)\b|\bgo\s+(test|build|vet)\b|\bcargo\s+(test|build|clippy)\b|\bdocker\s+(build|compose\s+(up|logs|build))\b/
 const KEEP_LINES = 300
 const TRIM_MARK = /\[budget-guard: kept (\d+) of (\d+) bytes/
@@ -1215,6 +1217,8 @@ async function resolvePending($: EngineInterface, how: 'clear' | 'compact' | 'ke
     const after = (await $.session.usage()).context.tokens ?? before
     await addSaving($, 'new-task', FUTURE_CALLS * readCost(Math.max(0, before - after), lastMainModel))
   }
+  const box = await $.prompt.read().catch(() => ({ text: '' }))
+  if (box.text.trim() === p.text.trim()) await $.prompt.fill({ text: '' }).catch(() => {})
   await $.prompt.submit({ text: p.text })
 }
 
@@ -1268,6 +1272,81 @@ async function budgetLine($: EngineInterface) {
 
 /** The limits from before a pause (/budget pause, /mods pause), put back when it ends. */
 let beforePause: Limits | null = null
+/** A person at the prompt to ask (false under -p and the SDK: a guard then denies outright). */
+let interactive = false
+/** One approval dialog at a time: parallel calls wait, and the first answer may cover the rest. */
+let asking: Promise<unknown> = Promise.resolve()
+
+/** The limits a fresh session runs with: the config's, under the holdout patch in the holdout arm. */
+const sessionLimits = (): Limits => (trackOn() ? startLimits() : { ...startLimits(), ...HOLDOUT_PATCH })
+
+/**
+ * After a /clear the process goes on under a new session id with no session.start, so what /budget
+ * and the approvals changed is put back here: session overrides last until the session is cleared.
+ */
+async function resetSession($: EngineInterface) {
+  const base = sessionLimits()
+  if (hubPaused()) {
+    beforePause = base
+    await update($, limits, () => ({ ...base, ...HOLDOUT_PATCH }))
+  } else await update($, limits, () => base)
+  await update($, grants, () => ({}))
+  await update($, agents, () => 0)
+  await update($, screenshots, () => 0)
+  await update($, route, () => null)
+  await update($, routeDecided, () => false)
+  await update($, agentModels, () => ({}))
+  await update($, prompts, () => [])
+  await update($, pending, () => null)
+  await update($, savings, () => ({}))
+  await update($, lastTokens, () => 0)
+  await update($, lastDelta, () => 0)
+}
+
+const GRANT_LABEL: Record<GrantKind, string> = { images: 'image reads', agents: 'subagents over the cap', generated: 'generated-file reads' }
+const ALLOW_ONCE = 'Allow once'
+const ALLOW_TURN = 'Allow for this turn'
+const ALLOW_SESSION = 'Allow for this session'
+const DENY = 'Deny'
+
+const isGranted = async ($: EngineInterface, kind: GrantKind) => (await read($, grants))[kind] !== undefined
+
+/**
+ * A guard about to deny asks the person first, as the permission dialog would: allow this call, the
+ * rest of this turn, the rest of the session (until /clear), or deny. `stillNeeded` is asked again
+ * once the dialog is ours, so parallel calls a first answer already covers go through unasked.
+ */
+async function approve($: EngineInterface, kind: GrantKind, question: string, stillNeeded: () => Promise<boolean> = async () => true): Promise<boolean> {
+  if (await isGranted($, kind)) return true
+  if (!interactive) return false
+  const run = asking.then(async () => {
+    if ((await isGranted($, kind)) || !(await stillNeeded())) return true
+    const pick = await $.ui.ask(question, { header: 'budget', options: [ALLOW_ONCE, ALLOW_TURN, ALLOW_SESSION, DENY] }).catch(() => DENY)
+    const scope: GrantScope | null = pick === ALLOW_TURN ? 'turn' : pick === ALLOW_SESSION ? 'session' : null
+    if (scope) await update($, grants, g => ({ ...g, [kind]: scope }))
+    const allowed = scope !== null || pick === ALLOW_ONCE
+    await trackLog($, allowed ? 'approve' : 'deny_asked', { what: kind, scope: scope ?? (allowed ? 'once' : null) })
+    if (scope) $.ui.toast(`budget-guard: ${GRANT_LABEL[kind]} allowed for this ${scope}`, { timeoutMs: TOAST_MS })
+    return allowed
+  })
+  asking = run.catch(() => {})
+  return run
+}
+
+/** A held prompt goes back into the prompt box, so nothing typed is lost (unless the person typed anew). */
+function refill($: EngineInterface, text: string) {
+  // After the composer has emptied itself for the submit.
+  try {
+    $.clock.after(50, () =>
+      void (async () => {
+        const box = await $.prompt.read()
+        if (box.text.trim() === '') await $.prompt.fill({ text })
+      })().catch(() => {}),
+    )
+  } catch {
+    // no clock: the drop still stands
+  }
+}
 
 export const register: Register = on => {
   hubHooks(on)
@@ -1276,10 +1355,12 @@ export const register: Register = on => {
     const r = await next(e)
     await $.command.register({
       name: 'budget',
-      description: 'Budget guard: status, setup, savings, pause <30m|2h|1d|session>, resume, route opus|sonnet|haiku|auto|off, warn|block|agents|bigturn|newtask <n>, images|keepalive|trim|agentroute on|off, compact <n>|off, holdout <0-1>, reset',
+      description: 'Budget guard: status, setup, savings, pause <30m|2h|1d|session>, resume, route opus|sonnet|haiku|auto|off, warn|block|agents|bigturn|newtask <n>, images|keepalive|trim|agentroute on|off (this session; --save keeps it), compact <n>|off, holdout <0-1>, reset',
     })
+    interactive = e.isInteractive
     await loadConfig($)
     await update($, limits, () => startLimits())
+    await update($, grants, () => ({}))
     await trackStart($, 'budget-guard', conf.holdout, { ...(await read($, limits)), holdout: conf.holdout })
     if (!trackOn()) await update($, limits, l => ({ ...l, ...HOLDOUT_PATCH }))
     beforePause = null
@@ -1301,7 +1382,7 @@ export const register: Register = on => {
         } else {
           const saved = beforePause
           beforePause = null
-          await update($, limits, () => saved ?? (trackOn() ? startLimits() : { ...startLimits(), ...HOLDOUT_PATCH }))
+          await update($, limits, () => saved ?? sessionLimits())
         }
       },
     })
@@ -1344,7 +1425,9 @@ export const register: Register = on => {
     await flush($).catch(() => {})
     await trackLog($, 'session_summary', { costUsd: await read($, costUsd), saved: await read($, savings), agents: await read($, agents), route: await read($, route) })
     await trackFlush($).catch(() => {})
-    return next(e)
+    const r = await next(e)
+    if (e.reason === 'clear') await resetSession($)
+    return r
   })
 
   on('session.measure', async ($, e, next) => {
@@ -1378,6 +1461,7 @@ export const register: Register = on => {
 
     if (tokens >= l.block) {
       await trackLog($, 'hold', { reason: 'block', tokens })
+      refill($, e.text)
       return { drop: `budget-guard: context is ${k(tokens)} (limit ${k(l.block)}). Run /compact or /clear, or prefix the prompt with "force:" to send it anyway.` }
     }
 
@@ -1398,12 +1482,18 @@ export const register: Register = on => {
       }
     }
 
+    // The held prompt sent again from the box: the person chose to keep it.
+    const held = await read($, pending)
+    if (held) await update($, pending, () => null)
+    const resent = held?.text.trim() === e.text.trim()
+
     const previous = await read($, prompts)
     const isSubstantial = e.text.trim().length >= 25 && !/^(yes|no|ok|go|continue|do it|apply|proceed)\b/i.test(e.text.trim())
-    if (tokens >= l.newTaskAt && previous.length > 0 && isSubstantial && (await looksLikeNewTask($, previous, e.text))) {
+    if (!resent && tokens >= l.newTaskAt && previous.length > 0 && isSubstantial && (await looksLikeNewTask($, previous, e.text))) {
       await update($, pending, () => ({ text: e.text, tokens }))
       await trackLog($, 'hold', { reason: 'new_task', tokens })
-      return { drop: `budget-guard: this looks like a new task with ${k(tokens)} of earlier context loaded. Pick in the band: [c] clear, [k] compact, [y] keep and send.` }
+      refill($, e.text)
+      return { drop: `budget-guard: this looks like a new task with ${k(tokens)} of earlier context loaded. Pick in the band: [c] clear, [k] compact, [y] keep and send (or press Enter again to send it as is).` }
     }
 
     if (isSubstantial) await update($, prompts, p => [...p, e.text].slice(-3))
@@ -1462,8 +1552,10 @@ export const register: Register = on => {
 
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
     const l = await read($, limits)
-    const used = (await runningAgents($)) + startingAgents.length
-    if (used >= l.maxAgents) {
+    const busy = async () => (await runningAgents($)) + startingAgents.length
+    const used = await busy()
+    const over = async () => (await busy()) >= (await read($, limits)).maxAgents
+    if (used >= l.maxAgents && !(await approve($, 'agents', `budget-guard: ${used}/${l.maxAgents} subagents are already running. Start another one?`, over))) {
       await trackLog($, 'deny', { what: 'agents', used })
       return { deny: `budget-guard: ${used}/${l.maxAgents} subagents already running. Wait for one to finish, do this inline, or ask the user to raise it with /budget agents <n>.` }
     }
@@ -1479,7 +1571,7 @@ export const register: Register = on => {
 
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
     const path = e.file_path
-    if (IMAGE.test(path) && !(await read($, limits)).allowImages) {
+    if (IMAGE.test(path) && !(await read($, limits)).allowImages && !(await approve($, 'images', `budget-guard: let Claude read the image ${path}? Images stay in context every turn.`))) {
       await trackLog($, 'deny', { what: 'image' })
       return { deny: `budget-guard: reading images is off (they stay in context every turn). Describe what to check, use a text snapshot, or ask the user to run /budget images on.` }
     }
@@ -1488,6 +1580,7 @@ export const register: Register = on => {
         await trackLog($, 'would_deny', { what: 'generated' })
         return next(e)
       }
+      if (await approve($, 'generated', `budget-guard: ${path} looks generated or vendored. Let Claude read it whole?`)) return next(e)
       await trackLog($, 'deny', { what: 'generated' })
       return { deny: `budget-guard: ${path} is generated/vendored/huge. Use Grep for what you need.` }
     }
@@ -1541,6 +1634,7 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     const r = await next(e)
     if (e.agentId) return r
+    await update($, grants, g => Object.fromEntries(Object.entries(g).filter(([, scope]) => scope !== 'turn')))
     let tokens = (await $.session.usage()).context.tokens ?? 0
     if (conf.compactAt > 0 && tokens >= conf.compactAt && !e.isAborted && !hubPaused()) tokens = await compactNow($, tokens)
     const before = await read($, lastTokens)
@@ -1553,9 +1647,20 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'budget' }, async ($, e) => {
-    const [what, val] = e.args.trim().split(/\s+/)
+    // A change lasts for this session (until /clear); --save also makes it the start of every new one.
+    const words = e.args.trim().split(/\s+/)
+    const save = words.some(w => SAVE_FLAG.test(w))
+    const [what, val] = words.filter(w => !SAVE_FLAG.test(w))
     const num = Number(String(val ?? '').replace(/^\$/, '').replace(/k$/i, '000'))
-    const set = async (patch: Partial<Limits>) => update($, limits, l => ({ ...l, ...patch }))
+    let changed: Partial<Limits> | null = null
+    const set = async (patch: Partial<Limits>) => {
+      changed = { ...changed, ...patch }
+      await update($, limits, l => ({ ...l, ...patch }))
+      if (save) {
+        conf = { ...conf, limits: { ...conf.limits, ...patch } }
+        await saveConfig($)
+      }
+    }
     const onOff = val === 'on'
 
     if (what === 'setup') {
@@ -1625,17 +1730,19 @@ export const register: Register = on => {
       return { text: `budget-guard holdout share set to ${Math.round(Number(val) * 100)}% (applies to new sessions)` }
     }
     else if (what === 'reset') {
-      await update($, limits, () => (trackOn() ? startLimits() : { ...startLimits(), ...HOLDOUT_PATCH }))
+      await update($, limits, () => sessionLimits())
+      await update($, grants, () => ({}))
       await update($, agents, () => 0)
     } else if (what === 'refresh') {
       await refreshSpend($)
     } else if (what) {
-      return { text: 'Usage: /budget [setup] [savings] [pause <30m|2h|1d|session> | resume] [route opus|sonnet|haiku|auto|off] [daily|monthly <$|off>] [warn|block|agents|bigturn|newtask <n>] [images|keepalive|trim|agentroute on|off] [compact <n>|off] [holdout <0-1>] [reset] [refresh]' }
+      return { text: 'Usage: /budget [setup] [savings] [pause <30m|2h|1d|session> | resume] [route opus|sonnet|haiku|auto|off] [daily|monthly <$|off>] [warn|block|agents|bigturn|newtask <n>] [images|keepalive|trim|agentroute on|off] [--save] [compact <n>|off] [holdout <0-1>] [reset] [refresh]' }
     }
 
     const l = await read($, limits)
     const c = await read($, context)
     const s = await read($, litellm)
+    const g = Object.entries(await read($, grants)) as [GrantKind, GrantScope][]
     const r = await read($, route)
     const cost = await read($, costUsd)
     const sv = await read($, savings)
@@ -1646,6 +1753,8 @@ export const register: Register = on => {
         `rules (every session): Opus effort ≤ ${opusMax() === 'max' ? 'no cap' : opusMax()}  compact at ${conf.compactAt > 0 ? k(conf.compactAt) : `engine's ${k(compactAt)}`}`,
         `route ${l.route ? (r ? `${r.tier} → ${short(r.model)} · ${r.effort}` : 'decides on the first prompt') : 'off'}  subagents ${l.routeAgents ? 'Explore→Haiku, rest→Sonnet' : 'not routed'}`,
         `subagents ${await runningAgents($)}/${l.maxAgents} running (${await read($, agents)} this session)  images ${l.allowImages ? 'on' : 'off'}  trim ${l.trimOutput ? 'on' : 'off'}  keep-alive ${l.keepAlive ? 'on (gateway only)' : 'off'}  screenshots ${await read($, screenshots)}`,
+        ...(changed ? [save ? `saved: ${Object.keys(changed).join(', ')} now start every new session too` : `this session only (until /clear); add --save to keep it for new sessions`] : []),
+        ...(g.length ? [`allowed when asked: ${g.map(([kind, scope]) => `${GRANT_LABEL[kind]} (this ${scope})`).join(', ')}  (/budget reset takes it back)`] : []),
         await budgetLine($),
         `session cost ${cost == null ? 'n/a' : usd(cost)}  saved this session ~${usd(savedNow)}  (/budget savings for history)`,
         ...(hubPaused() ? [`PAUSED ${hubPausedUntil() === Infinity ? 'for this session' : `until ${hubClock(hubPausedUntil())}`}: levers, effort cap and compaction step aside (/budget resume)`] : []),

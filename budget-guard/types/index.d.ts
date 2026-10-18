@@ -79,6 +79,15 @@ export type Budgets = { daily: number | null; monthly: number | null }
 /** Spend so far today and this month (local time): real $ on a gateway, API-equivalent otherwise. */
 export type Periods = { kind: 'real' | 'api-equiv'; today: number; month: number; since: string | null }
 
+/** What an approval covers: the rest of this turn, or the session (until /clear). */
+export type GrantScope = 'turn' | 'session'
+
+/** The guards a person can wave through when asked: image reads, subagents over the cap, generated-file reads. */
+export type GrantKind = 'images' | 'agents' | 'generated'
+
+/** What the person allowed when a guard asked, by guard. */
+export type Grants = Partial<Record<GrantKind, GrantScope>>
+
 declare module 'claude-code' {
   interface PluginState {
     'budget-guard': {
@@ -105,6 +114,7 @@ declare module 'claude-code' {
       liveTasks: LiveTask[]
       budgets: Budgets
       periods: Periods | null
+      grants: Grants
     }
   }
 }

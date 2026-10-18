@@ -5,8 +5,8 @@ Keeps spend and context in view and moves work to cheaper models where that is s
 - **The band:** model and effort, session cost and burn rate, budget gauges, either the 5h/7d plan limits or LiteLLM key spend (`+$` this session, 24h, 7d, `$/h`), context with the last turn's growth, live subagents and background tasks.
 - **Session routing:** Haiku sorts the first prompt as trivial, quick, small, normal or hard and picks Haiku, Sonnet or Opus to match. Later prompts only move a session up.
 - **Subagent routing and cap:** Explore and guide agents run on Haiku and the rest on Sonnet; at most 3 running at the same time.
-- **Context control:** compaction at 200k, a warning at 150k, prompts held at 300k, and a new-task check that offers clear, compact or keep when a new task arrives with 60k+ already loaded.
-- **Leaner tool output:** noisy build/test commands keep their last 300 lines, with the full log on disk. Image reads and generated or vendored files are refused.
+- **Context control:** compaction at 200k, a warning at 150k, prompts held at 300k (the prompt goes back into the box), and a new-task check that offers clear, compact or keep when a new task arrives with 60k+ already loaded.
+- **Leaner tool output:** noisy build/test commands keep their last 300 lines, with the full log on disk. Image reads and generated or vendored files are refused; interactively you are asked first (allow once, this turn, this session, or deny).
 - **Opus effort cap** (`medium`), keep-alive pings on gateway profiles, and soft daily/monthly budgets.
 - **Measured:** a savings ledger per lever (`/budget savings`), and 10% of sessions are a holdout so `/analytics impact` can say whether it pays off.
 
@@ -38,6 +38,7 @@ Everything is on after install. `/budget setup` sets budgets and the starting va
 | `/budget daily\|monthly <$\|off>` | soft budget for this profile (gauge and toasts, never blocking) |
 | `/budget warn\|block\|agents\|bigturn\|newtask <n>` | session limits, e.g. `/budget block 250k` |
 | `/budget images\|keepalive\|trim\|agentroute on\|off` | switches a lever |
+| `... --save` | a limit or switch set above lasts until `/clear` or the session ends; `--save` keeps it for new sessions |
 | `/budget compact <n>\|off` | compact at n tokens (default 200k) |
 | `/budget pause <30m\|2h\|1d\|session>` · `/budget resume` | the cost levers, effort cap and compaction step aside |
 | `/budget holdout <0-1>` · `reset` · `refresh` | holdout share · session limits back to defaults · re-read LiteLLM spend |
