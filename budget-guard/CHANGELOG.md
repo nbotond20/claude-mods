@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.14.0
+- The subagent cap counts subagents running at the same time, not every Agent call of the session. `maxAgents` (default 3) is now a parallelism limit; a finished subagent frees its slot. `/budget` shows `subagents <running>/<max> running (<n> this session)`.
+
 ## 0.13.5
 - Docs: a README for the mod with screenshots; the full doc covers the subscription 5h text, the band's turn arrows and hold, the pause scope and the full list of trimmed commands.
 

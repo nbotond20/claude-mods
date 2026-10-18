@@ -3,7 +3,7 @@ export type Limits = {
   warn: number
   /** context tokens at which prompts are held until /compact (or "force:" prefix) */
   block: number
-  /** subagents allowed per session */
+  /** subagents allowed to run at the same time */
   maxAgents: number
   /** tokens one turn may add before a toast */
   bigTurn: number

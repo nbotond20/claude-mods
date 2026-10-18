@@ -58,7 +58,7 @@ sh bin/mods install --only budget-guard     # every profile on this machine; or,
 | **Opus effort cap** | Every Opus request, main loop and subagents, is capped at `opusMaxEffort` (default `medium`). A rule: it applies in holdout sessions too. | (none) |
 | **Compaction at `compactAt`** | When a turn ends with the context at or over `compactAt` (default 200k), the conversation is compacted before the next prompt, whatever `autoCompactWindow` says. Each session also switches the engine's auto-compact back on if it was turned off. A rule: it applies in holdout sessions too. `/budget compact off` leaves compaction to the engine. | (none) |
 | **Subagent routing** | `Explore`, `claude-code-guide` and `statusline-setup` run on Haiku. `fork` keeps its model. Every other subagent runs on Sonnet. Engine forks (compaction, memory) are left alone. | `route-agents` |
-| **Subagent cap** | At most `maxAgents` (default 3) Agent calls per session; further calls are denied with a message. | (not counted) |
+| **Subagent cap** | At most `maxAgents` (default 3) subagents running at the same time; a further Agent call is denied with a message until one finishes. | (not counted) |
 | **New-task check** | With at least `newTaskAt` (default 60k) of context loaded, a substantial prompt that Haiku judges to be a new task is held. You then choose clear, compact or keep. | `new-task` |
 | **Context hold** | At `block` (default 300k) prompts are held until you /compact or /clear. Prefix a prompt with `force:` to send it anyway. | (none) |
 | **Read guards** | Reads of images are denied (unless `/budget images on`), as are reads of generated or vendored files: `node_modules`, `dist`, `build`, `.next`, `coverage`, lockfiles, `*.min.*`, `*.map`, `*.log`. | (not counted) |
@@ -77,7 +77,7 @@ Right after install, with no setup (`/budget setup` is optional and only changes
 | Opus effort cap | `medium` (`opusMaxEffort`) | config.json, or `/budget setup`; `max` means no cap |
 | Compaction | at 200k (`compactAt`), engine auto-compact forced back on | `/budget compact <n>\|off` |
 | Subagent routing | on (`routeAgents`) | `/budget agentroute on\|off` |
-| Subagent cap | 3 per session (`maxAgents`) | `/budget agents <n>` |
+| Subagent cap | 3 running at once (`maxAgents`) | `/budget agents <n>` |
 | New-task check | at 60k context (`newTaskAt`) | `/budget newtask <n>` |
 | Context warning / hold | warn 150k, hold 300k (`warn`, `block`) | `/budget warn\|block <n>` |
 | Heavy-turn toast | +50k tokens in one turn (`bigTurn`) | `/budget bigturn <n>` |

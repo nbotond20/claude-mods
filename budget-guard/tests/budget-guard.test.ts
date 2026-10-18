@@ -45,14 +45,19 @@ async function step($: any, input: any) {
 
 describe('budget-guard', () => {
   test('caps subagents and blocks image and generated-file reads', async ($, on) => {
-    engine(on)
+    const running: any[] = []
+    engine(on, { agents: running })
     on('tool.call', () => ({ result: 'ran', text: 'ran' }) as any)
     await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
 
+    // Only running subagents count: finished ones free their slot.
     const agent = () => $.tool.call({ tool: 'Agent', description: 'x', prompt: 'x' } as any)
-    for (let i = 0; i < 3; i++) expect((await agent()).deny).toBeUndefined()
+    for (let i = 0; i < 5; i++) expect((await agent()).deny).toBeUndefined()
+    running.push(...[1, 2, 3].map(i => ({ id: `a${i}`, type: 'Explore', description: 'x', status: 'running' })))
     const fourth = await agent()
-    expect(String(fourth.deny ?? fourth.text)).toMatch(/subagent budget used \(3\/3\)/)
+    expect(String(fourth.deny ?? fourth.text)).toMatch(/3\/3 subagents already running/)
+    running[0].status = 'completed'
+    expect((await agent()).deny).toBeUndefined()
 
     const png = await $.tool.call({ tool: 'Read', file_path: '/work/shot.png' } as any)
     expect(String(png.deny ?? png.text)).toMatch(/reading images is off/)

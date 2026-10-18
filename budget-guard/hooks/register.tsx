@@ -845,6 +845,21 @@ async function refreshAgents($: EngineInterface) {
   if (JSON.stringify(before) !== JSON.stringify(list)) await update($, liveAgents, () => list)
 }
 
+/** Subagents running now: the cap counts these, not every Agent call of the session. */
+async function runningAgents($: EngineInterface) {
+  return (await $.agent.list().catch(() => [])).filter(a => a.status === 'running' || a.status === 'pending' || a.status === 'waiting').length
+}
+
+/** Agent calls let through that may not be in the agent list yet, so parallel calls in one turn can't all slip past the cap. */
+const startingAgents: number[] = []
+const STARTING_MS = 15_000
+function dropStarting(start: number) {
+  const i = startingAgents.indexOf(start)
+  if (i >= 0) startingAgents.splice(i, 1)
+  const t = Date.now()
+  while (startingAgents.length && t - startingAgents[0]! > STARTING_MS) startingAgents.shift()
+}
+
 async function ledgerDir($: EngineInterface) {
   return `${await modsHome($)}/budget-guard/sessions`
 }
@@ -1447,13 +1462,19 @@ export const register: Register = on => {
 
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
     const l = await read($, limits)
-    const used = await read($, agents)
+    const used = (await runningAgents($)) + startingAgents.length
     if (used >= l.maxAgents) {
       await trackLog($, 'deny', { what: 'agents', used })
-      return { deny: `budget-guard: subagent budget used (${used}/${l.maxAgents}). Do this inline, or ask the user to raise it with /budget agents <n>.` }
+      return { deny: `budget-guard: ${used}/${l.maxAgents} subagents already running. Wait for one to finish, do this inline, or ask the user to raise it with /budget agents <n>.` }
     }
     await update($, agents, n => n + 1)
-    return next(e)
+    const start = Date.now()
+    startingAgents.push(start)
+    try {
+      return await next(e)
+    } finally {
+      dropStarting(start)
+    }
   }).catch(($, e, next) => next(e))
 
   on('tool.call', { tool: 'Read' }, async ($, e, next) => {
@@ -1624,7 +1645,7 @@ export const register: Register = on => {
         `context ${c ? `${k(c.tokens)} (${c.percent}%)` : 'n/a'}  warn ${k(l.warn)}  hold ${k(l.block)}  new-task check from ${k(l.newTaskAt)}`,
         `rules (every session): Opus effort ≤ ${opusMax() === 'max' ? 'no cap' : opusMax()}  compact at ${conf.compactAt > 0 ? k(conf.compactAt) : `engine's ${k(compactAt)}`}`,
         `route ${l.route ? (r ? `${r.tier} → ${short(r.model)} · ${r.effort}` : 'decides on the first prompt') : 'off'}  subagents ${l.routeAgents ? 'Explore→Haiku, rest→Sonnet' : 'not routed'}`,
-        `subagents ${await read($, agents)}/${l.maxAgents}  images ${l.allowImages ? 'on' : 'off'}  trim ${l.trimOutput ? 'on' : 'off'}  keep-alive ${l.keepAlive ? 'on (gateway only)' : 'off'}  screenshots ${await read($, screenshots)}`,
+        `subagents ${await runningAgents($)}/${l.maxAgents} running (${await read($, agents)} this session)  images ${l.allowImages ? 'on' : 'off'}  trim ${l.trimOutput ? 'on' : 'off'}  keep-alive ${l.keepAlive ? 'on (gateway only)' : 'off'}  screenshots ${await read($, screenshots)}`,
         await budgetLine($),
         `session cost ${cost == null ? 'n/a' : usd(cost)}  saved this session ~${usd(savedNow)}  (/budget savings for history)`,
         ...(hubPaused() ? [`PAUSED ${hubPausedUntil() === Infinity ? 'for this session' : `until ${hubClock(hubPausedUntil())}`}: levers, effort cap and compaction step aside (/budget resume)`] : []),
