@@ -43,7 +43,7 @@ claude-obs reset confirm         # stop the stack and delete its data
 claude-obs env [profile]         # the telemetry env a profile's settings get
 ```
 
-Grafana is at http://127.0.0.1:3301 and needs no login: you browse, explore and edit dashboards as an Editor. Managing data sources, plugins and users takes the `admin` login, whose password is generated at the first `claude-obs up` and kept owner-only in `<mods home>/observability/admin-password`. Grafana only answers on the `127.0.0.1` hostname, so a web page cannot reach it through DNS rebinding. OTLP listens on 127.0.0.1:4318 (HTTP) and 4317 (gRPC).
+Grafana is at http://127.0.0.1:3301 and needs no login to browse dashboards and use Explore. Without a login nothing can be saved, so a web page that posts to Grafana cannot change anything. Saving dashboards and managing data sources, plugins and users take the `admin` login, whose password is generated at the first `claude-obs up` and kept owner-only in `<mods home>/observability/admin-password`. Grafana only answers on the `127.0.0.1` hostname, so a web page cannot reach it through DNS rebinding. OTLP listens on 127.0.0.1:4318 (HTTP) and 4317 (gRPC).
 
 Anyone who can log in to this computer can reach 127.0.0.1 too. On a shared machine, turn `content` off or stop the stack when you're not using it.
 

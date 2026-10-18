@@ -18,7 +18,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$HERE")
 IMAGE=grafana/otel-lgtm:0.37.0
 NAME=claude-obs
-STACK_REV=3  # bump when stack/ changes in a way a running container must pick up
+STACK_REV=4  # bump when stack/ changes in a way a running container must pick up
 
 if [ -n "${CLAUDE_MODS_HOME:-}" ]; then MODS_HOME=$CLAUDE_MODS_HOME
 elif [ -d "$HOME/.claude-shared" ]; then MODS_HOME=$HOME/.claude-shared
@@ -81,24 +81,24 @@ sync_dashboards() {
   cp "$ROOT"/stack/dashboards/*.json "$d/"
 }
 
-# Without a login you are an Editor (dashboards, Explore), never an Admin: data sources, plugins and
-# users need the admin password, generated once and kept owner-only. Grafana only answers on the
-# 127.0.0.1 hostname, so a web page cannot reach it through DNS rebinding.
-admin_password() {
-  f=$OBS/admin-password
-  if [ ! -s "$f" ]; then
+# Without a login you are a Viewer who can explore and try edits, but nothing is saved: a web page that
+# posts to Grafana (CSRF) cannot change anything. Saving, data sources, plugins and users need the admin
+# login, whose password is generated once, kept owner-only and handed to Grafana as a mounted file (never
+# in a command line). Grafana only answers on the 127.0.0.1 hostname, so DNS rebinding cannot reach it.
+PW=$OBS/admin-password
+ensure_admin_password() {
+  if [ ! -s "$PW" ]; then
     mkdir -p "$OBS"
-    (umask 077 && LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24 >"$f")
+    (umask 077 && LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24 >"$PW")
   fi
-  chmod 600 "$f" 2>/dev/null
-  cat "$f"
+  chmod 600 "$PW" 2>/dev/null
 }
 
-# Grafana reads GF_SECURITY_ADMIN_PASSWORD only when it creates its database: an older stack still has admin/admin.
+# Grafana reads the admin password only when it creates its database: an older stack still has admin/admin.
 rotate_default_admin() {
-  curl -fsS -m 5 -o /dev/null -u admin:admin -X PUT -H 'Content-Type: application/json' \
-    -d "{\"oldPassword\":\"admin\",\"newPassword\":\"$(admin_password)\",\"confirmNew\":\"$(admin_password)\"}" \
-    "$URL/api/user/password" 2>/dev/null && say "replaced Grafana's default admin password (now in $OBS/admin-password)"
+  printf '{"oldPassword":"admin","newPassword":"%s","confirmNew":"%s"}' "$(cat "$PW")" "$(cat "$PW")" |
+    curl -fsS -m 5 -o /dev/null -u admin:admin -X PUT -H 'Content-Type: application/json' --data-binary @- \
+      "$URL/api/user/password" 2>/dev/null && say "replaced Grafana's default admin password (now in $PW)"
   return 0
 }
 
@@ -110,6 +110,7 @@ cmd_up() {
   fi
   docker rm -f "$NAME" >/dev/null 2>&1
   sync_stack
+  ensure_admin_password
   docker image inspect "$IMAGE" >/dev/null 2>&1 || { say "pulling $IMAGE (once, ~1 GB)…"; docker pull -q "$IMAGE" >/dev/null || die "could not pull $IMAGE"; }
   ret_h=$((RETENTION_DAYS * 24))h
   S=$OBS/stack
@@ -127,8 +128,8 @@ cmd_up() {
     -e "TEMPO_EXTRA_ARGS=-backend-worker.compaction.block-retention=$ret_h -backend-scheduler.provider.work.compaction.block-retention=$ret_h" \
     -e "LOKI_EXTRA_ARGS=-config.expand-env=true" -e "LOKI_RETENTION=$ret_h" \
     -e "PROMETHEUS_EXTRA_ARGS=--storage.tsdb.retention.time=${RETENTION_DAYS}d" \
-    -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Editor \
-    -e "GF_SECURITY_ADMIN_PASSWORD=$(admin_password)" \
+    -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer -e GF_USERS_VIEWERS_CAN_EDIT=true \
+    -v "$PW:/run/secrets/grafana-admin:ro" -e GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/grafana-admin \
     -e GF_SERVER_DOMAIN=127.0.0.1 -e GF_SERVER_ENFORCE_DOMAIN=true -e "GF_SERVER_ROOT_URL=$URL/" \
     -e GF_ANALYTICS_REPORTING_ENABLED=false -e GF_ANALYTICS_CHECK_FOR_UPDATES=false \
     -e GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false -e GF_ANALYTICS_FEEDBACK_LINKS_ENABLED=false \
