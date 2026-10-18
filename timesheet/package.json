@@ -1,6 +1,6 @@
 {
   "name": "timesheet",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "description": "NetSuite-ready timesheets from Claude Code sessions, git history and Google Calendar",
   "type": "module",
   "private": true,

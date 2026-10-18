@@ -1,0 +1,240 @@
+#!/bin/sh
+# claude-obs: the local observability stack for Claude Code (Grafana, Tempo, Loki, Prometheus in one
+# container, grafana/otel-lgtm), fed by Claude Code's own OpenTelemetry from every profile.
+# Free and local only: every port is bound to 127.0.0.1, Grafana and the backends never phone home,
+# no plugin is downloaded, and nothing leaves the machine.
+#
+#   claude-obs up [--quiet]       start (or replace an outdated) stack
+#   claude-obs down               stop and remove the container (data is kept)
+#   claude-obs status [--json]    container, health, ports, data size
+#   claude-obs open [dashboard]   open Grafana (overview, traces, time, logs, errors, sessions, tools, explore)
+#   claude-obs logs               the container's log
+#   claude-obs backfill [--days N] [--profile P] [--dry-run]   replay transcripts as traces and events
+#   claude-obs reset confirm      stop the stack and delete its data
+#   claude-obs env [profile]      the telemetry environment a profile's settings get
+set -u
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(dirname "$HERE")
+IMAGE=grafana/otel-lgtm:0.37.0
+NAME=claude-obs
+STACK_REV=3  # bump when stack/ changes in a way a running container must pick up
+
+if [ -n "${CLAUDE_MODS_HOME:-}" ]; then MODS_HOME=$CLAUDE_MODS_HOME
+elif [ -d "$HOME/.claude-shared" ]; then MODS_HOME=$HOME/.claude-shared
+else MODS_HOME=$HOME/.claude-mods; fi
+OBS=${CLAUDE_OBS_DIR:-$MODS_HOME/observability}
+CFG=$OBS/config.json
+
+cfg() { # cfg <key> <default>
+  [ -f "$CFG" ] || { echo "$2"; return; }
+  v=$(python3 -c 'import json,sys
+try: print(json.load(open(sys.argv[1])).get(sys.argv[2], sys.argv[3]))
+except Exception: print(sys.argv[3])' "$CFG" "$1" "$2" 2>/dev/null) || v=$2
+  echo "${v:-$2}"
+}
+GRAFANA_PORT=$(cfg grafanaPort 3301)
+OTLP_HTTP=$(cfg otlpHttpPort 4318)
+OTLP_GRPC=$(cfg otlpGrpcPort 4317)
+RETENTION_DAYS=$(cfg retentionDays 90)
+URL="http://127.0.0.1:$GRAFANA_PORT"
+
+say() { [ "${QUIET:-0}" = 1 ] || printf '%s\n' "$*"; }
+die() { printf 'claude-obs: %s\n' "$*" >&2; exit 1; }
+
+have_docker() {
+  command -v docker >/dev/null 2>&1 || return 1
+  docker info --format '{{.ServerVersion}}' >/dev/null 2>&1
+}
+docker_hint() {
+  if ! command -v docker >/dev/null 2>&1; then
+    case "$(uname -s)" in
+      Darwin) echo "Docker is not installed. A free option: 'brew install colima docker && colima start' (or OrbStack / Docker Desktop)." ;;
+      *) echo "Docker is not installed: install docker (or podman-docker) from your package manager." ;;
+    esac
+  else
+    echo "Docker is installed but its daemon is not running (start Docker Desktop, OrbStack or 'colima start')."
+  fi
+}
+
+running() { [ "$(docker inspect -f '{{.State.Running}}' "$NAME" 2>/dev/null)" = true ]; }
+label() { docker inspect -f "{{index .Config.Labels \"$1\"}}" "$NAME" 2>/dev/null; }
+wanted_sig() { echo "$IMAGE|$STACK_REV|$GRAFANA_PORT|$OTLP_HTTP|$OTLP_GRPC|$RETENTION_DAYS|$(stack_hash)"; }
+# dashboards are left out: Grafana re-reads them every 30s, so they are refreshed in place without a restart
+stack_hash() { (cd "$ROOT/stack" && find . -type f ! -path './dashboards/*' | LC_ALL=C sort | xargs cat) | cksum | cut -d' ' -f1; }
+
+grafana_ok() { curl -fsS -m 2 "$URL/api/health" >/dev/null 2>&1; }
+otlp_ok() { curl -sS -m 2 -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{}' "http://127.0.0.1:$OTLP_HTTP/v1/logs" 2>/dev/null | grep -q '^2'; }
+
+# The stack's files are copied out of the plugin cache, so a plugin update never leaves a container
+# mounting a deleted folder.
+sync_stack() {
+  mkdir -p "$OBS/data" "$OBS/stack"
+  rm -rf "$OBS/stack.new" && cp -R "$ROOT/stack" "$OBS/stack.new" && rm -rf "$OBS/stack" && mv "$OBS/stack.new" "$OBS/stack"
+}
+
+# Into the folder the running container mounts (replacing the folder would leave it on the old one).
+sync_dashboards() {
+  d=$OBS/stack/dashboards
+  [ -d "$d" ] || return 0
+  for f in "$d"/*.json; do [ -e "$ROOT/stack/dashboards/${f##*/}" ] || rm -f "$f"; done
+  cp "$ROOT"/stack/dashboards/*.json "$d/"
+}
+
+# Without a login you are an Editor (dashboards, Explore), never an Admin: data sources, plugins and
+# users need the admin password, generated once and kept owner-only. Grafana only answers on the
+# 127.0.0.1 hostname, so a web page cannot reach it through DNS rebinding.
+admin_password() {
+  f=$OBS/admin-password
+  if [ ! -s "$f" ]; then
+    mkdir -p "$OBS"
+    (umask 077 && LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 24 >"$f")
+  fi
+  chmod 600 "$f" 2>/dev/null
+  cat "$f"
+}
+
+# Grafana reads GF_SECURITY_ADMIN_PASSWORD only when it creates its database: an older stack still has admin/admin.
+rotate_default_admin() {
+  curl -fsS -m 5 -o /dev/null -u admin:admin -X PUT -H 'Content-Type: application/json' \
+    -d "{\"oldPassword\":\"admin\",\"newPassword\":\"$(admin_password)\",\"confirmNew\":\"$(admin_password)\"}" \
+    "$URL/api/user/password" 2>/dev/null && say "replaced Grafana's default admin password (now in $OBS/admin-password)"
+  return 0
+}
+
+cmd_up() {
+  have_docker || die "$(docker_hint)"
+  sig=$(wanted_sig)
+  if running && [ "$(label dev.claude-mods.sig)" = "$sig" ]; then
+    sync_dashboards; say "claude-obs is running: $URL"; return 0
+  fi
+  docker rm -f "$NAME" >/dev/null 2>&1
+  sync_stack
+  docker image inspect "$IMAGE" >/dev/null 2>&1 || { say "pulling $IMAGE (once, ~1 GB)…"; docker pull -q "$IMAGE" >/dev/null || die "could not pull $IMAGE"; }
+  ret_h=$((RETENTION_DAYS * 24))h
+  S=$OBS/stack
+  docker run -d --name "$NAME" --restart unless-stopped \
+    --label "dev.claude-mods.sig=$sig" \
+    -p "127.0.0.1:$GRAFANA_PORT:3000" -p "127.0.0.1:$OTLP_GRPC:4317" -p "127.0.0.1:$OTLP_HTTP:4318" \
+    -v "$OBS/data:/data" \
+    -v "$S/tempo.yaml:/otel-lgtm/tempo-config.yaml:ro" \
+    -v "$S/loki.yaml:/otel-lgtm/loki-config.yaml:ro" \
+    -v "$S/prometheus.yaml:/otel-lgtm/prometheus.yaml:ro" \
+    -v "$S/pyroscope.yaml:/otel-lgtm/pyroscope-config.yaml:ro" \
+    -v "$S/provisioning/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/grafana-dashboards.yaml:ro" \
+    -v "$S/provisioning/datasources.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/grafana-datasources.yaml:ro" \
+    -v "$S/dashboards:/claude-obs/dashboards:ro" \
+    -e "TEMPO_EXTRA_ARGS=-backend-worker.compaction.block-retention=$ret_h -backend-scheduler.provider.work.compaction.block-retention=$ret_h" \
+    -e "LOKI_EXTRA_ARGS=-config.expand-env=true" -e "LOKI_RETENTION=$ret_h" \
+    -e "PROMETHEUS_EXTRA_ARGS=--storage.tsdb.retention.time=${RETENTION_DAYS}d" \
+    -e GF_AUTH_ANONYMOUS_ENABLED=true -e GF_AUTH_ANONYMOUS_ORG_ROLE=Editor \
+    -e "GF_SECURITY_ADMIN_PASSWORD=$(admin_password)" \
+    -e GF_SERVER_DOMAIN=127.0.0.1 -e GF_SERVER_ENFORCE_DOMAIN=true -e "GF_SERVER_ROOT_URL=$URL/" \
+    -e GF_ANALYTICS_REPORTING_ENABLED=false -e GF_ANALYTICS_CHECK_FOR_UPDATES=false \
+    -e GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false -e GF_ANALYTICS_FEEDBACK_LINKS_ENABLED=false \
+    -e GF_NEWS_NEWS_FEED_ENABLED=false -e GF_PLUGINS_PREINSTALL_DISABLED=true \
+    -e GF_SECURITY_DISABLE_GRAVATAR=true -e GF_SNAPSHOTS_EXTERNAL_ENABLED=false \
+    -e GF_USERS_DEFAULT_THEME=system -e GF_FEATURE_TOGGLES_ENABLE=traceqlEditor \
+    -e GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/claude-obs/dashboards/overview.json \
+    "$IMAGE" >/dev/null || die "docker run failed (is port $GRAFANA_PORT, $OTLP_HTTP or $OTLP_GRPC taken? set grafanaPort/otlpHttpPort/otlpGrpcPort in $CFG)"
+  say "starting claude-obs…"
+  i=0
+  while [ $i -lt 120 ]; do
+    if grafana_ok && otlp_ok && docker exec "$NAME" test -f /tmp/ready 2>/dev/null; then rotate_default_admin; say "claude-obs is up: $URL"; return 0; fi
+    running || die "the container stopped; 'claude-obs logs' shows why"
+    sleep 1; i=$((i + 1))
+  done
+  say "claude-obs is still starting; 'claude-obs status' to check"
+}
+
+cmd_down() {
+  have_docker || die "$(docker_hint)"
+  docker rm -f "$NAME" >/dev/null 2>&1 && say "claude-obs stopped (data kept in $OBS/data)" || say "claude-obs was not running"
+}
+
+cmd_status() {
+  json=0; [ "${1:-}" = --json ] && json=1
+  d=no; r=no; g=no; o=no; cur=no
+  have_docker && d=yes
+  if [ $d = yes ] && running; then r=yes; [ "$(label dev.claude-mods.sig)" = "$(wanted_sig)" ] && cur=yes; fi
+  grafana_ok && g=yes
+  otlp_ok && o=yes
+  size=$(du -sh "$OBS/data" 2>/dev/null | cut -f1)
+  if [ $json = 1 ]; then
+    printf '{"docker":%s,"running":%s,"current":%s,"grafana":%s,"otlp":%s,"url":"%s","otlpHttp":%s,"otlpGrpc":%s,"data":"%s","dataSize":"%s","retentionDays":%s,"image":"%s"}\n' \
+      "$([ $d = yes ] && echo true || echo false)" "$([ $r = yes ] && echo true || echo false)" "$([ $cur = yes ] && echo true || echo false)" \
+      "$([ $g = yes ] && echo true || echo false)" "$([ $o = yes ] && echo true || echo false)" \
+      "$URL" "$OTLP_HTTP" "$OTLP_GRPC" "$OBS/data" "${size:-0}" "$RETENTION_DAYS" "$IMAGE"
+    return 0
+  fi
+  echo "docker:     $d$([ $d = no ] && echo " ($(docker_hint))")"
+  echo "container:  $r$([ $r = yes ] && [ $cur = no ] && echo ' (outdated: claude-obs up replaces it)')"
+  echo "grafana:    $g  $URL"
+  echo "otlp:       $o  http://127.0.0.1:$OTLP_HTTP (grpc $OTLP_GRPC)"
+  echo "data:       $OBS/data (${size:-empty}, kept $RETENTION_DAYS days)"
+}
+
+cmd_open() {
+  case "${1:-overview}" in
+    overview) p=/d/claude-overview ;;
+    traces) p=/d/claude-traces ;;
+    logs) p=/d/claude-logs ;;
+    errors) p=/d/claude-errors ;;
+    sessions|session) p=/d/claude-session ;;
+    tools|hooks|mcp) p=/d/claude-tools ;;
+    time) p=/d/claude-time ;;
+    explore) p=/explore ;;
+    *) p=/d/claude-overview ;;
+  esac
+  grafana_ok || QUIET=1 cmd_up
+  if command -v open >/dev/null 2>&1; then open "$URL$p"
+  elif command -v xdg-open >/dev/null 2>&1; then xdg-open "$URL$p" >/dev/null 2>&1
+  fi
+  echo "$URL$p"
+}
+
+cmd_backfill() {
+  python3 "$HERE/backfill.py" --endpoint "http://127.0.0.1:$OTLP_HTTP" --grafana "$URL" --dir "$OBS" --days "$RETENTION_DAYS" "$@" || return
+  case " $* " in *" --dry-run "*|*" -h "*|*" --help "*) return ;; esac
+  # old events sit in Loki's ingester, which queries skip for anything older than a few hours: flush them
+  # to storage once the collector has passed them on
+  have_docker || return 0
+  sleep 10
+  docker exec "$NAME" curl -s -X POST localhost:3100/flush >/dev/null 2>&1 && say "flushed to storage; everything is queryable now"
+}
+
+cmd_reset() {
+  [ "${1:-}" = confirm ] || { echo "This deletes every trace, log and metric in $OBS/data. Run 'claude-obs reset confirm'."; return 1; }
+  have_docker && docker rm -f "$NAME" >/dev/null 2>&1
+  rm -rf "$OBS/data" "$OBS/backfill.json" && echo "claude-obs data deleted; 'claude-obs up' starts empty"
+}
+
+cmd_env() {
+  prof=${1:-default}
+  cat <<EOF
+CLAUDE_CODE_ENABLE_TELEMETRY=1
+CLAUDE_CODE_ENHANCED_TELEMETRY_BETA=1
+OTEL_METRICS_EXPORTER=otlp
+OTEL_LOGS_EXPORTER=otlp
+OTEL_TRACES_EXPORTER=otlp
+OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:$OTLP_HTTP
+OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative
+OTEL_METRIC_EXPORT_INTERVAL=10000
+OTEL_METRICS_INCLUDE_VERSION=true
+OTEL_RESOURCE_ATTRIBUTES=claude.profile=$prof
+EOF
+}
+
+case "${1:-status}" in
+  up) [ "${2:-}" = --quiet ] && QUIET=1; cmd_up ;;
+  down|stop) cmd_down ;;
+  status) shift; cmd_status "$@" ;;
+  open) shift; cmd_open "$@" ;;
+  logs) docker logs --tail 200 "$NAME" ;;
+  backfill) shift; cmd_backfill "$@" ;;
+  reset) shift; cmd_reset "$@" ;;
+  env) shift; cmd_env "$@" ;;
+  -h|--help|help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) die "unknown command '$1' (claude-obs --help)" ;;
+esac

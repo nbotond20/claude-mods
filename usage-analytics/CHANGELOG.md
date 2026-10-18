@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.14.1
+- `/mods` and `bin/mods install` know the new observability mod (local Grafana: traces, logs, metrics and dashboards for every profile).
+
 ## 0.14.0
 - `/dashboard` (and `/analytics dashboard`) restarts the server every time, so the page always talks to a fresh one. `claude-usage serve --restart` does the same from a shell.
 - `/dashboard stop` closes the server, like `/analytics stop`.

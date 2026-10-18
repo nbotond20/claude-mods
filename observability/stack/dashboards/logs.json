@@ -1,0 +1,391 @@
+{
+ "uid": "claude-logs",
+ "title": "Claude Code \u00b7 Logs",
+ "description": "Every event Claude Code logs: prompts, responses, model requests, tool runs and decisions, hooks, MCP, plugins. Expand a line for all its fields and a link to its trace.",
+ "tags": [
+  "claude-code"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "graphTooltip": 1,
+ "schemaVersion": 41,
+ "version": 1,
+ "refresh": "30s",
+ "time": {
+  "from": "now-24h",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "10s",
+   "30s",
+   "1m",
+   "5m",
+   "15m"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "profile",
+    "label": "Profile",
+    "type": "query",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "query": "label_values(claude_profile)",
+    "definition": "label_values(claude_profile)",
+    "includeAll": true,
+    "multi": true,
+    "allValue": ".*",
+    "refresh": 2,
+    "sort": 1,
+    "current": {
+     "text": [
+      "All"
+     ],
+     "value": [
+      "$__all"
+     ]
+    }
+   },
+   {
+    "name": "event",
+    "label": "Event",
+    "type": "query",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "query": "label_values(event_name)",
+    "definition": "label_values(event_name)",
+    "includeAll": true,
+    "multi": true,
+    "allValue": ".+",
+    "refresh": 2,
+    "sort": 1,
+    "current": {
+     "text": [
+      "All"
+     ],
+     "value": [
+      "$__all"
+     ]
+    }
+   },
+   {
+    "name": "session",
+    "label": "Session id",
+    "type": "textbox",
+    "query": "",
+    "current": {
+     "text": "",
+     "value": ""
+    },
+    "description": "A session id (from Overview, Traces or Logs); empty shows every session."
+   },
+   {
+    "name": "search",
+    "label": "Search prompts, commands, errors",
+    "type": "textbox",
+    "query": "",
+    "current": {
+     "text": "",
+     "value": ""
+    }
+   }
+  ]
+ },
+ "annotations": {
+  "list": [
+   {
+    "name": "API errors",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "enable": false,
+    "iconColor": "red",
+    "expr": "{service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"api_error\"}",
+    "titleFormat": "API error {{status_code}}",
+    "textFormat": "{{error}}",
+    "tagKeys": "model,claude_profile"
+   }
+  ]
+ },
+ "links": [
+  {
+   "title": "Claude Code",
+   "type": "dashboards",
+   "tags": [
+    "claude-code"
+   ],
+   "asDropdown": false,
+   "includeVars": true,
+   "keepTime": true
+  }
+ ],
+ "panels": [
+  {
+   "type": "timeseries",
+   "title": "Events per interval",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (event_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=~\"$event\"} | session_id=~\"${session:regex}.*\" | prompt=~\"(?i).*${search:regex}.*\" or response=~\"(?i).*${search:regex}.*\" or tool_input=~\"(?i).*${search:regex}.*\" or error=~\"(?i).*${search:regex}.*\" or tool_name=~\"(?i)${search:regex}.*\" [$__interval] offset -$__interval))",
+     "legendFormat": "{{event_name}}",
+     "queryType": "range"
+    }
+   ],
+   "interval": "1m",
+   "maxDataPoints": 90,
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 2,
+      "fillOpacity": 80,
+      "gradientMode": "none",
+      "showPoints": "never",
+      "spanNulls": true,
+      "barAlignment": 1,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "lineInterpolation": "smooth",
+      "insertNulls": false
+     },
+     "color": {
+      "mode": "palette-classic"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "sum"
+     ],
+     "showLegend": true,
+     "sortBy": "Sum",
+     "sortDesc": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 1,
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 24,
+    "h": 7
+   }
+  },
+  {
+   "type": "logs",
+   "title": "Events",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=~\"$event\"} | session_id=~\"${session:regex}.*\" | prompt=~\"(?i).*${search:regex}.*\" or response=~\"(?i).*${search:regex}.*\" or tool_input=~\"(?i).*${search:regex}.*\" or error=~\"(?i).*${search:regex}.*\" or tool_name=~\"(?i)${search:regex}.*\" | line_format `{{.event_name | trimPrefix \"claude_code.\"}}{{with .model}} \u00b7 {{.}}{{end}}{{with .tool_name}} \u00b7 {{.}}{{end}}{{with .hook_event}} \u00b7 {{.}}{{end}}{{with .duration_ms}} \u00b7 {{.}}ms{{end}}{{with .total_duration_ms}} \u00b7 {{.}}ms{{end}}{{with .cost_usd}} \u00b7 ${{.}}{{end}}{{if eq .success \"false\"}} \u00b7 FAILED{{end}}{{with .status_code}} \u00b7 {{.}}{{end}}{{with .error}} \u00b7 {{.}}{{end}}{{with .prompt}} \u00b7 {{.}}{{end}}{{with .response}} \u00b7 {{.}}{{end}}{{with .tool_input}} \u00b7 {{.}}{{end}}`",
+     "legendFormat": "",
+     "queryType": "range"
+    }
+   ],
+   "options": {
+    "showTime": true,
+    "showLabels": false,
+    "showCommonLabels": false,
+    "wrapLogMessage": true,
+    "prettifyLogMessage": false,
+    "enableLogDetails": true,
+    "dedupStrategy": "none",
+    "sortOrder": "Descending",
+    "enableInfiniteScrolling": true
+   },
+   "id": 2,
+   "gridPos": {
+    "x": 0,
+    "y": 7,
+    "w": 24,
+    "h": 22
+   }
+  },
+  {
+   "type": "table",
+   "title": "Prompts",
+   "description": "Newest first. Prompt text is kept locally (OTEL_LOG_USER_PROMPTS).",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "{service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"user_prompt\"} | session_id=~\"${session:regex}.*\" | prompt=~\"(?i).*${search:regex}.*\"",
+     "legendFormat": "",
+     "queryType": "range"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "extractFields",
+     "options": {
+      "source": "labels",
+      "format": "auto"
+     }
+    },
+    {
+     "id": "filterFieldsByName",
+     "options": {
+      "include": {
+       "names": [
+        "Time",
+        "claude_profile",
+        "prompt",
+        "command_name",
+        "prompt_length",
+        "session_id",
+        "trace_id"
+       ]
+      }
+     }
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {},
+      "renameByName": {
+       "claude_profile": "Profile",
+       "prompt": "Prompt",
+       "command_name": "Command",
+       "prompt_length": "Chars"
+      },
+      "indexByName": {
+       "Time": 0,
+       "claude_profile": 1,
+       "prompt": 2,
+       "command_name": 3,
+       "prompt_length": 4,
+       "session_id": 5,
+       "trace_id": 6
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      },
+      "filterable": true
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "session_id"
+      },
+      "properties": [
+       {
+        "id": "links",
+        "value": [
+         {
+          "title": "Open session",
+          "url": "/d/claude-session?${__url_time_range}&var-session=${__value.raw}"
+         }
+        ]
+       },
+       {
+        "id": "displayName",
+        "value": "Session"
+       },
+       {
+        "id": "custom.width",
+        "value": 130
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "trace_id"
+      },
+      "properties": [
+       {
+        "id": "links",
+        "value": [
+         {
+          "title": "Open waterfall",
+          "url": "/d/claude-traces?${__url_time_range}&var-trace=${__value.raw}"
+         }
+        ]
+       },
+       {
+        "id": "displayName",
+        "value": "Trace"
+       },
+       {
+        "id": "custom.width",
+        "value": 130
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "footer": {
+     "show": false
+    },
+    "sortBy": [
+     {
+      "displayName": "Time",
+      "desc": true
+     }
+    ]
+   },
+   "id": 3,
+   "gridPos": {
+    "x": 0,
+    "y": 29,
+    "w": 24,
+    "h": 12
+   }
+  }
+ ]
+}

@@ -32,7 +32,7 @@ async function modsHome($: EngineInterface) {
  * re-read it every 30 seconds.
  */
 const HUB = 1
-const MODS = ['budget-guard', 'lean-tools', 'lsp-first', 'no-attribution', 'timesheet', 'usage-analytics']
+const MODS = ['budget-guard', 'lean-tools', 'lsp-first', 'no-attribution', 'observability', 'timesheet', 'usage-analytics']
 const DAY_MS = 86_400_000
 
 type HubEntry = {

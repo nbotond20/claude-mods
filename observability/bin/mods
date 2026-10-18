@@ -1,0 +1,290 @@
+#!/bin/sh
+# my-mods: install, update or remove the mods in every Claude Code profile on this machine.
+#
+#   mods install [--only a,b] [--except a,b] [--profiles dir,dir] [--yes]
+#                                                    add the mods (skips what a profile already has); in a
+#                                                    terminal it asks which ones, Enter = all; --yes takes all
+#   mods update  [--profiles dir,dir]                pull the marketplace, update each installed mod
+#   mods uninstall [--yes] [--purge] [--dry-run]     stop the dashboard, remove autostart and git hooks,
+#                                                    uninstall the mods; --purge also deletes the data folder
+#   mods list                                        what each profile has
+#
+# Profiles: ~/.claude, every ~/.claude-* folder that is a Claude Code config folder, $CLAUDE_CONFIG_DIR,
+# and any profile a mod recorded. The data folder: $CLAUDE_MODS_HOME, else ~/.claude-shared when it exists,
+# else ~/.claude-mods. MODS_SOURCE overrides where the marketplace comes from (a folder or owner/repo).
+# The same file is at the repository root and in each mod's bin/ (scripts/sync-shared.sh copies it).
+set -u
+
+MARKETPLACE=my-mods
+REPO=nbotond20/claude-mods
+ALL_MODS="budget-guard lean-tools lsp-first no-attribution observability timesheet usage-analytics"
+
+about() {
+  case "$1" in
+    budget-guard) say "spend/context band, model routing, budgets, compaction, /budget" ;;
+    lean-tools) say "caps huge shell output, nudges toward batched calls and ranged reads" ;;
+    lsp-first) say "keeps the LSP tool loaded and steers symbol lookups to it" ;;
+    no-attribution) say "Claude never credits itself in commits, PRs or code" ;;
+    observability) say "local Grafana: traces, logs, metrics and dashboards for every profile (Docker)" ;;
+    timesheet) say "NetSuite-ready timesheets from sessions, git, GitHub, calendar (Node 22.18+)" ;;
+    usage-analytics) say "logs every session, SQLite DB, /analytics and a live dashboard (python3)" ;;
+  esac
+}
+
+# Names or numbers (from the list) separated by commas or spaces -> mod names; empty when one is unknown.
+resolve_mods() {
+  out=""
+  for x in $(printf '%s' "$1" | tr ',' ' '); do
+    case "$x" in
+      all) out=$ALL_MODS; continue ;;
+      *[!0-9]*) m=$x ;;
+      *) m=$(printf '%s\n' $ALL_MODS | sed -n "${x}p") ;;
+    esac
+    case " $ALL_MODS " in *" $m "*) ;; *) warn "no mod named $x (there are: $ALL_MODS)"; return 1 ;; esac
+    case " $out " in *" $m "*) ;; *) out="${out:+$out }$m" ;; esac
+  done
+  printf '%s' "$out"
+}
+
+# Asks which mods to install when run in a terminal; Enter installs all of them.
+pick_mods() {
+  say "Mods (Enter installs all):" >&2
+  i=0
+  for m in $ALL_MODS; do i=$((i + 1)); printf '  %d) %-16s %s\n' "$i" "$m" "$(about "$m")" >&2; done
+  while :; do
+    printf 'Which ones? numbers or names, e.g. 1,3 or "all" [all]: ' >&2
+    read -r a || a=""
+    [ -z "$a" ] && { printf '%s' "$ALL_MODS"; return; }
+    picked=$(resolve_mods "$a") && [ -n "$picked" ] && { printf '%s' "$picked"; return; }
+  done
+}
+
+say() { printf '%s\n' "$*"; }
+warn() { printf '! %s\n' "$*" >&2; }
+
+home_dir() {
+  if [ -n "${CLAUDE_MODS_HOME:-}" ]; then printf '%s' "${CLAUDE_MODS_HOME%/}"
+  elif [ -d "$HOME/.claude-shared" ]; then printf '%s' "$HOME/.claude-shared"
+  else printf '%s' "$HOME/.claude-mods"; fi
+}
+MODS_HOME=$(home_dir)
+
+# Config folders: one per line, deduplicated, existing ones only.
+profiles() {
+  if [ -n "${PROFILES:-}" ]; then printf '%s\n' "$PROFILES" | tr ',' '\n'; return; fi
+  {
+    [ -d "$HOME/.claude" ] && printf '%s\n' "$HOME/.claude"
+    for d in "$HOME"/.claude-*; do
+      [ -d "$d" ] || continue
+      [ "$d" = "$MODS_HOME" ] && continue
+      # A config folder has settings, sessions or plugins; the shared data folder has none of them.
+      if [ -e "$d/settings.json" ] || [ -d "$d/projects" ] || [ -d "$d/plugins" ]; then printf '%s\n' "$d"; fi
+    done
+    [ -n "${CLAUDE_CONFIG_DIR:-}" ] && [ -d "$CLAUDE_CONFIG_DIR" ] && printf '%s\n' "${CLAUDE_CONFIG_DIR%/}"
+    if [ -d "$MODS_HOME/mods/installed" ]; then
+      cat "$MODS_HOME"/mods/installed/*/*.json 2>/dev/null | sed -n 's/.*"configDir": *"\([^"]*\)".*/\1/p' | while read -r d; do
+        [ -d "$d" ] && printf '%s\n' "$d"
+      done
+    fi
+  } | awk '!seen[$0]++'
+}
+
+profile_name() { basename "$1" | sed 's/^\.//'; }
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+claude_in() { dir=$1; shift; CLAUDE_CONFIG_DIR="$dir" claude "$@"; }
+
+# Mods of this marketplace installed in a profile, one per line.
+installed_in() {
+  claude_in "$1" plugin list --json 2>/dev/null | tr ',{}' '\n\n\n' | sed -n "s/.*\"id\": *\"\([^\"@]*\)@$MARKETPLACE\".*/\1/p" | sort -u
+}
+
+has_marketplace() {
+  claude_in "$1" plugin marketplace list --json 2>/dev/null | grep -q "\"name\": *\"$MARKETPLACE\""
+}
+
+# Where to add the marketplace from: MODS_SOURCE, this checkout, another profile's, else GitHub.
+marketplace_source() {
+  if [ -n "${MODS_SOURCE:-}" ]; then printf '%s' "$MODS_SOURCE"; return; fi
+  here=$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)
+  if [ -n "$here" ] && [ -f "$here/.claude-plugin/marketplace.json" ]; then printf '%s' "$here"; return; fi
+  for p in $(profiles); do
+    src=$(claude_in "$p" plugin marketplace list --json 2>/dev/null | tr '{}' '\n\n' | grep "\"name\": *\"$MARKETPLACE\"" | sed -n 's/.*"path": *"\([^"]*\)".*/\1/p;s/.*"repo": *"\([^"]*\)".*/\1/p' | head -1)
+    [ -n "$src" ] && { printf '%s' "$src"; return; }
+  done
+  printf '%s' "$REPO"
+}
+
+need_claude() {
+  have claude && return 0
+  warn "the claude CLI is not on PATH: install Claude Code first (https://claude.com/claude-code)"
+  exit 1
+}
+
+python_hint() {
+  have python3 && return 0
+  case "$(uname)" in
+    Darwin) hint='xcode-select --install   (or: brew install python)' ;;
+    *) hint='sudo apt install python3   (or your distribution'"'"'s package)' ;;
+  esac
+  warn "python3 is missing: usage-analytics needs it for its database and dashboard. Install it with: $hint"
+}
+
+node_hint() {
+  if have node && node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>22||(a===22&&b>=18)?0:1)' 2>/dev/null; then return 0; fi
+  case "$(uname)" in
+    Darwin) hint='brew install node   (or: fnm install 22)' ;;
+    *) hint='fnm install 22   (or your distribution'"'"'s nodejs 22 package)' ;;
+  esac
+  warn "Node 22.18 or newer is missing: timesheet needs it. Install it with: $hint"
+}
+
+# A copy of the timesheet skill from before it shipped in the plugin, in a profile or the shared skills folder.
+old_skill_hint() {
+  for p in $(profiles) "$MODS_HOME"; do
+    [ -f "$p/skills/timesheet/SKILL.md" ] && { warn "an older timesheet skill is at $p/skills/timesheet: the plugin ships it now, remove it with: rm -r '$p/skills/timesheet'"; return; }
+  done
+}
+
+cmd_install() {
+  need_claude
+  if [ -n "${ONLY:-}" ]; then only=$(resolve_mods "$ONLY") || exit 2
+  elif [ "$YES" = 0 ] && [ -z "${EXCEPT:-}" ] && [ -t 0 ] && [ -t 1 ]; then only=$(pick_mods)
+  else only=$ALL_MODS; fi
+  if [ -n "${EXCEPT:-}" ]; then
+    skip=$(resolve_mods "$EXCEPT") || exit 2
+    keep=""; for m in $only; do case " $skip " in *" $m "*) ;; *) keep="${keep:+$keep }$m" ;; esac; done; only=$keep
+  fi
+  [ -n "$only" ] || { say "No mods selected."; exit 0; }
+  say "Installing: $only"
+  src=$(marketplace_source)
+  for p in $(profiles); do
+    say "$(profile_name "$p") ($p)"
+    if ! has_marketplace "$p"; then
+      if claude_in "$p" plugin marketplace add "$src" >/dev/null 2>&1; then say "  added the $MARKETPLACE marketplace from $src"
+      else warn "  could not add the marketplace from $src"; continue; fi
+    fi
+    have_now=$(installed_in "$p")
+    for m in $only; do
+      if printf '%s\n' "$have_now" | grep -qx "$m"; then say "  $m: already installed"
+      elif claude_in "$p" plugin install "$m@$MARKETPLACE" >/dev/null 2>&1; then say "  $m: installed"
+      else warn "  $m: install failed (try: CLAUDE_CONFIG_DIR=$p claude plugin install $m@$MARKETPLACE)"; fi
+    done
+  done
+  case " $only " in *" usage-analytics "*) python_hint ;; esac
+  case " $only " in *" timesheet "*) node_hint; old_skill_hint ;; esac
+  say "Start a new session in each profile; /mods setup tailors the mods, /mods doctor checks them."
+}
+
+cmd_update() {
+  need_claude
+  for p in $(profiles); do
+    mods=$(installed_in "$p")
+    [ -n "$mods" ] || continue
+    say "$(profile_name "$p")"
+    claude_in "$p" plugin marketplace update "$MARKETPLACE" >/dev/null 2>&1 || warn "  could not refresh the marketplace"
+    for m in $mods; do
+      if out=$(claude_in "$p" plugin update "$m@$MARKETPLACE" 2>&1); then say "  $m: $(printf '%s' "$out" | tail -1)"
+      else warn "  $m: update failed: $(printf '%s' "$out" | tail -1)"; fi
+    done
+  done
+}
+
+cmd_list() {
+  have claude || { warn "the claude CLI is not on PATH"; exit 1; }
+  for p in $(profiles); do
+    mods=$(installed_in "$p" | tr '\n' ' ')
+    say "$(profile_name "$p") ($p): ${mods:-none}"
+  done
+  say "data: $MODS_HOME"
+}
+
+# Runs, or with DRY says, one step of the uninstall.
+step() {
+  what=$1; shift
+  if [ "$DRY" = 1 ]; then say "  - $what"; else say "  $what"; "$@" >/dev/null 2>&1 || warn "    failed: $*"; fi
+}
+
+cmd_uninstall() {
+  [ "$DRY" = 1 ] && say "/mods uninstall would:" || say "Uninstalling my-mods:"
+  if [ "$DRY" = 0 ] && [ "$YES" = 0 ]; then
+    printf 'Remove the mods from every profile%s? [y/N] ' "$([ "$PURGE" = 1 ] && printf ' and delete %s' "$MODS_HOME")"
+    read -r a; case "$a" in y|Y|yes) ;; *) say "Nothing changed."; exit 0 ;; esac
+  fi
+
+  # The dashboard: ask it to stop, and stop it starting at login.
+  cli="$(cat "$MODS_HOME/usage-analytics/cli-path" 2>/dev/null)"
+  if [ -n "$cli" ] && [ -f "$cli" ] && have python3; then
+    step "stop the usage dashboard" env CLAUDE_USAGE_DIR="$MODS_HOME/usage-analytics" python3 "$cli" stop
+  fi
+  plist="$HOME/Library/LaunchAgents/dev.claude-mods.usage-dashboard.plist"
+  if [ -f "$plist" ]; then
+    step "stop the dashboard starting at login (launchd)" sh -c "launchctl unload '$plist'; rm -f '$plist'"
+  fi
+  units="$HOME/.config/systemd/user"
+  if [ -f "$units/claude-usage-dashboard.service" ] || [ -f "$units/claude-usage-dashboard.timer" ]; then
+    step "stop the dashboard starting at login (systemd)" sh -c "systemctl --user disable --now claude-usage-dashboard.service claude-usage-dashboard.timer; rm -f '$units/claude-usage-dashboard.service' '$units/claude-usage-dashboard.timer'; systemctl --user daemon-reload"
+  fi
+
+  # Global git hooks: only when they are no-attribution's own.
+  hp=$(git config --global --get core.hooksPath 2>/dev/null || true)
+  if [ -n "$hp" ] && [ "$hp" = "$MODS_HOME/no-attribution/git-hooks" ]; then
+    step "unset the global core.hooksPath (no-attribution's git hooks)" git config --global --unset core.hooksPath
+  fi
+
+  # The timesheet launcher, when it is the mod's own (it reads the entry file in the data folder).
+  ts="$HOME/.local/bin/timesheet"
+  if [ -f "$ts" ] && grep -q "$MODS_HOME/timesheet/entry" "$ts" 2>/dev/null; then
+    step "remove the timesheet launcher ($ts)" rm -f "$ts"
+  fi
+
+  if have claude; then
+    for p in $(profiles); do
+      for m in $(installed_in "$p"); do
+        step "uninstall $m from $(profile_name "$p")" env CLAUDE_CONFIG_DIR="$p" claude plugin uninstall "$m@$MARKETPLACE" -y
+      done
+    done
+  else
+    warn "the claude CLI is not on PATH: remove the plugins with /plugin in each profile"
+  fi
+
+  if [ "$PURGE" = 1 ]; then
+    case "$MODS_HOME" in
+      ""|/|"$HOME") warn "refusing to delete $MODS_HOME" ;;
+      *) step "delete $MODS_HOME (usage database, configs, logs)" rm -rf "$MODS_HOME" ;;
+    esac
+  elif [ -d "$MODS_HOME/mods/installed" ]; then
+    step "forget the installed mods (data stays in $MODS_HOME)" rm -rf "$MODS_HOME/mods/installed"
+  fi
+  [ -d "${TIMESHEET_HOME:-$HOME/.timesheet}" ] && say "  timesheet's own data stays in ${TIMESHEET_HOME:-$HOME/.timesheet} (and its tokens in the keychain: \`timesheet auth --forget\` before uninstalling removes them)"
+  [ "$DRY" = 1 ] || say "Done. Restart Claude Code to unload the mods from running sessions."
+}
+
+cmd=${1:-help}
+[ $# -gt 0 ] && shift
+ONLY=""; EXCEPT=""; PROFILES_ARG=""; YES=0; PURGE=0; DRY=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --only) ONLY=${2:-}; shift ;;
+    --only=*) ONLY=${1#--only=} ;;
+    --except) EXCEPT=${2:-}; shift ;;
+    --except=*) EXCEPT=${1#--except=} ;;
+    --profiles) PROFILES_ARG=${2:-}; shift ;;
+    --profiles=*) PROFILES_ARG=${1#--profiles=} ;;
+    --yes|-y) YES=1 ;;
+    --purge) PURGE=1 ;;
+    --dry-run|-n) DRY=1 ;;
+    *) ONLY="${ONLY:+$ONLY,}$1" ;;
+  esac
+  shift
+done
+PROFILES=$PROFILES_ARG
+
+case "$cmd" in
+  install) cmd_install ;;
+  update) cmd_update ;;
+  uninstall|remove) cmd_uninstall ;;
+  list) cmd_list ;;
+  *) sed -n '2,13p' "$0" 2>/dev/null | sed 's/^# \{0,1\}//'; [ "$cmd" = help ] || exit 2 ;;
+esac

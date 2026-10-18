@@ -1,0 +1,1072 @@
+{
+ "uid": "claude-tools",
+ "title": "Claude Code \u00b7 Tools, hooks & MCP",
+ "description": "What runs between model calls: tools by count and latency, permission decisions, hooks, MCP servers, skills and plugins.",
+ "tags": [
+  "claude-code"
+ ],
+ "timezone": "browser",
+ "editable": true,
+ "graphTooltip": 1,
+ "schemaVersion": 41,
+ "version": 1,
+ "refresh": "30s",
+ "time": {
+  "from": "now-24h",
+  "to": "now"
+ },
+ "timepicker": {
+  "refresh_intervals": [
+   "10s",
+   "30s",
+   "1m",
+   "5m",
+   "15m"
+  ]
+ },
+ "templating": {
+  "list": [
+   {
+    "name": "profile",
+    "label": "Profile",
+    "type": "query",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "query": "label_values(claude_profile)",
+    "definition": "label_values(claude_profile)",
+    "includeAll": true,
+    "multi": true,
+    "allValue": ".*",
+    "refresh": 2,
+    "sort": 1,
+    "current": {
+     "text": [
+      "All"
+     ],
+     "value": [
+      "$__all"
+     ]
+    }
+   }
+  ]
+ },
+ "annotations": {
+  "list": [
+   {
+    "name": "API errors",
+    "datasource": {
+     "type": "loki",
+     "uid": "loki"
+    },
+    "enable": false,
+    "iconColor": "red",
+    "expr": "{service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"api_error\"}",
+    "titleFormat": "API error {{status_code}}",
+    "textFormat": "{{error}}",
+    "tagKeys": "model,claude_profile"
+   }
+  ]
+ },
+ "links": [
+  {
+   "title": "Claude Code",
+   "type": "dashboards",
+   "tags": [
+    "claude-code"
+   ],
+   "asDropdown": false,
+   "includeVars": true,
+   "keepTime": true
+  }
+ ],
+ "panels": [
+  {
+   "type": "bargauge",
+   "title": "Runs by tool",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sort_desc(topk(12, sum by (tool_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"tool_result\"} [$__range]))))",
+     "legendFormat": "{{tool_name}}",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "min": 0,
+     "color": {
+      "mode": "continuous-BlPu"
+     },
+     "displayName": ""
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "valueMode": "text",
+    "showUnfilled": true,
+    "namePlacement": "left",
+    "sizing": "manual",
+    "minVizHeight": 16,
+    "maxVizHeight": 22,
+    "text": {
+     "titleSize": 12,
+     "valueSize": 13
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "/^Value/",
+     "values": true
+    }
+   },
+   "id": 1,
+   "gridPos": {
+    "x": 0,
+    "y": 0,
+    "w": 8,
+    "h": 10
+   }
+  },
+  {
+   "type": "bargauge",
+   "title": "p95 duration by tool",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sort_desc(topk(12, quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__range]) by (tool_name)))",
+     "legendFormat": "{{tool_name}}",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "min": 0,
+     "color": {
+      "mode": "continuous-BlPu"
+     },
+     "displayName": ""
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "valueMode": "text",
+    "showUnfilled": true,
+    "namePlacement": "left",
+    "sizing": "manual",
+    "minVizHeight": 16,
+    "maxVizHeight": 22,
+    "text": {
+     "titleSize": 12,
+     "valueSize": 13
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "/^Value/",
+     "values": true
+    }
+   },
+   "id": 2,
+   "gridPos": {
+    "x": 8,
+    "y": 0,
+    "w": 8,
+    "h": 10
+   }
+  },
+  {
+   "type": "bargauge",
+   "title": "Result size by tool (avg)",
+   "description": "Bytes each result puts back into the context, on average.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sort_desc(topk(12, avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"tool_result\"} | unwrap tool_result_size_bytes [$__range]) by (tool_name)))",
+     "legendFormat": "{{tool_name}}",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "bytes",
+     "min": 0,
+     "color": {
+      "mode": "continuous-BlPu"
+     },
+     "displayName": ""
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "valueMode": "text",
+    "showUnfilled": true,
+    "namePlacement": "left",
+    "sizing": "manual",
+    "minVizHeight": 16,
+    "maxVizHeight": 22,
+    "text": {
+     "titleSize": 12,
+     "valueSize": 13
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "/^Value/",
+     "values": true
+    }
+   },
+   "id": 3,
+   "gridPos": {
+    "x": 16,
+    "y": 0,
+    "w": 8,
+    "h": 10
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Tool runs over time",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (tool_name) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"tool_result\"} [$__interval] offset -$__interval))",
+     "legendFormat": "{{tool_name}}",
+     "queryType": "range"
+    }
+   ],
+   "interval": "1m",
+   "maxDataPoints": 90,
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 2,
+      "fillOpacity": 80,
+      "gradientMode": "none",
+      "showPoints": "never",
+      "spanNulls": true,
+      "barAlignment": 1,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "lineInterpolation": "smooth",
+      "insertNulls": false
+     },
+     "color": {
+      "mode": "palette-classic"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "sum"
+     ],
+     "showLegend": true,
+     "sortBy": "Sum",
+     "sortDesc": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 4,
+   "gridPos": {
+    "x": 0,
+    "y": 10,
+    "w": 12,
+    "h": 8
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Tool p95 duration over time",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"tool_result\"} | unwrap duration_ms [$__interval] offset -$__interval) by (tool_name)",
+     "legendFormat": "{{tool_name}}",
+     "queryType": "range"
+    }
+   ],
+   "interval": "1m",
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 10,
+      "gradientMode": "none",
+      "showPoints": "never",
+      "spanNulls": true,
+      "barAlignment": 1,
+      "stacking": {
+       "mode": "none",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "lineInterpolation": "smooth",
+      "insertNulls": false
+     },
+     "color": {
+      "mode": "palette-classic"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "mean",
+      "max"
+     ],
+     "showLegend": true,
+     "sortBy": "Mean",
+     "sortDesc": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 5,
+   "gridPos": {
+    "x": 12,
+    "y": 10,
+    "w": 12,
+    "h": 8
+   }
+  },
+  {
+   "type": "piechart",
+   "title": "Permission decisions",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (decision, source) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"tool_decision\"} [$__range]))",
+     "legendFormat": "{{decision}} \u00b7 {{source}}",
+     "queryType": "instant"
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "short",
+     "color": {
+      "mode": "palette-classic"
+     }
+    },
+    "overrides": []
+   },
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      }
+     }
+    }
+   ],
+   "options": {
+    "pieType": "donut",
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "values": [
+      "value",
+      "percent"
+     ],
+     "showLegend": true
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "/^Value/",
+     "values": true
+    },
+    "tooltip": {
+     "mode": "single"
+    },
+    "displayLabels": []
+   },
+   "id": 6,
+   "gridPos": {
+    "x": 0,
+    "y": 18,
+    "w": 8,
+    "h": 9
+   }
+  },
+  {
+   "type": "table",
+   "title": "Bash commands",
+   "description": "First word of each command, by count.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "topk(30, sum by (bash_argv0) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"tool_result\"} | tool_name=\"Bash\" | tool_parameters=~\".+\" | line_format `{{.tool_parameters}}` | json bash_argv0=\"bash_command\" [$__range])))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "bash_argv0": "Command",
+       "Value": "Runs",
+       "Value #A": "Runs"
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      },
+      "filterable": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "footer": {
+     "show": false
+    },
+    "sortBy": [
+     {
+      "displayName": "Runs",
+      "desc": true
+     }
+    ]
+   },
+   "id": 7,
+   "gridPos": {
+    "x": 8,
+    "y": 18,
+    "w": 8,
+    "h": 9
+   }
+  },
+  {
+   "type": "table",
+   "title": "Skills activated",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (skill_name, invocation_trigger) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"skill_activated\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "skill_name": "Skill",
+       "invocation_trigger": "Trigger",
+       "Value": "Count",
+       "Value #A": "Count"
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      },
+      "filterable": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "footer": {
+     "show": false
+    },
+    "sortBy": [
+     {
+      "displayName": "Count",
+      "desc": true
+     }
+    ]
+   },
+   "id": 8,
+   "gridPos": {
+    "x": 16,
+    "y": 18,
+    "w": 8,
+    "h": 9
+   }
+  },
+  {
+   "type": "row",
+   "title": "Hooks",
+   "collapsed": false,
+   "panels": [],
+   "id": 9,
+   "gridPos": {
+    "x": 0,
+    "y": 27,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "bargauge",
+   "title": "Hook time by event (total)",
+   "description": "Time spent running hooks, per hook event.",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sort_desc(topk(12, sum by (hook_event) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"hook_execution_complete\"} | unwrap total_duration_ms [$__range])) / 1000))",
+     "legendFormat": "{{hook_event}}",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "s",
+     "min": 0,
+     "color": {
+      "mode": "continuous-BlPu"
+     },
+     "displayName": ""
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "valueMode": "text",
+    "showUnfilled": true,
+    "namePlacement": "left",
+    "sizing": "manual",
+    "minVizHeight": 16,
+    "maxVizHeight": 22,
+    "text": {
+     "titleSize": 12,
+     "valueSize": 13
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "/^Value/",
+     "values": true
+    }
+   },
+   "id": 10,
+   "gridPos": {
+    "x": 0,
+    "y": 28,
+    "w": 8,
+    "h": 10
+   }
+  },
+  {
+   "type": "bargauge",
+   "title": "Hook p95 by event",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sort_desc(topk(12, quantile_over_time(0.95, {service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"hook_execution_complete\"} | unwrap total_duration_ms [$__range]) by (hook_event)))",
+     "legendFormat": "{{hook_event}}",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "min": 0,
+     "color": {
+      "mode": "continuous-BlPu"
+     },
+     "displayName": ""
+    },
+    "overrides": []
+   },
+   "options": {
+    "orientation": "horizontal",
+    "displayMode": "gradient",
+    "valueMode": "text",
+    "showUnfilled": true,
+    "namePlacement": "left",
+    "sizing": "manual",
+    "minVizHeight": 16,
+    "maxVizHeight": 22,
+    "text": {
+     "titleSize": 12,
+     "valueSize": 13
+    },
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ],
+     "fields": "/^Value/",
+     "values": true
+    }
+   },
+   "id": 11,
+   "gridPos": {
+    "x": 8,
+    "y": 28,
+    "w": 8,
+    "h": 10
+   }
+  },
+  {
+   "type": "timeseries",
+   "title": "Hook time over time",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (hook_event) (sum_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"hook_execution_complete\"} | unwrap total_duration_ms [$__interval] offset -$__interval))",
+     "legendFormat": "{{hook_event}}",
+     "queryType": "range"
+    }
+   ],
+   "interval": "1m",
+   "maxDataPoints": 90,
+   "fieldConfig": {
+    "defaults": {
+     "unit": "ms",
+     "custom": {
+      "drawStyle": "bars",
+      "lineWidth": 2,
+      "fillOpacity": 80,
+      "gradientMode": "none",
+      "showPoints": "never",
+      "spanNulls": true,
+      "barAlignment": 1,
+      "stacking": {
+       "mode": "normal",
+       "group": "A"
+      },
+      "axisSoftMin": 0,
+      "lineInterpolation": "smooth",
+      "insertNulls": false
+     },
+     "color": {
+      "mode": "palette-classic"
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "displayMode": "table",
+     "placement": "right",
+     "calcs": [
+      "sum"
+     ],
+     "showLegend": true,
+     "sortBy": "Sum",
+     "sortDesc": true
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "id": 12,
+   "gridPos": {
+    "x": 16,
+    "y": 28,
+    "w": 8,
+    "h": 10
+   }
+  },
+  {
+   "type": "row",
+   "title": "MCP servers and plugins",
+   "collapsed": false,
+   "panels": [],
+   "id": 13,
+   "gridPos": {
+    "x": 0,
+    "y": 38,
+    "w": 24,
+    "h": 1
+   }
+  },
+  {
+   "type": "table",
+   "title": "MCP server connections",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "n",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "sum by (server_name, status, transport_type) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"mcp_server_connection\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    },
+    {
+     "refId": "ms",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "avg_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"mcp_server_connection\"} | unwrap duration_ms [$__range]) by (server_name, status, transport_type)",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true
+      },
+      "renameByName": {
+       "server_name": "Server",
+       "status": "Status",
+       "transport_type": "Transport",
+       "Value #n": "Count",
+       "Value #ms": "Avg ms"
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      },
+      "filterable": true
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Avg ms"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "ms"
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "footer": {
+     "show": false
+    },
+    "sortBy": []
+   },
+   "id": 14,
+   "gridPos": {
+    "x": 0,
+    "y": 39,
+    "w": 12,
+    "h": 9
+   }
+  },
+  {
+   "type": "table",
+   "title": "Plugins loaded",
+   "description": "",
+   "datasource": {
+    "type": "loki",
+    "uid": "loki"
+   },
+   "targets": [
+    {
+     "refId": "A",
+     "datasource": {
+      "type": "loki",
+      "uid": "loki"
+     },
+     "expr": "count by (plugin_name, marketplace_name, plugin_version, has_hooks, has_mcp) (count_over_time({service_name=~\"claude-code.*\", claude_profile=~\"$profile\", event_name=\"plugin_loaded\"} [$__range]))",
+     "legendFormat": "",
+     "queryType": "instant"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "Value": true,
+       "Value #A": true
+      },
+      "renameByName": {
+       "plugin_name": "Plugin",
+       "marketplace_name": "Marketplace",
+       "plugin_version": "Version",
+       "has_hooks": "Hooks",
+       "has_mcp": "MCP"
+      },
+      "indexByName": {
+       "plugin_name": 0,
+       "plugin_version": 1,
+       "marketplace_name": 2,
+       "has_hooks": 3,
+       "has_mcp": 4
+      }
+     }
+    }
+   ],
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto",
+      "cellOptions": {
+       "type": "auto"
+      },
+      "filterable": true
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "showHeader": true,
+    "cellHeight": "sm",
+    "footer": {
+     "show": false
+    },
+    "sortBy": []
+   },
+   "id": 15,
+   "gridPos": {
+    "x": 12,
+    "y": 39,
+    "w": 12,
+    "h": 9
+   }
+  }
+ ]
+}

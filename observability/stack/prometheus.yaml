@@ -1,0 +1,14 @@
+# Prometheus for claude-observability: OTLP in, the profile promoted to a label, old samples accepted.
+global:
+  scrape_native_histograms: true
+otlp:
+  keep_identifying_resource_attributes: true
+  promote_resource_attributes:
+    - service.name
+    - service.version
+    - claude.profile
+    - host.name
+    - os.type
+storage:
+  tsdb:
+    out_of_order_time_window: 30d

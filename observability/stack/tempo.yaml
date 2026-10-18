@@ -1,0 +1,74 @@
+# Tempo for claude-observability: the image's config, local only, no usage reporting, long retention.
+usage_report:
+  reporting_enabled: false
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9096
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: "127.0.0.1:4417"
+        http:
+          endpoint: "127.0.0.1:4418"
+
+memberlist:
+  bind_addr: [127.0.0.1]
+  bind_port: 7947
+
+querier:
+  frontend_worker:
+    frontend_address: 127.0.0.1:9096
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /data/tempo/wal
+      ingestion_time_range_slack: 2160h
+    local:
+      path: /data/tempo/blocks
+
+metrics_generator:
+  processor:
+    span_metrics:
+      dimensions:
+        - service_name
+        - operation
+        - status_code
+        - claude.profile
+        - model
+        - tool_name
+  storage:
+    path: /data/tempo/generator/wal
+    remote_write:
+      - url: http://127.0.0.1:9090/api/v1/write
+        send_exemplars: true
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors: [service-graphs, span-metrics]
+
+# Backfilled transcripts carry their real (old) timestamps: a long slack keeps each block's time range
+# true to its spans instead of clamping it to the ingest time, so time-ranged search finds them.
+# Keep the not-yet-flushed traces on the data volume, so a restart or upgrade loses nothing.
+live_store:
+  wal:
+    path: /data/tempo/live-store/traces
+    ingestion_time_range_slack: 2160h
+  shutdown_marker_dir: /data/tempo/live-store/shutdown-marker
+block_builder:
+  wal:
+    path: /data/tempo/block-builder/traces
+    ingestion_time_range_slack: 2160h
+
+# Search and TraceQL metrics over any time range Grafana asks for (the default caps are 7 days and 1 day).
+query_frontend:
+  search:
+    max_duration: 0
+  metrics:
+    max_duration: 0

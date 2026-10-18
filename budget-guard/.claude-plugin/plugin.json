@@ -1,6 +1,6 @@
 {
   "name": "budget-guard",
-  "version": "0.13.3",
+  "version": "0.13.4",
   "description": "Keeps token spend down: Opus capped at medium effort, compaction at 200k, context guard, subagent cap, image/generated-file read guard, and a budget HUD above the prompt (with LiteLLM key spend).",
   "types": "./types/index.d.ts",
   "author": {

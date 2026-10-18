@@ -1,0 +1,12 @@
+apiVersion: 1
+providers:
+  - name: claude-code
+    folder: Claude Code
+    folderUid: claude-code
+    type: file
+    disableDeletion: true
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /claude-obs/dashboards
+      foldersFromFilesStructure: false

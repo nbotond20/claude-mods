@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.13.4
+- `/mods` and `bin/mods install` know the new observability mod (local Grafana: traces, logs, metrics and dashboards for every profile).
+
 ## 0.13.3
 - Keep-alive pings once, not up to 6 times. In the usage data only idle stretches of one ping were followed by a cache read; the 6-ping stretches all ran out before you came back (net −$1.29 over 23 stretches).
 - The keep-alive saving is counted only when you are back within 5 minutes of the ping. Before, any later prompt counted as a saved cache write, even one an hour later after the cache had expired.

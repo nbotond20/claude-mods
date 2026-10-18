@@ -17,7 +17,7 @@ set -u
 
 MARKETPLACE=my-mods
 REPO=nbotond20/claude-mods
-ALL_MODS="budget-guard lean-tools lsp-first no-attribution timesheet usage-analytics"
+ALL_MODS="budget-guard lean-tools lsp-first no-attribution observability timesheet usage-analytics"
 
 about() {
   case "$1" in
@@ -25,6 +25,7 @@ about() {
     lean-tools) say "caps huge shell output, nudges toward batched calls and ranged reads" ;;
     lsp-first) say "keeps the LSP tool loaded and steers symbol lookups to it" ;;
     no-attribution) say "Claude never credits itself in commits, PRs or code" ;;
+    observability) say "local Grafana: traces, logs, metrics and dashboards for every profile (Docker)" ;;
     timesheet) say "NetSuite-ready timesheets from sessions, git, GitHub, calendar (Node 22.18+)" ;;
     usage-analytics) say "logs every session, SQLite DB, /analytics and a live dashboard (python3)" ;;
   esac
