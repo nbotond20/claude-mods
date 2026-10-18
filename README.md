@@ -10,7 +10,7 @@ Claude Code mods (function-hook plugins), shipped as the marketplace **`my-mods`
 | **lsp-first** | Keeps the LSP tool loaded and tells the model to use it for code symbols instead of grep + Read | [docs/lsp-first.md](docs/lsp-first.md) |
 | **no-attribution** | Claude never credits itself: engine attribution off, a prompt rule, tool calls with attribution refused, optional global git hooks | [docs/no-attribution.md](docs/no-attribution.md) |
 | **timesheet** | NetSuite-ready timesheets from your sessions, git, GitHub and Google Calendar: the `timesheet` CLI, a web app, a skill and `/timesheet` | [docs/timesheet.md](docs/timesheet.md) |
-| **observability** | Free, local Grafana for every profile, fed by Claude Code's own OpenTelemetry: trace waterfalls, logs, metrics, where time goes, errors, tools; `/obs` (needs Docker) | [docs/observability.md](docs/observability.md) |
+| **observability** | Free, local Grafana for every profile, fed by Claude Code's own OpenTelemetry: trace waterfalls, logs, metrics, where time goes, errors, tools, a per-operation breakdown and an A/B compare of profiles (e.g. subscription vs LiteLLM); `/obs` (needs Docker) | [docs/observability.md](docs/observability.md) |
 | *`/mods`* | One place for all of them: status, a combined setup, doctor, what changed, pause, update, install, uninstall | [docs/mods.md](docs/mods.md) |
 | *Mod impact* | Each mod leaves a random holdout of sessions untouched; `/analytics impact` says whether it saves money or costs more | [docs/mod-impact.md](docs/mod-impact.md) |
 
@@ -20,6 +20,7 @@ Claude Code mods (function-hook plugins), shipped as the marketplace **`my-mods`
 | --- | --- |
 | ![budget-guard's band above the prompt](docs/images/budget-guard/band-gateway.png) **budget-guard**: spend, context, subagents and savings above the prompt | ![The timesheet week view](docs/images/timesheet/week-view.png) **timesheet**: a NetSuite-ready week from your sessions and commits |
 | ![Mod impact](docs/images/usage-analytics/impact.png) **Mod impact**: each mod against its holdout | ![/mods status](docs/images/mods/mods-status.png) **`/mods`**: every mod's state in one place |
+| ![observability's Compare dashboard](docs/images/observability/compare.png) **observability**: subscription against LiteLLM, every figure as A, B and the difference | ![A trace waterfall in Grafana](docs/images/observability/waterfall.png) **observability**: every prompt as a trace waterfall, subagents included |
 
 The screenshots use generated demo data ([scripts/demo](scripts/demo/README.md)).
 

@@ -4,6 +4,8 @@ A free, local observability platform for Claude Code. Every profile (`~/.claude`
 
 **Free and local only.** The stack is the open-source [grafana/otel-lgtm](https://github.com/grafana/docker-otel-lgtm) image (Grafana, Tempo, Loki and Prometheus in one container), pinned to a fixed version. Every port is bound to `127.0.0.1`. Grafana and the backends have usage reporting and update checks turned off, no Grafana plugin is downloaded, and nothing leaves the machine.
 
+![Compare: the subscription profiles against the LiteLLM gateway, each figure as A, B and B vs A](images/observability/compare.png)
+
 Needs Docker. Any free runtime works: on macOS `brew install colima docker && colima start`, or OrbStack.
 
 ## On by default
@@ -67,9 +69,20 @@ All dashboards except Compare share a **profile** filter and the time picker. Ev
 | **Breakdown** | every event and every timed operation (each model, tool, hook event, MCP server) in one table: calls, total time and share, mean, p50, p95, max, failures and failure rate; what takes longest, what fails most, where the time goes |
 | **Compare** | side A against side B, each a set of profiles and models: every figure as A, B and "B vs A" in percent, green when B is better and red when worse |
 
+| | |
+| --- | --- |
+| ![Overview](images/observability/overview.png) **Overview**: spend, requests, latency and errors per profile and model | ![A trace waterfall](images/observability/waterfall.png) **Traces**: one prompt as a waterfall, subagents nested under the Agent call |
+| ![Breakdown](images/observability/breakdown.png) **Breakdown**: every operation on one scale, longest and most error-prone first | ![Where time goes](images/observability/time.png) **Where time goes**: model, tools and you, per activity, tool and model |
+
+![Errors](images/observability/errors.png)
+
 ### Compare
 
 Compare puts two sides next to each other: by default every direct (subscription) profile as A and `claude-infi` (LiteLLM) as B. Pick any profiles and models for each side in the pickers. It answers which side is faster and by how much (latency and time to first token at p50 and p95, tokens per second, prompt turn length), which fails more (API error, retry and tool failure rates), and which costs more (per request and per prompt, cache hits). It shows the same metrics over time and per model, tool, operation, event and error status. "B vs A" is (B − A) / A; within ±5% counts as a draw. Rates and per-request figures stay fair when one side was used far more. Time to first token and prompt turn length need live sessions: transcripts don't record them.
+
+![Compare, broken down per model, tool, operation and event](images/observability/compare-breakdown.png)
+
+The screenshots use generated demo data ([scripts/demo](../scripts/demo/README.md)): `claude-work` and `claude-personal` on the subscription, `claude-gateway` through LiteLLM.
 
 ## Caveats
 

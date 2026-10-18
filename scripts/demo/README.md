@@ -1,6 +1,6 @@
 # Demo data for the docs screenshots
 
-Every screenshot in `docs/images/` uses generated data: fictional projects (acme-web, billing-api, mobile-app, infra, design-system), two profiles (`claude-work`, `claude-personal`) and fixed random seeds. Nothing is read from the real machine. Each script writes into a folder you pass and refuses a non-empty folder it did not create.
+Every screenshot in `docs/images/` uses generated data: fictional projects (acme-web, billing-api, mobile-app, infra, design-system), two profiles (`claude-work`, `claude-personal`, plus `claude-gateway` for observability) and fixed random seeds. Nothing is read from the real machine. Each script writes into a folder you pass and refuses a non-empty folder it did not create.
 
 ## usage-analytics dashboard
 
@@ -26,6 +26,23 @@ HOME=/tmp/ts-demo/home TIMESHEET_HOME=/tmp/ts-demo/home/.timesheet TIMESHEET_SEC
 ```
 
 Run the server in that environment only. Without it the app reads your real `~/.timesheet`, profiles and keychain. The data covers weekdays from Sep 1 to Oct 12, 2026; the week of Oct 5 is the fullest.
+
+## observability dashboards
+
+A second stack (its own container, ports and data folder) next to your real one, fed with demo sessions as if they had reported live:
+
+```sh
+python3 scripts/demo/observability-demo.py /tmp/obs-demo        # 21 days, claude-work, claude-personal, claude-gateway (LiteLLM)
+mkdir -p /tmp/obs-demo/obs && echo '{"grafanaPort":3311,"otlpHttpPort":4328,"otlpGrpcPort":4327}' > /tmp/obs-demo/obs/config.json
+export CLAUDE_OBS_NAME=claude-obs-demo CLAUDE_OBS_DIR=/tmp/obs-demo/obs
+sh observability/bin/claude-obs up                                 # wait until docker ps says healthy
+python3 scripts/demo/observability-demo.py /tmp/obs-demo send http://127.0.0.1:4328
+docker exec claude-obs-demo curl -s -X POST localhost:3100/flush   # makes the old events queryable now
+node scripts/demo/shoot-grafana.mjs /tmp/obs-shots                 # 1440 wide, 2x; prints any visible "No data" panel
+sh observability/bin/claude-obs down
+```
+
+`send` uses observability's own backfill to build each session's events and spans and adds what only live telemetry carries (time to first token, hooks, permission decisions, MCP connections, skills, plugins). Panels built from Prometheus metrics (active time, token counters, span metrics) stay empty, since Prometheus takes no old samples; the shots are cropped above them. Run `pngquant --quality 80-95 --ext .png --force` on the results before copying them to `docs/images/observability/`.
 
 ## Terminal scenes
 

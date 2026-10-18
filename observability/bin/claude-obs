@@ -17,7 +17,7 @@ set -u
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(dirname "$HERE")
 IMAGE=grafana/otel-lgtm:0.37.0
-NAME=claude-obs
+NAME=${CLAUDE_OBS_NAME:-claude-obs}  # another name runs a second stack, e.g. the docs demo
 STACK_REV=4  # bump when stack/ changes in a way a running container must pick up
 
 if [ -n "${CLAUDE_MODS_HOME:-}" ]; then MODS_HOME=$CLAUDE_MODS_HOME
