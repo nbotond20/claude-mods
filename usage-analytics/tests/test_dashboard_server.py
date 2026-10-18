@@ -57,6 +57,33 @@ def plugin(root, version):
     return os.path.join(root, 'bin', 'claude-usage')
 
 
+class Stop(unittest.TestCase):
+    """stop() never signals a process just because whatever answers on the port names its pid."""
+
+    def run_stop(self, cmd, pid=4242):
+        with mock.patch.object(dashboard_api, 'listeners', return_value={}), \
+             mock.patch.object(dashboard_api, 'ping', return_value={'app': 'claude-usage', 'pid': pid}), \
+             mock.patch.object(dashboard_api, 'command_of', return_value=cmd), \
+             mock.patch.object(dashboard_api, '_kill', return_value=True) as kill:
+            return dashboard_api.stop(8787), kill
+
+    def test_foreign_pid_from_ping_is_not_killed(self):
+        ok, kill = self.run_stop('/usr/sbin/sshd -D')
+        self.assertFalse(ok)
+        kill.assert_not_called()
+
+    def test_own_pid_from_ping_is_killed(self):
+        ok, kill = self.run_stop('python3 /x/bin/claude-usage serve --daemon')
+        self.assertTrue(ok)
+        kill.assert_called_once_with([4242], 8787)
+
+    def test_bogus_pids_are_ignored(self):
+        for pid in (1, 0, -1, '4242', None):
+            ok, kill = self.run_stop('python3 /x/bin/claude-usage serve', pid=pid)
+            self.assertFalse(ok)
+            kill.assert_not_called()
+
+
 class LoginItem(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

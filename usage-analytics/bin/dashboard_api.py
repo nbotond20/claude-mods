@@ -730,10 +730,19 @@ def listeners(port):
     out = {}
     for pid in pids:
         try:
-            out[int(pid)] = subprocess.run(['ps', '-o', 'command=', '-p', pid], capture_output=True, text=True, timeout=5).stdout.strip()
-        except (OSError, ValueError, subprocess.SubprocessError):
-            out[int(pid)] = ''
+            out[int(pid)] = command_of(int(pid))
+        except ValueError:
+            pass
     return out
+
+
+def command_of(pid):
+    """The command line of a process, '' when it is gone or unreadable."""
+    import subprocess
+    try:
+        return subprocess.run(['ps', '-o', 'command=', '-p', str(int(pid))], capture_output=True, text=True, timeout=5).stdout.strip()
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        return ''
 
 
 def is_ours(cmd):
@@ -769,9 +778,11 @@ def stop(port=8787):
     """Stop the dashboard on this port (found by its listening port): a running one, or a hung one that no longer
     answers. Never touches another program that happens to use the port."""
     pids = [pid for pid, cmd in listeners(port).items() if is_ours(cmd)]
-    if not pids:  # lsof found none (or is missing): a running dashboard says its own pid
+    if not pids:  # lsof found none (or is missing): a running dashboard says its own pid, but whatever answers on
+        # the port could name any process, so only a pid whose own command line is a dashboard is signalled
         p = ping(port)
-        pids = [p['pid']] if p and p.get('pid') else []
+        pid = p.get('pid') if p else None
+        pids = [pid] if isinstance(pid, int) and pid > 1 and is_ours(command_of(pid)) else []
     return bool(pids) and _kill(pids, port)
 
 

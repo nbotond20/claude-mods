@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.14.3
+- Stopping the dashboard only signals a process whose own command line is the dashboard, never a pid that whatever answers on the port names.
+
 ## 0.14.2
 - The dashboard server starts reliably in every state: a newer one is never replaced by an older session, an older, hung or broken one is replaced, a port held by another program is named with how to change it, and the login item (when on) is kept on the newest CLI.
 
