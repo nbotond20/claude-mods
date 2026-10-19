@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.14.6
+- Dashboard: the info icon next to panel titles is centred in its circle again.
+
 ## 0.14.5
 - Applying an advisor recommendation asks with selectable options (apply, dismiss, or an A/B trial for model instructions) instead of a plain-text question.
 
