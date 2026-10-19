@@ -31,16 +31,19 @@
     "label": "Profile",
     "type": "query",
     "datasource": {
-     "type": "loki",
-     "uid": "loki"
+     "type": "prometheus",
+     "uid": "prometheus"
     },
-    "query": "label_values(claude_profile)",
-    "definition": "label_values(claude_profile)",
-    "regex": "/^claude(-.+)?$/",
+    "query": {
+     "query": "query_result(group by (claude_profile) (last_over_time(claude_obs_profile_last_session[90d])) or group by (claude_profile) (last_over_time(claude_code_session_count_total[90d])))",
+     "refId": "profiles"
+    },
+    "definition": "query_result(group by (claude_profile) (last_over_time(claude_obs_profile_last_session[90d])) or group by (claude_profile) (last_over_time(claude_code_session_count_total[90d])))",
+    "regex": "/claude_profile=\"(claude(?:-[^\"]+)?)\"/",
     "includeAll": true,
     "multi": true,
     "allValue": ".*",
-    "refresh": 2,
+    "refresh": 1,
     "sort": 1,
     "current": {
      "text": [

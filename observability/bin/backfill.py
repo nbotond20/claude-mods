@@ -323,6 +323,18 @@ def send(endpoint, resource, spans, logs):
     post(endpoint, '/v1/logs', {'resourceLogs': [{'resource': res, 'scopeLogs': [{'scope': scope, 'logRecords': logs}]}]})
 
 
+def mark_profiles(endpoint, last):
+    """One gauge per profile (its newest transcript's time): the dashboards' profile lists come from
+    these and from live metrics, so a profile shows whatever time range the dashboard is on."""
+    now = str(time.time_ns())
+    metrics = [{'resource': {'attributes': attrs({'service.name': 'claude-obs-backfill', 'claude.profile': name})},
+                'scopeMetrics': [{'scope': {'name': 'claude-obs.backfill', 'version': '1'}, 'metrics': [
+                    {'name': 'claude_obs.profile.last_session', 'gauge': {'dataPoints': [{'timeUnixNano': now, 'asDouble': t}]}}]}]}
+               for name, t in last.items()]
+    if metrics:
+        post(endpoint, '/v1/metrics', {'resourceMetrics': metrics})
+
+
 def main():
     ap = argparse.ArgumentParser(description='Replay Claude Code transcripts as traces and events.')
     ap.add_argument('--endpoint', default='http://127.0.0.1:4318')
@@ -359,6 +371,7 @@ def main():
         live, back = set(), set()
     now = time.time()
     cutoff = now - a.days * 86400
+    last = {}
     total = {'sessions': 0, 'prompts': 0, 'requests': 0, 'tools': 0, 'cost': 0.0, 'skipped': 0}
 
     for name, pdir in profiles(a.home, a.profile):
@@ -367,6 +380,7 @@ def main():
             mtime = os.path.getmtime(path)
             if mtime < cutoff or (now - mtime < 600 and not a.include_active):
                 continue
+            last[name] = max(last.get(name, 0), mtime)
             items, facts = parse(read_rows(path))
             sid = facts['sid'] or os.path.basename(path)[:-6]
             if not items:
@@ -428,6 +442,8 @@ def main():
                   + (f" ({stats['skipped']} already in the stack)" if stats['skipped'] else ''))
         for k in total:
             total[k] += stats[k]
+    if not a.dry_run:
+        mark_profiles(a.endpoint, last)
     verb = 'would send' if a.dry_run else 'sent'
     print(f"{verb} {total['sessions']} sessions (${total['cost']:.2f}), skipped {total['skipped']} already in the stack"
           + ('' if a.dry_run or not total['sessions'] else '; new traces are searchable in Grafana within a minute'))
