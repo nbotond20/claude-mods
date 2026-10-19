@@ -767,12 +767,32 @@ async function weeklyDigest($: EngineInterface) {
 
 // ---------- gateway spend: what LiteLLM billed, next to the list-price estimate ----------
 
+/** How often an open session refreshes the gateway's billed spend. */
+const GATEWAY_SYNC_MS = 15 * 60_000
+
 type GatewayModel = { spend: number; requests: number; input: number; output: number; cacheRead: number; cacheWrite: number }
 type GatewayDay = { spend: number; models: Record<string, GatewayModel> }
 
+/** A short, one-way fingerprint of a gateway key (FNV-1a, 64 bits), so profiles that share a key share one file
+ * and its spend is counted once. Never the key itself. */
+export function keyId(base: string, token: string): string {
+  let h1 = 0x811c9dc5, h2 = 0x050c5d1f
+  for (const ch of `${host(base)}\n${token}`) {
+    const c = ch.codePointAt(0)!
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0
+    h2 = Math.imul(h2 ^ c, 0x01000193) >>> 0
+    h2 = (h2 + (h1 >>> 7)) >>> 0
+  }
+  return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0')
+}
+
+type GatewayFile = { key?: string; profiles?: string[]; host?: string; syncedAt?: string; checkedAt?: string; error?: string; days?: Record<string, GatewayDay> }
+
 /** What the gateway billed per day and model, from LiteLLM's /user/daily/activity (kept for the key's whole life,
- * unlike /spend/logs), into <data>/gateway/<profile>.json. No credentials are stored.
- * The first run goes back gatewayMonths months; later runs refresh from the 1st of last month. */
+ * unlike /spend/logs), into <data>/gateway/key-<fingerprint>.json: one file per key, listing every profile that
+ * used it. No credentials are stored. Runs at session start and every GATEWAY_SYNC_MS while a session is open.
+ * The first run goes back gatewayMonths months; later runs refresh from the 1st of last month, so late
+ * corrections on the gateway's side land too. A failed fetch keeps the data and records the error. */
 export async function syncGateway($: EngineInterface) {
   const base = ((await $.env.get('ANTHROPIC_BASE_URL')) ?? '').replace(/\/+$/, '')
   const token = await $.env.get('ANTHROPIC_AUTH_TOKEN')
@@ -782,31 +802,35 @@ export async function syncGateway($: EngineInterface) {
     const at = line.indexOf(':')
     if (at > 0) headers[line.slice(0, at).trim()] = line.slice(at + 1).trim()
   }
-  const path = `${root}/gateway/${profile}.json`
-  let prev: { days?: Record<string, GatewayDay> } = {}
+  const key = keyId(base, token)
+  const path = `${root}/gateway/key-${key}.json`
+  let prev: GatewayFile = {}
   try {
     prev = JSON.parse(String(await $.fs.read(path)))
   } catch {
-    // first sync for this profile
+    // first sync for this key
   }
   const now = new Date(await $.clock.now())
+  const profiles = [...new Set([...(prev.profiles ?? []), profile])].sort()
+  const save = (f: GatewayFile) => $.fs.write(path, JSON.stringify({ key, profiles, host: host(base), source: 'litellm /user/daily/activity', ...f }) + '\n')
+  const fail = (error: string) => (prev.days ? save({ ...prev, checkedAt: now.toISOString(), error }) : undefined)
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - (prev.days ? 1 : cfg.gatewayMonths), 1)).toISOString().slice(0, 10)
   const end = new Date(now.getTime() + 86_400_000).toISOString().slice(0, 10)
   const days: Record<string, GatewayDay> = Object.fromEntries(Object.entries(prev.days ?? {}).filter(([d]) => d < start))
   for (let page = 1; page <= 50; page++) {
     const r = await $.http.fetch(`${base}/user/daily/activity?start_date=${start}&end_date=${end}&page=${page}&page_size=1000`, { headers }).catch(() => null)
-    if (!r?.ok) return // not LiteLLM, or this key may not read its spend: keep what we have
+    if (!r?.ok) return fail(r ? `HTTP ${r.status}` : 'unreachable') // not LiteLLM, or this key may not read its spend: keep what we have
     let body: { results?: unknown[]; metadata?: { total_pages?: number } }
     try {
       body = JSON.parse(r.text)
     } catch {
-      return
+      return fail('not JSON')
     }
-    if (!Array.isArray(body?.results)) return
+    if (!Array.isArray(body?.results)) return fail('unexpected response')
     Object.assign(days, parseDailyActivity(body.results))
     if (!body.results.length || page >= Number(body.metadata?.total_pages ?? 1)) break
   }
-  await $.fs.write(path, JSON.stringify({ profile, host: host(base), source: 'litellm /user/daily/activity', syncedAt: now.toISOString(), days }) + '\n')
+  await save({ syncedAt: now.toISOString(), checkedAt: now.toISOString(), days })
 }
 
 /** /user/daily/activity results ({ date, metrics: { spend }, breakdown: { models: { "azure_ai/claude-opus-5-5": { metrics } } } }). */
@@ -1482,6 +1506,7 @@ export const register: Register = on => {
     $.clock.every(FLUSH_MS, () => void flush($).catch(() => {}))
     $.clock.after(1500, () => void ensureDashboard($, true))
     $.clock.after(20_000, () => void syncGateway($).catch(() => {}))
+    $.clock.every(GATEWAY_SYNC_MS, () => void syncGateway($).catch(() => {}))
     if (cfg.autoIngest) {
       $.clock.after(45_000, () => void ingest($))
       $.clock.every(Math.max(5, cfg.ingestEveryMin) * 60_000, () => void ingest($))

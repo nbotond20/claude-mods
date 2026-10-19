@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { adviceData, inScope, parseDailyActivity, projectOf, setupPrompt, trialArm } from '../hooks/register'
+import { adviceData, inScope, keyId, parseDailyActivity, projectOf, setupPrompt, trialArm } from '../hooks/register'
 
 function engine(on: any, env: Record<string, string>, runs: string[][] = [], toasts: string[] = [], out: (argv: string[]) => string | undefined = () => undefined, agents: any[] = [], registered = true) {
   const files = new Map<string, string>()
@@ -304,6 +304,14 @@ test('advisor text handed to the model cannot close its quoted block', () => {
 })
 
 describe('gateway spend', () => {
+  test('a key fingerprint is stable, per key and host, and never contains the key', () => {
+    const id = keyId('https://gw.example.com/', 'sk-secret-123')
+    expect(id).toMatch(/^[0-9a-f]{16}$/)
+    expect(keyId('https://gw.example.com', 'sk-secret-123')).toBe(id)
+    expect(keyId('https://gw.example.com/', 'sk-secret-124')).not.toBe(id)
+    expect(keyId('https://other.example.com/', 'sk-secret-123')).not.toBe(id)
+  })
+
   test('LiteLLM daily activity folds into days with provider-less model names', () => {
     const days = parseDailyActivity([
       {

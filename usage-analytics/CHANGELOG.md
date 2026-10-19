@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.15.0
+- Gateway spend stays current: every open session on the key refreshes it every 15 minutes, not only once at start, and a failed fetch is recorded instead of silently keeping old numbers.
+- One file per gateway key (`gateway/key-<fingerprint>.json`, never the key itself) listing every profile that used it, so a key shared by two profiles is counted once, under the profile that uses it most; its list-price comparison covers all of them. Older per-profile files are used only until the key's file exists.
+- The Billed tile says when it was synced and the last day it covers, and turns red when the sync is over an hour old or failing.
+
 ## 0.14.6
 - Dashboard: the info icon next to panel titles is centred in its circle again.
 

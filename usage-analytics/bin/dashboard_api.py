@@ -46,9 +46,14 @@ BG = '''ROUND(SUM(cost_usd), 2) cost, COUNT(DISTINCT run_id) runs, COUNT(*) requ
 
 # name -> (source table for filters, sql). `{W}` is replaced by the filter clause (repeatable).
 Q = {
-    # What a LiteLLM gateway billed (synced by the mod), next to the list-price estimate of the same days and profiles.
-    'gateway_kpis': ('gateway_spend', '''SELECT ROUND(SUM(spend_usd), 2) billed, COUNT(DISTINCT day) days, MIN(day) first_day,
-        ROUND((SELECT SUM(cost_usd) FROM requests r WHERE EXISTS (SELECT 1 FROM gateway_spend g WHERE {W} AND g.day = r.day AND g.profile = r.profile)), 2) list
+    # What a LiteLLM gateway billed (synced by the mod), next to the list-price estimate of the same days across every
+    # profile that used the key, and how fresh the sync is.
+    'gateway_kpis': ('gateway_spend', '''SELECT ROUND(SUM(spend_usd), 2) billed, COUNT(DISTINCT day) days, MIN(day) first_day, MAX(day) last_day,
+        ROUND((SELECT SUM(r.cost_usd) FROM requests r WHERE EXISTS (SELECT 1 FROM gateway_spend g WHERE {W} AND g.day = r.day
+            AND r.profile IN (SELECT j.value FROM gateway_sync s, json_each(s.profiles) j WHERE s.profile = g.profile))), 2) list,
+        (SELECT MIN(synced_at) FROM gateway_sync WHERE profile IN (SELECT profile FROM gateway_spend WHERE {W})) synced_at,
+        (SELECT MAX(checked_at) FROM gateway_sync WHERE profile IN (SELECT profile FROM gateway_spend WHERE {W})) checked_at,
+        (SELECT GROUP_CONCAT(error, '; ') FROM gateway_sync WHERE profile IN (SELECT profile FROM gateway_spend WHERE {W})) error
         FROM gateway_spend WHERE {W}'''),
     'gateway_daily': ('gateway_spend', 'SELECT day, ROUND(SUM(spend_usd), 2) billed FROM gateway_spend WHERE {W} GROUP BY day ORDER BY day'),
     'gateway_models': ('gateway_spend', 'SELECT model, ROUND(SUM(spend_usd), 2) billed FROM gateway_spend WHERE {W} GROUP BY model ORDER BY billed DESC'),

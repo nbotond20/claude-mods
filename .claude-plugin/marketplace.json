@@ -29,7 +29,7 @@
       "name": "usage-analytics",
       "source": "./usage-analytics",
       "description": "Records every model request, tool call, prompt, context breakdown, compaction and rate-limit reading from every profile into one store in the mods data folder, with a live dashboard, a weekly digest, shareable summaries, mod impact verdicts and a statistical advisor.",
-      "version": "0.14.6",
+      "version": "0.15.0",
       "author": {
         "name": "nbotond"
       },

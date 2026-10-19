@@ -1150,7 +1150,11 @@ async function renderKpis(seq) {
     if (g.billed != null) {
       const gd = Object.fromEntries(asObjs(gwDaily).map(r => [r.day, r.billed]))
       k.billed = g.billed
-      cards.splice(1, 0, ['billed', usd(g.billed), 'Billed', `Billed by the gateway (LiteLLM)${g.list ? `\n${(g.billed / g.list).toFixed(2)}× list price on those days` : ''}`, null, -1, series(r => gd[r.day] ?? null), acc, 'hero'])
+      const tip = [`Billed by the gateway (LiteLLM), ${g.first_day} to ${g.last_day}`,
+        g.list ? `${usd(g.list)} at list price on those days: ${(g.billed / g.list).toFixed(2)}×` : null,
+        g.synced_at ? `Synced ${ago(g.synced_at)}; open sessions on the key refresh it every 15 min` : null,
+        g.error ? `Last sync failed: ${g.error}` : null].filter(Boolean).join('\n')
+      cards.splice(1, 0, ['billed', usd(g.billed), 'Billed', tip, null, -1, series(r => gd[r.day] ?? null), acc, 'hero'])
     }
     const FMT = { billed: 'usd', cost: 'usd', cost_per_session: 'usd', subagent_cost: 'usd', hit_pct: 'pct' }, days = dd.map(r => r.day)
     // Nine tiles plus a wide spend tile fill two rows of five; with the billed tile all ten go narrow to keep the same two rows.
@@ -1158,7 +1162,9 @@ async function renderKpis(seq) {
     $('#kpis').innerHTML = cards.map(([key, v, l, title, prevV, sense, sp, color, cls]) => {
       const curV = key === 'cost' ? k.cost : k[key]
       const bump = lastKpis[key] != null && lastKpis[key] !== curV ? 'bump' : ''
-      const sub = key === 'billed' && g.list ? `<span class="delta"><span class="vs">${(g.billed / g.list).toFixed(2)}× list price</span></span>`
+      // a sync older than an hour, or one that failed, says so: the billed figure then stops short of the range
+      const stale = g.error || !g.synced_at || Date.now() - new Date(g.synced_at).getTime() > 3_600_000
+      const sub = key === 'billed' ? `<span class="delta${stale ? ' bad' : ''}"><span class="${stale ? '' : 'vs'}">${g.error ? 'sync failing · ' : ''}synced ${ago(g.synced_at)}${g.last_day ? ` · to ${g.last_day.slice(5)}` : ''}</span></span>`
         : deltaHtml(curV, n === 1 && key !== 'cost' ? null : prevV, sense, p._none ? (key === 'cost' ? 'none' : '') : label)
       return tile({ label: l, value: v, sub, cls, title, vcls: bump, extra: sp && dd.length > 1 && spark(sp, color, days, FMT[key] || 'big') })
     }).join('')

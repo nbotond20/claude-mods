@@ -5,7 +5,7 @@ Sources, all folded incrementally into <data>/usage.db (`claude-usage path` prin
   * every profile's transcripts   ~/.claude*/projects/**/*.jsonl  (incl. subagents/), plus any config
                                   dir a session ran from (registered by the mod) or listed in `profileDirs`
   * the usage-analytics mod's log <data>/events/**.jsonl
-  * gateway spend                 <data>/gateway/<profile>.json: what LiteLLM billed per day and model (the mod syncs it)
+  * gateway spend                 <data>/gateway/key-<id>.json: what LiteLLM billed per day and model (the mod syncs it)
 <data> is $CLAUDE_USAGE_DIR, else <mods home>/usage-analytics, where <mods home> is $CLAUDE_MODS_HOME,
 else ~/.claude-shared if it exists, else ~/.claude-mods.
 
@@ -106,6 +106,8 @@ CREATE TABLE IF NOT EXISTS git_outcomes (session_id TEXT PRIMARY KEY, checked_at
   files_committed INTEGER, lines_written INTEGER, lines_kept INTEGER, commits INTEGER);
 CREATE TABLE IF NOT EXISTS gateway_spend (profile TEXT, day TEXT, model TEXT, spend_usd REAL, requests INTEGER, input INTEGER, output INTEGER,
   cache_read INTEGER, cache_write INTEGER, PRIMARY KEY (profile, day, model));
+CREATE TABLE IF NOT EXISTS gateway_sync (key TEXT PRIMARY KEY, profile TEXT, profiles TEXT, host TEXT, synced_at TEXT, checked_at TEXT,
+  error TEXT, last_day TEXT);
 
 CREATE VIEW IF NOT EXISTS v_requests AS
   SELECT r.*, input + cache_read + cache_write AS context_tokens,
@@ -665,19 +667,44 @@ class Ingest:
             yield 'events', p.split(os.sep)[-3], p, None
 
     def gateway(self):
-        """What the gateway billed: <data>/gateway/<profile>.json, written by the mod from LiteLLM /user/daily/activity.
-        Each file holds the whole history it knows, so its profile's rows are replaced."""
+        """What the gateway billed: <data>/gateway/key-<fingerprint>.json, written by the mod from LiteLLM
+        /user/daily/activity, one file per key with every profile that used it. The table is rebuilt from the files.
+        A key's spend is filed under one profile, the one of its profiles with the most requests lately, so a key two
+        profiles share is counted once; the list price it is compared with covers all of its profiles.
+        Older per-profile files (<profile>.json, no key) count only for a host no key file covers, newest first."""
         if len(self.con.execute('PRAGMA table_info(gateway_spend)').fetchall()) != 9:
             # an earlier shape of the table: it is rebuilt from the files anyway
             self.con.execute('DROP TABLE gateway_spend')
             self.con.executescript(DDL)
+        files = []
         for path in glob.glob(os.path.join(DATA, 'gateway', '*.json')):
             try:
-                g = json.load(open(path))
+                with open(path) as f:
+                    g = json.load(f)
             except (OSError, ValueError) as ex:
                 log(self.args, f'skip {path}: {ex}')
                 continue
-            prof = g.get('profile') or os.path.basename(path)[:-5]
+            if not g.get('key'):
+                g['profiles'] = [g.get('profile') or os.path.basename(path)[:-5]]
+            files.append(g)
+        keyed_hosts = {g.get('host') for g in files if g.get('key')}
+        merged = {}
+        for g in sorted(files, key=lambda g: g.get('syncedAt') or ''):
+            if g.get('key'):
+                merged[g['key']] = g
+            elif g.get('host') not in keyed_hosts:
+                # the same key synced from several profiles before files were per key: the newest copy wins
+                k = 'host:' + str(g.get('host'))
+                g['profiles'] = sorted(set(g['profiles']) | set(merged.get(k, {}).get('profiles', [])))
+                merged[k] = g
+        busy = dict(self.con.execute("SELECT profile, COUNT(*) FROM requests WHERE day >= date('now', '-90 days') GROUP BY profile"))
+        self.con.execute('DELETE FROM gateway_spend')
+        self.con.execute('DELETE FROM gateway_sync')
+        for k, g in merged.items():
+            profs = sorted(set(g.get('profiles') or []))
+            if not profs:
+                continue
+            prof = max(profs, key=lambda p: (busy.get(p, 0), -profs.index(p)))
             rows = []
             for day, d in (g.get('days') or {}).items():
                 models = d.get('models') or {}
@@ -686,8 +713,12 @@ class Ingest:
                           v.get('cacheRead'), v.get('cacheWrite')) for m, v in models.items()]
                 if abs(rest) > 0.005:
                     rows.append((prof, day, '(other)', rest, None, None, None, None, None))
-            self.con.execute('DELETE FROM gateway_spend WHERE profile = ?', (prof,))
-            self.con.executemany('INSERT OR REPLACE INTO gateway_spend VALUES (?,?,?,?,?,?,?,?,?)', rows)
+            # two keys filed under one profile add up
+            self.con.executemany('''INSERT INTO gateway_spend VALUES (?,?,?,?,?,?,?,?,?)
+                ON CONFLICT DO UPDATE SET spend_usd = spend_usd + excluded.spend_usd''', rows)
+            self.con.execute('INSERT OR REPLACE INTO gateway_sync VALUES (?,?,?,?,?,?,?,?)',
+                             (k, prof, json.dumps(profs), g.get('host'), g.get('syncedAt'), g.get('checkedAt') or g.get('syncedAt'),
+                              g.get('error'), max(g.get('days') or {'': 0})))
 
     def run(self, full=False, progress=None):
         con = self.con
@@ -914,7 +945,8 @@ def cmd_report(args):
         table(con, 'Gateway billed (LiteLLM) vs list-price estimate, by day', f'''SELECT g.day, g.profile, ROUND(g.billed, 2) billed_usd,
             ROUND(r.list, 2) list_usd, ROUND(g.billed / NULLIF(r.list, 0), 2) ratio FROM
             (SELECT day, profile, SUM(spend_usd) billed FROM gateway_spend WHERE {G} GROUP BY day, profile) g
-            LEFT JOIN (SELECT day, profile, SUM(cost_usd) list FROM requests GROUP BY day, profile) r USING (day, profile)
+            LEFT JOIN (SELECT r.day, s.profile, SUM(r.cost_usd) list FROM requests r
+                JOIN gateway_sync s ON r.profile IN (SELECT value FROM json_each(s.profiles)) GROUP BY r.day, s.profile) r USING (day, profile)
             ORDER BY g.day DESC LIMIT ?''', gp + [L if what != 'overview' else 14])
         table(con, 'Gateway billed by model', f'''SELECT model, ROUND(SUM(spend_usd), 2) billed_usd, SUM(requests) requests,
             SUM(input) input, SUM(output) output, SUM(cache_read) cache_read, SUM(cache_write) cache_write, COUNT(DISTINCT day) days
