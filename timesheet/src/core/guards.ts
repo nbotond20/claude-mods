@@ -5,9 +5,9 @@ import type { Allocation, Block, BlockItem, FileChange } from './types.ts';
 /**
  * Hard limits on what the classifier may answer, checked against the evidence. The model judges
  * meaning; these keep it from booking hours that the activity cannot back:
- * - a release or approval takes minutes, so Deployment cannot claim hours of coding,
- * - analysis-type categories cannot claim time in which code was written,
- * - Incident Management needs a sign of a production problem,
+ * - a release or approval takes minutes, so a deploy category cannot claim hours of coding,
+ * - no-code categories (analysis, meetings, planning) cannot claim time in which code was written,
+ * - an incident category needs a sign of a production problem,
  * - a block with nothing in it follows its neighbours instead of landing in General.
  */
 
@@ -18,8 +18,6 @@ export const CODE_LINES = 20;
 /** Fractions under this are folded into the rest of the block. */
 export const MIN_FRACTION = 0.25;
 
-/** Categories for work that produces no code. */
-const NO_CODE = new Set(['Admin/Analysis', 'Requirements', 'Monitoring', 'Training', 'Management', 'General', 'Service Requests', 'Security (S&M)', 'Backups']);
 
 const INCIDENT_EVIDENCE =
   /\b(prod(uction)?|incident|outage|downtime|alert(s|ing)?|pod(s)?|restart(s|ed)?|crash(es|ed|ing)?|oom|out of memory|hot-?fix|revert(ed)?|roll-?back|sentry|pager(duty)?|50[0-4]|customer|client report|users? (can't|cannot|are unable)|urgent|on-?call)\b/i;
@@ -60,16 +58,16 @@ export function isEmpty(b: Block): boolean {
   return b.texts.every((t) => !t.trim() || /^\/\w[\w:-]*$/.test(t.trim()));
 }
 
-/** Where time taken from a category goes when nothing else in the block can take it. */
-function replacement(category: string, writesCode: boolean, valid: Set<string>, fallback: string): string {
-  const want = category === 'Incident Management' ? 'Small Enhancements' : writesCode ? 'Development' : 'Admin/Analysis';
-  return valid.has(want) ? want : fallback;
+/** Where time taken from a category goes when nothing else in the block can take it: coding work to the work role, the rest to the fallback role. */
+function replacement(role: Category['role'], writesCode: boolean, categories: Category[], hint: string): string {
+  const named = (r: Category['role']) => categories.find((c) => c.role === r)?.name;
+  return (role === 'incident' || writesCode ? named('work') : named('fallback') ?? named('work')) ?? hint;
 }
 
 /** Caps each category at what the block's evidence allows, moving the excess to the block's other categories. */
 export function enforce(allocations: Allocation[], b: Block, categories: Category[]): Allocation[] {
   if (b.kind !== 'work') return allocations;
-  const valid = new Set(categories.map((c) => c.name));
+  const roles = new Map(categories.map((c) => [c.name, c.role]));
   const minutes = Math.max(1, (b.end - b.start) / 60_000);
   const noCode = noCodeShare(b);
   const writesCode = noCode < 1;
@@ -79,9 +77,10 @@ export function enforce(allocations: Allocation[], b: Block, categories: Categor
 
   const cap = (category: string): number => {
     let limit = 1;
-    if (category === 'Deployment') limit = Math.min(1, (deployEvents(b) * DEPLOY_EVENT_MINUTES) / minutes + noCode);
-    if (NO_CODE.has(category)) limit = Math.min(limit, noCode);
-    if (category === 'Incident Management' && !INCIDENT_EVIDENCE.test(evidence)) limit = 0;
+    const role = roles.get(category);
+    if (role === 'deploy') limit = Math.min(1, (deployEvents(b) * DEPLOY_EVENT_MINUTES) / minutes + noCode);
+    if (role === 'no-code') limit = Math.min(limit, noCode);
+    if (role === 'incident' && !INCIDENT_EVIDENCE.test(evidence)) limit = 0;
     return limit;
   };
 
@@ -103,7 +102,7 @@ export function enforce(allocations: Allocation[], b: Block, categories: Categor
       const room = open.reduce((n, a) => n + a.fraction, 0);
       if (room > 0) for (const a of open) a.fraction += (excess * a.fraction) / room;
       else {
-        const to = replacement([...capped][0], writesCode, valid, b.hint);
+        const to = replacement(roles.get([...capped][0]), writesCode, categories, b.hint);
         const hit = out.find((a) => a.category === to);
         if (hit) hit.fraction += excess;
         else out.push({ category: to, fraction: excess });

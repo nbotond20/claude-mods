@@ -4,7 +4,7 @@ NetSuite-ready timesheets built from your AI coding sessions (Claude Code, OpenC
 
 - **Two figures per day:** real activity (session time including waiting on the assistant, commits, meetings) and booked hours normalized to a daily target (default 8, per-weekday overrides, `--target`).
 - **Recorded minutes:** next to those, the exact minutes backed by timestamps only (session messages and meetings; no prompt/commit/GitHub lead-ins, history tails, block padding or rounding). Shown per day, category, block and piece of work in the CLI and, with the *Recorded minutes* switch, in the web app.
-- **Task categories:** every hour lands in one of the NetSuite task categories; CAPEX/OPEX follows the category. A headless Claude call classifies each day's time blocks and writes an internal daily summary. It runs lean (no tools, MCP servers or skills, a one-line system prompt): about 3.5k tokens of context per day. It judges the work by what changed, not just the prompts: commit types, lines and files per area (code, tests, lockfiles, CI, infra, docs) and, for AI sessions, which files the assistant edited, how much it only read, and which commands it ran (program and subcommand only).
+- **Task categories:** every hour lands in one of your company's task categories; CAPEX/OPEX follows the category. The list starts empty: paste yours in **Settings → Task categories** (one name per line, or rows copied from a spreadsheet) and give the special ones a rule (work and meeting defaults, fallback, no code, release, incident). A headless Claude call classifies each day's time blocks and writes an internal daily summary. It runs lean (no tools, MCP servers or skills, a one-line system prompt): about 3.5k tokens of context per day. It judges the work by what changed, not just the prompts: commit types, lines and files per area (code, tests, lockfiles, CI, infra, docs) and, for AI sessions, which files the assistant edited, how much it only read, and which commands it ran (program and subcommand only).
 - **Cached:** past days are computed once and cached in SQLite (`~/.timesheet/db.sqlite`). Days with errors, unclassified repos or a failed classification stay *partial* and are recomputed.
 - **Three front-ends over one core:** CLI, a local web app (timesheet, Loam Scheduler calendar, settings, setup wizard), and a Claude Code mod (`/timesheet` plus the skill).
 
@@ -82,8 +82,8 @@ timesheet serve --open             # web app at http://127.0.0.1:4280 (reuses a 
 Adjustments survive recomputes:
 
 ```sh
-timesheet edit 2026-09-15 "Testing" 2          # override booked hours (or `clear`); the rest of the day fills up to the target
-timesheet block 2026-09-15 3 "Team Meeting"     # recategorize time block #3; it follows the block through recomputes
+timesheet edit 2026-09-15 "QA" 2               # override booked hours (or `clear`); the rest of the day fills up to the target
+timesheet block 2026-09-15 3 "Meetings"         # recategorize time block #3; it follows the block through recomputes
 timesheet history 2026-09-15                    # every hand edit, newest first
 timesheet undo                                  # revert the last one (or `undo <date>`)
 timesheet scope add work "~/work/**" "Client A"
@@ -96,7 +96,7 @@ Hours must be a multiple of `rounding` and between 0 and 24; the project and cat
 
 ```sh
 timesheet review last                 # each day: booked vs target, flags, warnings, locks; whether Redmine/NetSuite plans are ready
-timesheet why 2026-09-15 Development  # the blocks (and edits) behind a category's hours
+timesheet why 2026-09-15 "Feature Build"  # the blocks (and edits) behind a category's hours
 timesheet confirm 2026-09-15          # accept a low-activity day as it is (--clear takes it back)
 timesheet lock week last              # keep days exactly as they are; `unlock` reverses it
 ```
@@ -142,7 +142,7 @@ Every option is editable three ways, all validated before saving:
 | `github` | off | `repos` to watch without a clone (`owner/name`, `owner/*`); `leadMinutes` (10) credited before each action |
 | `calendar` | off | `calendarIds` (`primary`), `project`; which replies count (`includeTentative` on, `includeUnanswered` on, `includeDeclined` off); `skipWithoutAttendees` (on: solo events ignored); `maxMeetingHours` (4) ignores longer meetings, 0 = no limit |
 | `classifier` | on: `claude`, `sonnet`, 240 s timeout, 3 days at once | `enabled`, `command`, `model`, `timeoutSeconds`, `concurrency`; `notes` adds team guidance to the prompt |
-| `categories` | September 2026 task list | CAPEX flag, validity dates, classifier opt-out, color |
+| `categories` | `[]` (none: hours are booked as Uncategorized until you add some) | `name`, `subtask`, `description`, `capex`; validity dates, classifier opt-out, color; `role`: `work` / `meeting` (defaults without classification), `fallback`, `no-code` (never claims coding time), `deploy` (capped at release time), `incident` (needs a production signal) |
 | `holidays` | `[]` | dates (`YYYY-MM-DD`) off work: no target, real hours only |
 | `lowActivityRatio` | 0.5 | flag workdays with recorded work below this share of the target; 0 = off |
 | `timezone` | machine's | IANA zone (e.g. `Europe/Berlin`) days are cut in |

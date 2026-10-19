@@ -35,7 +35,7 @@ function setup(opts: { config?: Partial<Config>; store?: Store; now?: number } =
     new Engine({
       config: c,
       store,
-      classifier: async ({ blocks }) => ({ allocations: Object.fromEntries(blocks.map((b) => [b.id, [{ category: b.kind === 'meeting' ? 'Team Meeting' : 'Testing', fraction: 1 }]])), summary: '- done' }),
+      classifier: async ({ blocks }) => ({ allocations: Object.fromEntries(blocks.map((b) => [b.id, [{ category: b.kind === 'meeting' ? 'Meetings' : 'QA', fraction: 1 }]])), summary: '- done' }),
       today: () => TODAY,
       now: () => opts.now ?? at(TODAY, '12:00'),
       sources: {
@@ -67,9 +67,9 @@ describe('locked days', () => {
     const store = new Store(':memory:');
     const config = testConfig();
     store.setMark(D, 'locked', true);
-    assert.match(hoursEditProblem(config, store, D, 'Default', 'Testing', 2)!, /locked/);
+    assert.match(hoursEditProblem(config, store, D, 'Default', 'QA', 2)!, /locked/);
     store.setMark(D, 'locked', false);
-    assert.equal(hoursEditProblem(config, store, D, 'Default', 'Testing', 2), null);
+    assert.equal(hoursEditProblem(config, store, D, 'Default', 'QA', 2), null);
   });
 });
 
@@ -77,26 +77,26 @@ describe('hand edits', () => {
   it('validate hours, projects, categories and blocks', async () => {
     const { engine, store, config } = setup();
     await engine.days(D, D);
-    assert.match(hoursEditProblem(config, store, D, 'Default', 'Testing', 1.3)!, /multiple of the rounding step/);
-    assert.match(hoursEditProblem(config, store, D, 'Default', 'Testing', NaN)!, /number from 0 to 24/);
-    assert.match(hoursEditProblem(config, store, D, 'Default', 'Testing', -1)!, /number from 0 to 24/);
-    assert.match(hoursEditProblem(config, store, D, 'Nope', 'Testing', 1)!, /unknown project/);
+    assert.match(hoursEditProblem(config, store, D, 'Default', 'QA', 1.3)!, /multiple of the rounding step/);
+    assert.match(hoursEditProblem(config, store, D, 'Default', 'QA', NaN)!, /number from 0 to 24/);
+    assert.match(hoursEditProblem(config, store, D, 'Default', 'QA', -1)!, /number from 0 to 24/);
+    assert.match(hoursEditProblem(config, store, D, 'Nope', 'QA', 1)!, /unknown project/);
     assert.match(hoursEditProblem(config, store, D, 'Default', 'Nope', 1)!, /unknown category/);
     assert.equal(hoursEditProblem(config, store, D, 'Default', 'Nope', null), null, 'clearing an old category is allowed');
-    assert.match(hoursEditProblem(config, store, '2026-13-45', 'Default', 'Testing', 1)!, /not a date/);
-    assert.match(blockEditProblem(config, store, D, 99, 'Testing')!, /no block 99/);
-    assert.match(blockEditProblem(config, store, D, 1.5, 'Testing')!, /whole number/);
-    assert.match(blockEditProblem(config, store, '2026-09-16', 1, 'Testing')!, /not computed/);
-    assert.equal(blockEditProblem(config, store, D, 1, 'Development'), null);
+    assert.match(hoursEditProblem(config, store, '2026-13-45', 'Default', 'QA', 1)!, /not a date/);
+    assert.match(blockEditProblem(config, store, D, 99, 'QA')!, /no block 99/);
+    assert.match(blockEditProblem(config, store, D, 1.5, 'QA')!, /whole number/);
+    assert.match(blockEditProblem(config, store, '2026-09-16', 1, 'QA')!, /not computed/);
+    assert.equal(blockEditProblem(config, store, D, 1, 'Feature Build'), null);
   });
 
   it('are logged and undone newest first', async () => {
     const { engine, store } = setup();
     await engine.days(D, D);
-    store.editHours(D, 'Default', 'Testing', 6);
-    store.editHours(D, 'Default', 'Testing', 5);
-    store.editBlock(D, 1, 'Development');
-    assert.deepEqual(store.edits(D).map((e) => [e.kind, e.before, e.after]), [['block', null, 'Development'], ['hours', 6, 5], ['hours', null, 6]]);
+    store.editHours(D, 'Default', 'QA', 6);
+    store.editHours(D, 'Default', 'QA', 5);
+    store.editBlock(D, 1, 'Feature Build');
+    assert.deepEqual(store.edits(D).map((e) => [e.kind, e.before, e.after]), [['block', null, 'Feature Build'], ['hours', 6, 5], ['hours', null, 6]]);
     assert.equal(store.undo(D)?.kind, 'block');
     assert.equal(store.blockOverrides(D).size, 0);
     store.undo(D);
@@ -112,16 +112,16 @@ describe('block categories across recomputes', () => {
   it('follow their block when it moves a little, and are dropped with a warning when it is gone', async () => {
     const { engine, store, src } = setup();
     await engine.days(D, D);
-    store.setBlockOverride(D, 1, 'Development');
+    store.setBlockOverride(D, 1, 'Feature Build');
     // The session now starts 30 minutes later: same block, shifted.
     src.claude = [{ source: 'claude', start: at(D, '09:30'), end: at(D, '13:00'), path: '/work/repo', texts: ['build it'] }];
     let [day] = await engine.days(D, D, { refresh: true });
-    assert.deepEqual(day.entries.map((e) => e.category), ['Development']);
+    assert.deepEqual(day.entries.map((e) => e.category), ['Feature Build']);
     // The work moved to the afternoon: nothing to follow.
     src.claude = [{ source: 'claude', start: at(D, '15:00'), end: at(D, '17:00'), path: '/work/repo', texts: ['other'] }];
     [day] = await engine.days(D, D, { refresh: true });
-    assert.deepEqual(day.entries.map((e) => e.category), ['Testing']);
-    assert.ok(day.warnings.some((w) => /Your category "Development" for 09:30–13:00 was dropped/.test(w)), day.warnings.join('\n'));
+    assert.deepEqual(day.entries.map((e) => e.category), ['QA']);
+    assert.ok(day.warnings.some((w) => /Your category "Feature Build" for 09:30–13:00 was dropped/.test(w)), day.warnings.join('\n'));
     assert.equal(store.blockOverrides(D).size, 0);
   });
 });
@@ -175,7 +175,7 @@ describe('low activity', () => {
     assert.ok(!plan.ok ? !plan.reasons.some((r) => r.startsWith(D)) : true);
 
     store.undo(D);
-    store.editHours(D, 'Default', 'Testing', 1);
+    store.editHours(D, 'Default', 'QA', 1);
     [day] = await engine.days(D, D);
     assert.equal(day.lowActivity, undefined, 'hours set by hand settle it');
   });
@@ -224,7 +224,7 @@ describe('settings changes from a date', () => {
 describe('classifier gaps', () => {
   it('reports blocks the classifier left out', () => {
     const block = (id: number): Block => ({ id, start: 0, end: 3_600_000, kind: 'work', project: 'Default', sources: ['claude'], branches: [], paths: [], texts: ['x'], hint: '', allocations: [] });
-    const out = sanitize({ allocations: { 1: [{ category: 'Testing', fraction: 1 }] }, summary: '' }, [block(1), block(2)], testConfig().categories);
+    const out = sanitize({ allocations: { 1: [{ category: 'QA', fraction: 1 }] }, summary: '' }, [block(1), block(2)], testConfig().categories);
     assert.deepEqual(out.missing, [2]);
   });
 });
@@ -257,11 +257,11 @@ describe('web api for edits', () => {
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const post = (path: string, body: object) => fetch(base + path, { method: 'POST', headers: { 'x-timesheet': '1' }, body: JSON.stringify(body) });
     try {
-      assert.equal((await post('/api/override', { date: D, project: 'Default', category: 'Testing', hours: 'abc' })).status, 400);
-      assert.equal((await post('/api/block', { date: D, blockId: 42, category: 'Testing' })).status, 400);
-      assert.equal((await post('/api/override', { date: D, project: 'Default', category: 'Testing', hours: 6 })).status, 200);
+      assert.equal((await post('/api/override', { date: D, project: 'Default', category: 'QA', hours: 'abc' })).status, 400);
+      assert.equal((await post('/api/block', { date: D, blockId: 42, category: 'QA' })).status, 400);
+      assert.equal((await post('/api/override', { date: D, project: 'Default', category: 'QA', hours: 6 })).status, 200);
       assert.equal((await post('/api/lock', { date: D })).status, 200);
-      const locked = await post('/api/override', { date: D, project: 'Default', category: 'Testing', hours: 5 });
+      const locked = await post('/api/override', { date: D, project: 'Default', category: 'QA', hours: 5 });
       assert.equal(locked.status, 409);
       assert.equal((await post('/api/undo', { date: D })).status, 409);
       await post('/api/unlock', { date: D });

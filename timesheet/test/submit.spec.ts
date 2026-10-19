@@ -28,19 +28,19 @@ describe('submit config', () => {
     const c = testConfig();
     c.submit.redmine.url = 'http://redmine.local';
     c.submit.redmine.rules = [
-      { project: 'Nope', category: 'Development', target: { issueId: 1, activity: 'Development' } },
+      { project: 'Nope', category: 'Feature Build', target: { issueId: 1, activity: 'Development' } },
       { project: 'Default', category: 'Bogus', target: { issueId: 2, activity: 'Development' } },
       { project: 'Default', category: '*', target: { issueId: 0, activity: '' } },
       { project: 'Default', category: '*', target: { issueId: 3, activity: 'Development' } },
     ];
-    c.submit.netsuite.rules = [{ project: 'Default', category: 'Testing', target: { project: '', task: 'Testing' } }];
+    c.submit.netsuite.rules = [{ project: 'Default', category: 'QA', target: { project: '', task: 'Testing' } }];
     const errors = validateConfig(c);
     assert.ok(errors.includes('submit.redmine.url must start with https://'));
     assert.ok(errors.includes('submit.redmine rule uses unknown project "Nope"'));
     assert.ok(errors.includes('submit.redmine rule uses unknown category "Bogus"'));
     assert.ok(errors.includes('submit.redmine rule Default / * needs a positive issueId and an activity'));
     assert.ok(errors.includes('submit.redmine has two rules for Default / *'));
-    assert.ok(errors.includes('submit.netsuite rule Default / Testing needs a project and a task'));
+    assert.ok(errors.includes('submit.netsuite rule Default / QA needs a project and a task'));
   });
 
   it('takes the Redmine address without query or fragment; NetSuite keeps its query', () => {
@@ -65,12 +65,12 @@ describe('submit config', () => {
 
   it('reports malformed rules instead of throwing', () => {
     const c = testConfig();
-    c.submit.redmine.rules = [null, { project: 7, category: 'Development', target: null }, { project: 'Default', category: 'Development' }] as never;
+    c.submit.redmine.rules = [null, { project: 7, category: 'Feature Build', target: null }, { project: 'Default', category: 'Feature Build' }] as never;
     c.submit.netsuite.rules = 'nope' as never;
     const errors = validateConfig(c);
     assert.ok(errors.includes('submit.redmine rule 1 needs a project and a category'));
     assert.ok(errors.includes('submit.redmine rule 2 needs a project and a category'));
-    assert.ok(errors.includes('submit.redmine rule Default / Development needs a positive issueId and an activity'));
+    assert.ok(errors.includes('submit.redmine rule Default / Feature Build needs a positive issueId and an activity'));
     assert.ok(errors.includes('submit.netsuite.rules must be a list'));
   });
 });
@@ -105,8 +105,8 @@ function day(date: string, entries: [string, string, number][], status: DayStatu
 
 const RULES: SubmitRule<RedmineTarget>[] = [
   { project: 'NLP', category: '*', target: { issueId: 4242, activity: 'Development' } },
-  { project: 'NLP', category: 'Team Meeting', target: { issueId: 101, activity: 'Meeting' } },
-  { project: 'NLP', category: 'Testing', target: { issueId: 4242, activity: 'Development' } },
+  { project: 'NLP', category: 'Meetings', target: { issueId: 101, activity: 'Meeting' } },
+  { project: 'NLP', category: 'QA', target: { issueId: 4242, activity: 'Development' } },
 ];
 
 const plan = (reports: DayReport[], today = '2026-10-04', rules = RULES, exists?: (t: RedmineTarget) => boolean) =>
@@ -114,7 +114,7 @@ const plan = (reports: DayReport[], today = '2026-10-04', rules = RULES, exists?
 
 describe('submit plan', () => {
   it('maps exact rules before wildcards, sums cells that share a target, skips zero hours', () => {
-    const r = plan([day('2026-09-28', [['NLP', 'Development', 5], ['NLP', 'Testing', 2.25], ['NLP', 'Team Meeting', 0.75], ['NLP', 'Requirements', 0]])], '2026-09-28');
+    const r = plan([day('2026-09-28', [['NLP', 'Feature Build', 5], ['NLP', 'QA', 2.25], ['NLP', 'Meetings', 0.75], ['NLP', 'Specs', 0]])], '2026-09-28');
     assert.ok(r.ok);
     // Sorted by date, then by the target's key (activity before issueId): "Development" < "Meeting…".
     assert.deepEqual(r.plan.cells, [
@@ -125,7 +125,7 @@ describe('submit plan', () => {
   });
 
   it('ignores days after today and notes today', () => {
-    const r = plan([day('2026-09-28', [['NLP', 'Development', 8]]), day('2026-09-29', [['NLP', 'Development', 3]], 'today')], '2026-09-29');
+    const r = plan([day('2026-09-28', [['NLP', 'Feature Build', 8]]), day('2026-09-29', [['NLP', 'Feature Build', 3]], 'today')], '2026-09-29');
     assert.ok(r.ok);
     assert.equal(r.plan.cells.length, 2);
     assert.deepEqual(r.plan.notes, ['2026-09-29 is today: its hours may still change']);
@@ -133,35 +133,35 @@ describe('submit plan', () => {
 
   it('blocks on unmapped entries, partial or missing days and targets gone from the site', () => {
     const r = plan(
-      [day('2026-09-28', [['Other', 'Development', 8]]), day('2026-09-29', [['NLP', 'Development', 8]], 'partial', ['claude: failed'])],
+      [day('2026-09-28', [['Other', 'Feature Build', 8]]), day('2026-09-29', [['NLP', 'Feature Build', 8]], 'partial', ['claude: failed'])],
       '2026-09-30',
     );
     assert.equal(r.ok, false);
     assert.deepEqual(!r.ok && r.reasons, [
-      '2026-09-28: no redmine mapping for Other / Development',
+      '2026-09-28: no redmine mapping for Other / Feature Build',
       '2026-09-29: day is partial (claude: failed); fix or recompute it first',
       '2026-09-30: not computed yet',
     ]);
-    const gone = plan([day('2026-09-28', [['NLP', 'Development', 8]])], '2026-09-28', RULES, (t) => t.issueId !== 4242);
-    assert.deepEqual(!gone.ok && gone.reasons, ['2026-09-28: NLP / Development maps to #4242 · Development, which is no longer on redmine']);
+    const gone = plan([day('2026-09-28', [['NLP', 'Feature Build', 8]])], '2026-09-28', RULES, (t) => t.issueId !== 4242);
+    assert.deepEqual(!gone.ok && gone.reasons, ['2026-09-28: NLP / Feature Build maps to #4242 · Development, which is no longer on redmine']);
   });
 
   it('blocks on invalid hours and on more than 24 h a day', () => {
     const r = plan([
-      day('2026-09-28', [['NLP', 'Development', Number.NaN], ['NLP', 'Testing', -1], ['NLP', 'Team Meeting', Number.POSITIVE_INFINITY]]),
-      day('2026-09-29', [['NLP', 'Development', 20], ['NLP', 'Team Meeting', 4.5], ['NLP', 'Testing', 0]]),
+      day('2026-09-28', [['NLP', 'Feature Build', Number.NaN], ['NLP', 'QA', -1], ['NLP', 'Meetings', Number.POSITIVE_INFINITY]]),
+      day('2026-09-29', [['NLP', 'Feature Build', 20], ['NLP', 'Meetings', 4.5], ['NLP', 'QA', 0]]),
     ], '2026-09-29');
     assert.deepEqual(!r.ok && r.reasons, [
-      '2026-09-28: NLP / Development has invalid hours (NaN)',
-      '2026-09-28: NLP / Testing has invalid hours (-1)',
-      '2026-09-28: NLP / Team Meeting has invalid hours (Infinity)',
+      '2026-09-28: NLP / Feature Build has invalid hours (NaN)',
+      '2026-09-28: NLP / QA has invalid hours (-1)',
+      '2026-09-28: NLP / Meetings has invalid hours (Infinity)',
       '2026-09-29: 24.5 h booked, more than a day',
     ]);
-    assert.ok(plan([day('2026-09-28', [['NLP', 'Development', 20], ['NLP', 'Team Meeting', 4]])], '2026-09-28').ok);
+    assert.ok(plan([day('2026-09-28', [['NLP', 'Feature Build', 20], ['NLP', 'Meetings', 4]])], '2026-09-28').ok);
   });
 
   it('blocks on invalid rules before planning', () => {
-    const r = plan([day('2026-09-28', [['NLP', 'Development', 8]])], '2026-09-28', [{ project: 'NLP', category: '*', target: { issueId: 0, activity: '' } }]);
+    const r = plan([day('2026-09-28', [['NLP', 'Feature Build', 8]])], '2026-09-28', [{ project: 'NLP', category: '*', target: { issueId: 0, activity: '' } }]);
     assert.deepEqual(!r.ok && r.reasons, ['submit.redmine rule NLP / * needs a positive issueId and an activity']);
     const bad = buildPlan({ system: 'redmine', week: WEEK, reports: [], today: '2026-09-28', rules: null as never });
     assert.deepEqual(!bad.ok && bad.reasons, ['submit.redmine.rules must be a list']);
@@ -170,15 +170,15 @@ describe('submit plan', () => {
   it('blocks two activities on one Redmine issue on the same day', () => {
     const rules: SubmitRule<RedmineTarget>[] = [
       { project: 'NLP', category: '*', target: { issueId: 4242, activity: 'Development' } },
-      { project: 'NLP', category: 'Testing', target: { issueId: 4242, activity: 'Testing' } },
+      { project: 'NLP', category: 'QA', target: { issueId: 4242, activity: 'Testing' } },
     ];
-    const r = plan([day('2026-09-28', [['NLP', 'Testing', 1], ['NLP', 'Development', 5]]), day('2026-09-29', [['NLP', 'Testing', 2]])], '2026-09-29', rules);
+    const r = plan([day('2026-09-28', [['NLP', 'QA', 1], ['NLP', 'Feature Build', 5]]), day('2026-09-29', [['NLP', 'QA', 2]])], '2026-09-29', rules);
     assert.deepEqual(!r.ok && r.reasons, ['2026-09-28: #4242 would get two activities (Development, Testing); Worktime has one row per issue a day, so map these categories to one activity or to different issues']);
-    assert.ok(plan([day('2026-09-28', [['NLP', 'Development', 5]]), day('2026-09-29', [['NLP', 'Testing', 2]])], '2026-09-29', rules).ok);
+    assert.ok(plan([day('2026-09-28', [['NLP', 'Feature Build', 5]]), day('2026-09-29', [['NLP', 'QA', 2]])], '2026-09-29', rules).ok);
     const ns = buildPlan({
       system: 'netsuite', week: WEEK, today: '2026-09-28',
-      reports: [day('2026-09-28', [['NLP', 'Testing', 1], ['NLP', 'Development', 5]])],
-      rules: [{ project: 'NLP', category: '*', target: { project: 'Acme', task: 'Dev' } }, { project: 'NLP', category: 'Testing', target: { project: 'Acme', task: 'Test' } }],
+      reports: [day('2026-09-28', [['NLP', 'QA', 1], ['NLP', 'Feature Build', 5]])],
+      rules: [{ project: 'NLP', category: '*', target: { project: 'Acme', task: 'Dev' } }, { project: 'NLP', category: 'QA', target: { project: 'Acme', task: 'Test' } }],
     });
     assert.ok(ns.ok);
   });

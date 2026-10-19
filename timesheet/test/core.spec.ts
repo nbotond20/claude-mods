@@ -8,13 +8,14 @@ import { Scope, globToRegex } from '../src/core/scope.ts';
 import { buildEntries, distribute } from '../src/core/hours.ts';
 import { buildBlocks, subtract } from '../src/core/timeline.ts';
 import type { WorkEvent } from '../src/core/timeline.ts';
-import { defaultCategory, parseResponse, sanitize } from '../src/core/classify.ts';
+import { UNCATEGORIZED, buildPrompt, defaultCategory, parseResponse, sanitize } from '../src/core/classify.ts';
+import { mergeCategories, parseCategoryList } from '../src/core/category-list.ts';
 import { parseSession, promptText } from '../src/core/collectors/claude.ts';
 import { spansFromPoints } from '../src/core/collectors/spans.ts';
 import { toRawEvent } from '../src/core/collectors/gcal.ts';
 import { formatDaily, formatGrid, formatLines, num } from '../src/core/format.ts';
 import { addDays, monthRange, weekStart } from '../src/core/dates.ts';
-import { categoriesFor, targetFor } from '../src/core/config.ts';
+import { categoriesFor, defaultConfig, targetFor, validateConfig } from '../src/core/config.ts';
 import type { Block, DayReport } from '../src/core/types.ts';
 
 const D = '2026-09-15';
@@ -75,20 +76,20 @@ describe('hours', () => {
   });
 
   it('normalizes to target, or rounds real hours with a null target', () => {
-    const blocks = [block('09:00', '12:00', 'Development'), block('13:00', '14:00', 'Testing')];
-    const cats = [{ name: 'Development', subtask: '', description: '', capex: true }, { name: 'Testing', subtask: '', description: '', capex: true }];
+    const blocks = [block('09:00', '12:00', 'Feature Build'), block('13:00', '14:00', 'QA')];
+    const cats = [{ name: 'Feature Build', subtask: '', description: '', capex: true }, { name: 'QA', subtask: '', description: '', capex: true }];
     const norm = buildEntries(blocks, cats, 8, 0.25);
-    assert.deepEqual(norm.map((e) => [e.category, e.hours]), [['Development', 6], ['Testing', 2]]);
+    assert.deepEqual(norm.map((e) => [e.category, e.hours]), [['Feature Build', 6], ['QA', 2]]);
     const real = buildEntries(blocks, cats, null, 0.25);
     assert.deepEqual(real.map((e) => e.hours), [3, 1]);
   });
 
   it('applies overrides as given when they fill the target', () => {
-    const e = buildEntries([block('09:00', '17:00', 'Development')], [], 8, 0.25, [
-      { project: 'Default', category: 'Development', hours: 6 },
-      { project: 'Default', category: 'Training', hours: 2 },
+    const e = buildEntries([block('09:00', '17:00', 'Feature Build')], [], 8, 0.25, [
+      { project: 'Default', category: 'Feature Build', hours: 6 },
+      { project: 'Default', category: 'Learning', hours: 2 },
     ]);
-    assert.deepEqual(e.map((x) => [x.category, x.hours, x.overridden]), [['Development', 6, true], ['Training', 2, true]]);
+    assert.deepEqual(e.map((x) => [x.category, x.hours, x.overridden]), [['Feature Build', 6, true], ['Learning', 2, true]]);
   });
 });
 
@@ -96,7 +97,7 @@ describe('rounding', () => {
   it('never rounds booked hours down', () => {
     assert.deepEqual(distribute([6.1], 6.1, 0.25), [6.25]);
     assert.deepEqual(distribute([7, 0.05], 8, 0.25), [7.75, 0.25]);
-    const e = buildEntries([{ id: 1, start: 0, end: 6.1 * 3_600_000, kind: 'work', project: 'P', sources: ['git'], branches: [], paths: [], texts: [], hint: 'Development', allocations: [{ category: 'Development', fraction: 1 }] }], [], null, 0.25);
+    const e = buildEntries([{ id: 1, start: 0, end: 6.1 * 3_600_000, kind: 'work', project: 'P', sources: ['git'], branches: [], paths: [], texts: [], hint: 'Feature Build', allocations: [{ category: 'Feature Build', fraction: 1 }] }], [], null, 0.25);
     assert.equal(e[0].hours, 6.25);
     assert.equal(num(6.181, testConfig()), '6.19');
   });
@@ -186,27 +187,27 @@ describe('classify', () => {
   const cats = categoriesFor(cfg, D);
   const base = { id: 1, start: 0, end: H, project: 'Default', sources: ['git' as const], paths: [], hint: '', allocations: [] };
 
-  it('defaults meetings to Team Meeting and other work to Development', () => {
-    assert.equal(defaultCategory('meeting', cats), 'Team Meeting');
-    assert.equal(defaultCategory('work', cats), 'Development');
-    assert.equal(defaultCategory('work', cats.filter((c) => c.name !== 'Development')), 'General');
+  it('defaults meetings and other work to the categories with those roles', () => {
+    assert.equal(defaultCategory('meeting', cats), 'Meetings');
+    assert.equal(defaultCategory('work', cats), 'Feature Build');
+    assert.equal(defaultCategory('work', cats.filter((c) => c.name !== 'Feature Build')), 'Other');
   });
 
   it('parses fenced JSON and sanitizes unknown categories and slivers', () => {
-    const out = parseResponse('```json\n{"blocks":[{"id":1,"allocations":[{"category":"Development","fraction":0.9},{"category":"Testing","fraction":0.1}]},{"id":2,"allocations":[{"category":"Nope","fraction":1}]}],"summary":"- did things"}\n```');
-    const blocks = [{ ...base, id: 1, kind: 'work' as const, branches: [], texts: [], hint: 'Development' }, { ...base, id: 2, kind: 'meeting' as const, branches: [], texts: [], hint: 'Team Meeting' }];
+    const out = parseResponse('```json\n{"blocks":[{"id":1,"allocations":[{"category":"Feature Build","fraction":0.9},{"category":"QA","fraction":0.1}]},{"id":2,"allocations":[{"category":"Nope","fraction":1}]}],"summary":"- did things"}\n```');
+    const blocks = [{ ...base, id: 1, kind: 'work' as const, branches: [], texts: [], hint: 'Feature Build' }, { ...base, id: 2, kind: 'meeting' as const, branches: [], texts: [], hint: 'Meetings' }];
     const s = sanitize(out, blocks, cats);
-    assert.deepEqual(s.allocations[1], [{ category: 'Development', fraction: 1 }]);
-    assert.deepEqual(s.allocations[2], [{ category: 'Team Meeting', fraction: 1 }]);
+    assert.deepEqual(s.allocations[1], [{ category: 'Feature Build', fraction: 1 }]);
+    assert.deepEqual(s.allocations[2], [{ category: 'Meetings', fraction: 1 }]);
     assert.equal(s.summary, '- did things');
   });
 
   it('keeps block and item summaries and never falls back to a prompt', () => {
-    const out = parseResponse('{"blocks":[{"id":1,"summary":"Fixed login race","allocations":[{"category":"Development","fraction":1}],"items":[{"id":"1.1","summary":"Reproduced the race"}]}],"summary":"- x"}');
+    const out = parseResponse('{"blocks":[{"id":1,"summary":"Fixed login race","allocations":[{"category":"Feature Build","fraction":1}],"items":[{"id":"1.1","summary":"Reproduced the race"}]}],"summary":"- x"}');
     const item = { id: '1.1', start: 0, end: H, sources: ['claude' as const], path: '/work/app', sessions: [], commits: [], texts: ['secret prompt'] };
     const blocks = [
-      { ...base, id: 1, kind: 'work' as const, branches: [], texts: ['a'], hint: 'Development', items: [item] },
-      { ...base, id: 2, kind: 'work' as const, branches: [], paths: ['/work/app'], texts: ['add retries please'], hint: 'Development', items: [{ ...item, id: '2.1' }] },
+      { ...base, id: 1, kind: 'work' as const, branches: [], texts: ['a'], hint: 'Feature Build', items: [item] },
+      { ...base, id: 2, kind: 'work' as const, branches: [], paths: ['/work/app'], texts: ['add retries please'], hint: 'Feature Build', items: [{ ...item, id: '2.1' }] },
     ];
     const s = sanitize(out, blocks, cats);
     assert.equal(s.blockSummaries?.[1], 'Fixed login race');
@@ -215,9 +216,28 @@ describe('classify', () => {
     assert.equal(s.itemSummaries?.['2.1'], 'Work in app');
   });
 
+  it('starts without categories and books under a placeholder until some are set up', () => {
+    assert.deepEqual(defaultConfig().categories, []);
+    assert.deepEqual(validateConfig(defaultConfig()), []);
+    assert.equal(defaultCategory('work', []), UNCATEGORIZED);
+    assert.equal(defaultCategory('meeting', [{ name: 'A', subtask: '', description: '', capex: false }]), 'A');
+  });
+
+  it('rejects a single-holder role on two categories', () => {
+    const two = cats.map((c) => (c.name === 'Polish' ? { ...c, role: 'work' as const } : c));
+    assert.ok(validateConfig({ ...cfg, categories: two }).some((e) => /only one category can have the work role/.test(e)));
+  });
+
+  it('describes the roles in the prompt by the configured names', () => {
+    const p = buildPrompt({ date: D, categories: cats, blocks: [] });
+    assert.match(p, /- "Firefighting": only when the prompts/);
+    assert.match(p, /Meetings are "Meetings" unless/);
+    assert.ok(!p.includes('Legacy Support'));
+  });
+
   it('hides legacy categories after their end date', () => {
-    assert.ok(categoriesFor(cfg, '2026-12-31').some((c) => c.name === 'Maintenance'));
-    assert.ok(!categoriesFor(cfg, '2027-01-01').some((c) => c.name === 'Maintenance'));
+    assert.ok(categoriesFor(cfg, '2026-12-31').some((c) => c.name === 'Legacy Support'));
+    assert.ok(!categoriesFor(cfg, '2027-01-01').some((c) => c.name === 'Legacy Support'));
   });
 
   it('uses weekday targets', () => {
@@ -294,7 +314,7 @@ describe('format', () => {
     entries: entries.map(([category, hours]) => ({ project: 'Default', category, capex: true, real: hours, hours })),
     realTotal: 0, total: 0,
   });
-  const reports = [day('2026-09-14', [['Development', 6], ['Team Meeting', 2]]), day('2026-09-15', [['Development', 7.5], ['Testing', 0.5]])];
+  const reports = [day('2026-09-14', [['Feature Build', 6], ['Meetings', 2]]), day('2026-09-15', [['Feature Build', 7.5], ['QA', 0.5]])];
 
   it('renders bare numbers with the configured separator', () => {
     assert.equal(num(7.5, cfg), '7.5');
@@ -305,14 +325,14 @@ describe('format', () => {
   it('renders the weekly grid with Mon–Sun columns', () => {
     const lines = formatGrid(reports, cfg).split('\n');
     assert.match(lines[0], /^Project\tTask Category\tMon 2026-09-14\tTue 2026-09-15\t.*Sun 2026-09-20\tTotal$/);
-    assert.equal(lines[1], 'Default\tDevelopment\t6\t7.5\t\t\t\t\t\t13.5');
-    assert.equal(formatGrid(reports, cfg, { header: false }).split('\n')[0], 'Default\tDevelopment\t6\t7.5\t\t\t\t\t');
+    assert.equal(lines[1], 'Default\tFeature Build\t6\t7.5\t\t\t\t\t\t13.5');
+    assert.equal(formatGrid(reports, cfg, { header: false }).split('\n')[0], 'Default\tFeature Build\t6\t7.5\t\t\t\t\t');
   });
 
   it('renders per-entry lines and the daily view', () => {
-    assert.equal(formatLines(reports, cfg).split('\n')[1], '2026-09-14\tDefault\tDevelopment\t6');
-    assert.equal(formatLines(reports, { ...cfg, dateFormat: 'DD/MM/YYYY' }, { header: false }).split('\n')[0], '14/09/2026\tDefault\tDevelopment\t6');
-    assert.equal(formatDaily([reports[0]], cfg), '2026-09-14\nDevelopment\t6\nTeam Meeting\t2');
+    assert.equal(formatLines(reports, cfg).split('\n')[1], '2026-09-14\tDefault\tFeature Build\t6');
+    assert.equal(formatLines(reports, { ...cfg, dateFormat: 'DD/MM/YYYY' }, { header: false }).split('\n')[0], '14/09/2026\tDefault\tFeature Build\t6');
+    assert.equal(formatDaily([reports[0]], cfg), '2026-09-14\nFeature Build\t6\nMeetings\t2');
   });
 });
 
@@ -367,5 +387,25 @@ describe('prompt cleaning', () => {
     );
     assert.equal(cleanPrompt('<system-reminder>ctx</system-reminder>'), null);
     assert.equal(cleanPrompt('This session is being continued from a previous conversation. Summary: …'), null);
+  });
+});
+
+describe('pasted category lists', () => {
+  it('reads one name per line, skipping bullets, a header and repeats', () => {
+    assert.deepEqual(parseCategoryList('Task Category\n- Alpha\n2. Beta\n\nAlpha\n').map((c) => c.name), ['Alpha', 'Beta']);
+  });
+
+  it('reads spreadsheet columns: name, subtask, description, CAPEX/OPEX', () => {
+    assert.deepEqual(parseCategoryList('Alpha\tBuild\tNew things\tCAPEX\nBeta | Run | Keep it going | OPEX'), [
+      { name: 'Alpha', subtask: 'Build', description: 'New things', capex: true },
+      { name: 'Beta', subtask: 'Run', description: 'Keep it going', capex: false },
+    ]);
+  });
+
+  it('reads an exported JSON list and keeps existing categories when merging', () => {
+    const pasted = parseCategoryList('[{"name":"Alpha","capex":true,"role":"work"},"Beta"]');
+    assert.deepEqual(pasted.map((c) => [c.name, c.capex, c.role]), [['Alpha', true, 'work'], ['Beta', false, undefined]]);
+    const current = [{ name: 'Beta', subtask: 'kept', description: '', capex: true }];
+    assert.deepEqual(mergeCategories(current, pasted).map((c) => [c.name, c.subtask]), [['Beta', 'kept'], ['Alpha', '']]);
   });
 });

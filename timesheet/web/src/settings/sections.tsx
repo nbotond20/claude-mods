@@ -23,7 +23,8 @@ import { api, type AuthStatus, type Config, type GithubStatus } from '../api';
 import { hueColor } from '../colors';
 import { categoryHues } from '../../../src/core/palette.ts';
 import { GITHUB_PERMISSIONS, GITHUB_TOKEN_DAYS, githubTokenUrl, type PermissionGroup } from '../../../src/core/github-token.ts';
-import type { Category } from '../../../src/core/config.ts';
+import type { Category, CategoryRole } from '../../../src/core/config.ts';
+import { mergeCategories, parseCategoryList } from '../../../src/core/category-list.ts';
 import { Block, CONTROL_W, Group, ListRow, NumberRow, Row, Status, SwitchRow, UnitInput } from './fields';
 
 export interface SectionProps {
@@ -799,7 +800,7 @@ export function ClassifierSection({ config, update, detected }: SectionProps & {
 
   return (
     <>
-      <Group title="Claude" description="One headless Claude call per day assigns task categories and writes the daily summary. Its own sessions never count as work. Without it, meetings are booked as Team Meeting and everything else as Development.">
+      <Group title="Claude" description="One headless Claude call per day assigns task categories and writes the daily summary. Its own sessions never count as work. Without it, meetings and other work are booked under the categories with the Meetings and Work roles.">
         <SwitchRow label="Classify with Claude" checked={c.enabled} onChange={(enabled) => set({ enabled })} />
         <Row label="Claude command" disabled={!c.enabled} hint="Profile wrappers (shell functions such as claude-work) run through your shell with their own login.">
           {!detected ? (
@@ -853,9 +854,9 @@ export function ClassifierSection({ config, update, detected }: SectionProps & {
         <NumberRow label="Timeout per day" hint="A day that takes longer is retried later." disabled={!c.enabled} value={c.timeoutSeconds} min={10} unit="s" onChange={(timeoutSeconds) => set({ timeoutSeconds })} />
         <NumberRow label="Days in parallel" disabled={!c.enabled} hint="More is faster but starts more Claude processes at once." value={c.concurrency} min={1} max={8} onChange={(concurrency) => set({ concurrency })} />
       </Group>
-      <Group title="Guidance" description="Added to the prompt, for example how your team separates Development from Small Enhancements.">
+      <Group title="Guidance" description="Added to the prompt, for example how your team tells two similar categories apart.">
         <Block className={c.enabled ? '' : 'opacity-50'}>
-          <Textarea rows={3} value={c.notes ?? ''} onChange={(e) => set({ notes: e.target.value || undefined })} placeholder="Code review counts as Development." aria-label="Extra guidance" />
+          <Textarea rows={3} value={c.notes ?? ''} onChange={(e) => set({ notes: e.target.value || undefined })} placeholder="Code review counts as feature work." aria-label="Extra guidance" />
         </Block>
       </Group>
     </>
@@ -870,6 +871,16 @@ function CategoryDot({ tone, hue }: { tone?: string; hue: number | null }) {
 
 const EMPTY: Category = { name: '', subtask: '', description: '', capex: false };
 
+const ROLES: { value: CategoryRole; label: string; hint: string }[] = [
+  { value: 'work', label: 'Work (default)', hint: 'Default for work blocks; coding time taken from other categories lands here.' },
+  { value: 'meeting', label: 'Meetings (default)', hint: 'Default for calendar meetings.' },
+  { value: 'fallback', label: 'Fallback', hint: 'Work that fits nowhere else.' },
+  { value: 'no-code', label: 'No code', hint: 'Analysis, planning, meetings: never claims time in which code was written.' },
+  { value: 'deploy', label: 'Release', hint: 'Capped at the minutes its releases, approvals and deploy runs take.' },
+  { value: 'incident', label: 'Incident', hint: 'Only with a sign of a production problem in prompts, commits or branches.' },
+];
+const ROLE_LABEL = Object.fromEntries(ROLES.map((r) => [r.value, r.label]));
+
 function CategoryDialog({ category, open, onClose, onSave, onDelete, names }: { category: Category | null; open: boolean; onClose: () => void; onSave: (c: Category) => void; onDelete?: () => void; names: string[] }) {
   const [draft, setDraft] = useState<Category>(category ?? EMPTY);
   useEffect(() => setDraft(category ?? EMPTY), [category, open]);
@@ -881,7 +892,7 @@ function CategoryDialog({ category, open, onClose, onSave, onDelete, names }: { 
       <DialogContent size="md">
         <DialogHeader>
           <DialogTitle>{category ? 'Edit category' : 'New category'}</DialogTitle>
-          <DialogDescription>Names must match the NetSuite task list exactly.</DialogDescription>
+          <DialogDescription>Names must match your company's task list exactly.</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 tablet:grid-cols-2">
@@ -915,6 +926,11 @@ function CategoryDialog({ category, open, onClose, onSave, onDelete, names }: { 
               <Select size="sm" aria-label="Accounting" items={[{ value: 'capex', label: 'CAPEX · capitalized' }, { value: 'opex', label: 'OPEX · operating' }]} value={draft.capex ? 'capex' : 'opex'} onValueChange={(v) => set({ capex: v === 'capex' })} />
             </div>
             <div className={field}>
+              Rule
+              <Select size="sm" aria-label="Rule" value={draft.role ?? 'none'} onValueChange={(v) => set({ role: v === 'none' ? undefined : (v as CategoryRole) })} items={[{ value: 'none', label: 'None' }, ...ROLES]} />
+              <span className="font-normal text-ink-3">{ROLES.find((r) => r.value === draft.role)?.hint ?? 'Classified by its description only.'}</span>
+            </div>
+            <div className={field}>
               Calendar color
               <Select size="sm" aria-label="Color" value={draft.tone ?? 'auto'} onValueChange={(v) => set({ tone: v === 'auto' ? undefined : v })} items={[{ value: 'auto', label: 'Own colour (automatic)' }, ...TONES.map((t) => ({ value: t, label: t[0].toUpperCase() + t.slice(1) }))]} />
             </div>
@@ -945,6 +961,7 @@ export function CategoriesSection({ config, update, autoTones = {} }: SectionPro
   const cats = config.categories;
   const hues = categoryHues(cats);
   const [editing, setEditing] = useState<number | 'new' | null>(null);
+  const [pasting, setPasting] = useState(false);
   const save = (c: Category) => {
     if (editing === 'new') update({ categories: [...cats, c] });
     else if (typeof editing === 'number') {
@@ -961,7 +978,7 @@ export function CategoriesSection({ config, update, autoTones = {} }: SectionPro
         {c.subtask && <span className="truncate text-12 text-ink-3">{c.subtask}</span>}
       </span>
       <span className="hidden text-right text-12 text-ink-3 tablet:block">
-        {[validity(c), c.classify === false ? 'manual only' : ''].filter(Boolean).join(' · ')}
+        {[c.role ? ROLE_LABEL[c.role] : '', validity(c), c.classify === false ? 'manual only' : ''].filter(Boolean).join(' · ')}
       </span>
       <Icon name="chevron-right" size={16} className="shrink-0 text-ink-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
     </button>
@@ -969,19 +986,28 @@ export function CategoriesSection({ config, update, autoTones = {} }: SectionPro
   const indexed = cats.map((c, i) => [c, i] as const);
   const capex = indexed.filter(([c]) => c.capex);
   const opex = indexed.filter(([c]) => !c.capex);
+  const actions = (
+    <div className="flex gap-2">
+      <Button size="sm" variant="outline" leadingIcon="clipboard" onClick={() => setPasting(true)}>Paste a list</Button>
+      <Button size="sm" variant="outline" leadingIcon="plus" onClick={() => setEditing('new')}>Add category</Button>
+    </div>
+  );
   return (
     <>
-      <Group
-        title="CAPEX"
-        count={capex.length}
-        description="Capitalized: building or substantially improving an asset. Validity dates retire old tasks."
-        actions={<Button size="sm" variant="outline" leadingIcon="plus" onClick={() => setEditing('new')}>Add category</Button>}
-      >
-        {capex.length ? capex.map(([c, i]) => row(c, i)) : <Block className="text-13 text-ink-3">No CAPEX categories.</Block>}
-      </Group>
-      <Group title="OPEX" count={opex.length} description="Operating: running, supporting and maintaining what exists.">
-        {opex.length ? opex.map(([c, i]) => row(c, i)) : <Block className="text-13 text-ink-3">No OPEX categories.</Block>}
-      </Group>
+      {cats.length ? (
+        <>
+          <Group title="CAPEX" count={capex.length} description="Capitalized: building or substantially improving an asset. Validity dates retire old tasks." actions={actions}>
+            {capex.length ? capex.map(([c, i]) => row(c, i)) : <Block className="text-13 text-ink-3">No CAPEX categories.</Block>}
+          </Group>
+          <Group title="OPEX" count={opex.length} description="Operating: running, supporting and maintaining what exists.">
+            {opex.length ? opex.map(([c, i]) => row(c, i)) : <Block className="text-13 text-ink-3">No OPEX categories.</Block>}
+          </Group>
+        </>
+      ) : (
+        <Group title="Task categories" description="Task categories come from your company's time tracking. Paste your task list, or add categories one by one." actions={actions}>
+          <Block className="text-13 text-ink-3">No categories yet. Until you add some, every hour is booked as Uncategorized and Claude only writes summaries.</Block>
+        </Group>
+      )}
       <CategoryDialog
         open={editing !== null}
         category={typeof editing === 'number' ? cats[editing] : null}
@@ -990,7 +1016,49 @@ export function CategoriesSection({ config, update, autoTones = {} }: SectionPro
         onSave={save}
         onDelete={typeof editing === 'number' ? () => (update({ categories: cats.filter((_, j) => j !== editing) }), setEditing(null)) : undefined}
       />
+      <PasteCategoriesDialog
+        open={pasting}
+        current={cats}
+        onClose={() => setPasting(false)}
+        onApply={(categories) => (update({ categories }), setPasting(false))}
+      />
     </>
+  );
+}
+
+function PasteCategoriesDialog({ open, current, onClose, onApply }: { open: boolean; current: Category[]; onClose: () => void; onApply: (c: Category[]) => void }) {
+  const [text, setText] = useState('');
+  useEffect(() => setText(''), [open]);
+  let parsed: Category[] = [];
+  let error = '';
+  try {
+    parsed = text.trim() ? parseCategoryList(text) : [];
+  } catch (e) {
+    error = (e as Error).message;
+  }
+  const added = mergeCategories(current, parsed).length - current.length;
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent size="md">
+        <DialogHeader>
+          <DialogTitle>Paste a task list</DialogTitle>
+          <DialogDescription>One category per line, or rows copied from a spreadsheet: name, subtask, description, CAPEX/OPEX. Only the name is needed; set rules and accounting afterwards.</DialogDescription>
+        </DialogHeader>
+        <Textarea rows={10} value={text} onChange={(e) => setText(e.target.value)} placeholder={'Feature Build\tNew functionality\tFeatures, screens, endpoints\tCAPEX\nPolish\tSmall changes\tTweaks to existing features\tOPEX\nMeetings'} aria-label="Task list" autoFocus />
+        <span className={`text-12 ${error ? 'text-danger' : 'text-ink-3'}`}>
+          {error || (parsed.length ? `${parsed.length} categor${parsed.length === 1 ? 'y' : 'ies'} found${current.length ? `, ${added} new` : ''}.` : 'Nothing pasted yet.')}
+        </span>
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
+          {current.length > 0 && (
+            <Button variant="outline" size="sm" disabled={!added} onClick={() => onApply(mergeCategories(current, parsed))}>Add new ones</Button>
+          )}
+          <Button variant="primary" size="sm" disabled={!parsed.length} onClick={() => onApply(parsed)}>
+            {current.length ? 'Replace all' : 'Use this list'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

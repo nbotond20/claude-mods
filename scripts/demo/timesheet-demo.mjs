@@ -29,11 +29,13 @@ process.env.TZ = 'Europe/Berlin';
 
 const core = pathToFileURL(join(dirname(fileURLToPath(import.meta.url)), '../../timesheet/src/core/')).href;
 const { defaultConfig, computeKey } = await import(core + 'config.ts');
+const { CATEGORIES } = await import(new URL('../../timesheet/test/example-categories.ts', import.meta.url).href);
 const { Store } = await import(core + 'store.ts');
 const { addDays, daysBetween, dayBounds, weekday } = await import(core + 'dates.ts');
 
 const config = {
   ...defaultConfig(),
+  categories: CATEGORIES, // made up: real task lists are company specific
   claudeDirs: [join(home, '.claude', 'projects')],
   claudeHistory: false,
   opencodeDirs: [],
@@ -62,27 +64,27 @@ const store = new Store();
 
 // --- story catalogue: [project, category, summary, ticket, branch, commit subjects, prompts, edited files]
 const S = {
-  checkout: ['acme-web', 'Development', 'Redesign the checkout page: new address step and order summary', 'ACME-1423', 'feature/ACME-1423-checkout-redesign', ['Add address step to checkout flow', 'Extract OrderSummary component', 'Wire shipping estimate into summary'], ['Split the checkout form into steps and keep the cart state in the URL', 'Why does the summary flash on step change?'], ['src/checkout/AddressStep.tsx', 'src/checkout/OrderSummary.tsx']],
-  e2e: ['acme-web', 'Testing', 'Playwright end-to-end tests for the cart and checkout', 'ACME-1431', 'test/ACME-1431-cart-e2e', ['Add cart e2e specs', 'Stabilise flaky coupon test'], ['Write a Playwright test for applying a coupon at checkout'], ['e2e/cart.spec.ts', 'e2e/fixtures/coupons.ts']],
-  header: ['acme-web', 'Small Enhancements', 'Fix sticky header overlap on Safari and tidy nav spacing', 'ACME-1440', 'fix/ACME-1440-sticky-header', ['Fix sticky header on Safari 17'], ['The header overlaps the hero on Safari, find the cause'], ['src/layout/Header.css']],
-  webhooks: ['billing-api', 'Integration', 'Payment provider webhooks: signature checks and retry with backoff', 'BILL-208', 'feature/BILL-208-webhook-retries', ['Verify webhook signatures', 'Retry failed webhook handlers with backoff'], ['Add exponential backoff to the webhook consumer', 'Add a dead-letter table for webhooks that keep failing'], ['src/webhooks/consumer.ts', 'src/webhooks/retry.ts', 'migrations/0042_dead_letter.sql']],
-  invoices: ['billing-api', 'Development', 'Invoice PDF generation and monthly statement endpoint', 'BILL-219', 'feature/BILL-219-invoice-pdf', ['Render invoices to PDF', 'Add GET /statements/:month'], ['Generate an invoice PDF from the existing template'], ['src/invoices/pdf.ts', 'src/routes/statements.ts']],
-  dupes: ['billing-api', 'Incident Management', 'Duplicate invoice emails after a queue redelivery', 'BILL-231', 'fix/BILL-231-duplicate-emails', ['Make invoice email sending idempotent', 'Add regression test for redelivery'], ['Customers got the invoice email twice, find out why'], ['src/mail/send-invoice.ts', 'test/mail.spec.ts']],
-  sync: ['mobile-app', 'Development', 'Offline sync queue: persist pending mutations and replay on reconnect', 'MOB-377', 'feature/MOB-377-offline-queue', ['Persist pending mutations in SQLite', 'Replay queue on reconnect', 'Handle conflicting edits'], ['Design a queue for offline edits that survives app restarts'], ['src/sync/queue.ts', 'src/sync/replay.ts']],
-  links: ['mobile-app', 'Small Enhancements', 'Deep links from push notifications to the order screen', 'MOB-390', 'feat/MOB-390-push-deeplinks', ['Route push payloads to order screen'], ['Open the order screen when the push notification is tapped'], ['src/notifications/router.ts']],
-  testflight: ['mobile-app', 'Deployment', 'Release 4.12: TestFlight build and store notes', 'MOB-401', 'release/4.12', ['Bump version to 4.12', 'Update release notes'], ['Prepare the 4.12 release checklist'], ['CHANGELOG.md', 'app.config.ts']],
-  vpc: ['infra', 'Infrastructure (Build)', 'Terraform: staging VPC peering and private subnets', 'INFRA-91', 'feature/INFRA-91-vpc-peering', ['Add VPC peering module', 'Private subnets for staging'], ['Peer the staging and shared-services VPCs without overlapping CIDRs'], ['modules/network/peering.tf', 'envs/staging/main.tf']],
-  certs: ['infra', 'Security (S&M)', 'Rotate expiring TLS certificates and automate renewal checks', 'INFRA-97', 'chore/INFRA-97-cert-rotation', ['Rotate edge certificates', 'Add expiry alert'], ['List certificates that expire within 30 days'], ['modules/edge/certs.tf']],
-  alerts: ['infra', 'Monitoring', 'Tune Grafana alerts: fewer pages, better runbook links', 'INFRA-102', 'chore/INFRA-102-alert-tuning', ['Raise error-rate alert threshold', 'Link runbooks from alerts'], ['Which alerts paged us most last month?'], ['dashboards/alerts.yaml']],
-  review: ['acme-web', 'Admin/Analysis', 'Code reviews and technical notes for the checkout API contract', 'ACME-1423', '', [], ['Summarise the open comments on the checkout PR'], ['docs/checkout-api.md']],
+  checkout: ['acme-web', 'Feature Build', 'Redesign the checkout page: new address step and order summary', 'ACME-1423', 'feature/ACME-1423-checkout-redesign', ['Add address step to checkout flow', 'Extract OrderSummary component', 'Wire shipping estimate into summary'], ['Split the checkout form into steps and keep the cart state in the URL', 'Why does the summary flash on step change?'], ['src/checkout/AddressStep.tsx', 'src/checkout/OrderSummary.tsx']],
+  e2e: ['acme-web', 'QA', 'Playwright end-to-end tests for the cart and checkout', 'ACME-1431', 'test/ACME-1431-cart-e2e', ['Add cart e2e specs', 'Stabilise flaky coupon test'], ['Write a Playwright test for applying a coupon at checkout'], ['e2e/cart.spec.ts', 'e2e/fixtures/coupons.ts']],
+  header: ['acme-web', 'Polish', 'Fix sticky header overlap on Safari and tidy nav spacing', 'ACME-1440', 'fix/ACME-1440-sticky-header', ['Fix sticky header on Safari 17'], ['The header overlaps the hero on Safari, find the cause'], ['src/layout/Header.css']],
+  webhooks: ['billing-api', 'Connectors', 'Payment provider webhooks: signature checks and retry with backoff', 'BILL-208', 'feature/BILL-208-webhook-retries', ['Verify webhook signatures', 'Retry failed webhook handlers with backoff'], ['Add exponential backoff to the webhook consumer', 'Add a dead-letter table for webhooks that keep failing'], ['src/webhooks/consumer.ts', 'src/webhooks/retry.ts', 'migrations/0042_dead_letter.sql']],
+  invoices: ['billing-api', 'Feature Build', 'Invoice PDF generation and monthly statement endpoint', 'BILL-219', 'feature/BILL-219-invoice-pdf', ['Render invoices to PDF', 'Add GET /statements/:month'], ['Generate an invoice PDF from the existing template'], ['src/invoices/pdf.ts', 'src/routes/statements.ts']],
+  dupes: ['billing-api', 'Firefighting', 'Duplicate invoice emails after a queue redelivery', 'BILL-231', 'fix/BILL-231-duplicate-emails', ['Make invoice email sending idempotent', 'Add regression test for redelivery'], ['Customers got the invoice email twice, find out why'], ['src/mail/send-invoice.ts', 'test/mail.spec.ts']],
+  sync: ['mobile-app', 'Feature Build', 'Offline sync queue: persist pending mutations and replay on reconnect', 'MOB-377', 'feature/MOB-377-offline-queue', ['Persist pending mutations in SQLite', 'Replay queue on reconnect', 'Handle conflicting edits'], ['Design a queue for offline edits that survives app restarts'], ['src/sync/queue.ts', 'src/sync/replay.ts']],
+  links: ['mobile-app', 'Polish', 'Deep links from push notifications to the order screen', 'MOB-390', 'feat/MOB-390-push-deeplinks', ['Route push payloads to order screen'], ['Open the order screen when the push notification is tapped'], ['src/notifications/router.ts']],
+  testflight: ['mobile-app', 'Release', 'Release 4.12: TestFlight build and store notes', 'MOB-401', 'release/4.12', ['Bump version to 4.12', 'Update release notes'], ['Prepare the 4.12 release checklist'], ['CHANGELOG.md', 'app.config.ts']],
+  vpc: ['infra', 'Platform Build', 'Terraform: staging VPC peering and private subnets', 'INFRA-91', 'feature/INFRA-91-vpc-peering', ['Add VPC peering module', 'Private subnets for staging'], ['Peer the staging and shared-services VPCs without overlapping CIDRs'], ['modules/network/peering.tf', 'envs/staging/main.tf']],
+  certs: ['infra', 'Platform Care', 'Rotate expiring TLS certificates and automate renewal checks', 'INFRA-97', 'chore/INFRA-97-cert-rotation', ['Rotate edge certificates', 'Add expiry alert'], ['List certificates that expire within 30 days'], ['modules/edge/certs.tf']],
+  alerts: ['infra', 'Platform Care', 'Tune Grafana alerts: fewer pages, better runbook links', 'INFRA-102', 'chore/INFRA-102-alert-tuning', ['Raise error-rate alert threshold', 'Link runbooks from alerts'], ['Which alerts paged us most last month?'], ['dashboards/alerts.yaml']],
+  review: ['acme-web', 'Discovery', 'Code reviews and technical notes for the checkout API contract', 'ACME-1423', '', [], ['Summarise the open comments on the checkout PR'], ['docs/checkout-api.md']],
 };
 const MEET = {
-  standup: ['Daily standup', 'Team Meeting'],
-  planning: ['Sprint planning', 'Team Meeting'],
-  retro: ['Sprint retrospective', 'Team Meeting'],
-  design: ['Checkout design sync', 'Requirements'],
-  oncall: ['Incident review: duplicate emails', 'Incident Management'],
-  oneone: ['1:1 with Sam', 'Management'],
+  standup: ['Daily standup', 'Meetings'],
+  planning: ['Sprint planning', 'Meetings'],
+  retro: ['Sprint retrospective', 'Meetings'],
+  design: ['Checkout design sync', 'Specs'],
+  oncall: ['Incident review: duplicate emails', 'Firefighting'],
+  oneone: ['1:1 with Sam', 'Coordination'],
 };
 // weekday -> [start hh:mm, end, story | meeting:key]
 const PLAN = {
@@ -118,7 +120,7 @@ function build(date, day) {
     const base = { id: blocks.length + 1, start, end, measured: Math.round(minutes * 0.93 * 100) / 100 };
     if (what.startsWith('m:')) {
       const [title, cat] = MEET[what.slice(2)];
-      blocks.push({ ...base, kind: 'meeting', project: 'Internal', sources: ['calendar'], branches: [], paths: [], texts: [title], hint: 'Team Meeting', allocations: [{ category: cat, fraction: 1 }], summary: title, items: [] , measured: minutes });
+      blocks.push({ ...base, kind: 'meeting', project: 'Internal', sources: ['calendar'], branches: [], paths: [], texts: [title], hint: 'Meetings', allocations: [{ category: cat, fraction: 1 }], summary: title, items: [] , measured: minutes });
       return;
     }
     let key = what; const v = VARY[what]; if (v && !low && date !== '2026-09-07') key = v[(seed + i) % 3];
@@ -136,7 +138,7 @@ function build(date, day) {
       const line = (type, t, message) => JSON.stringify({ type, timestamp: at(t), cwd: path, gitBranch: branch, sessionId: sessions[0].id, message }) + '\n';
       appendFileSync(join(tdir, sessions[0].id + '.jsonl'), line('user', t0, { role: 'user', content: text }) + line('assistant', t0 + 90_000, { role: 'assistant', content: [{ type: 'text', text: 'Done.' }] }));
     });
-    blocks.push({ ...base, kind: 'work', project, sources: item.sources, branches: branch ? [branch] : [], paths: [path], texts: [...prompts, ...commits.map((c) => `${ticket}: ${c}`)], hint: 'Development', allocations: [{ category, fraction: 1 }], summary: `${ticket}: ${summary}`, sessions, commits: cs, items: [item] });
+    blocks.push({ ...base, kind: 'work', project, sources: item.sources, branches: branch ? [branch] : [], paths: [path], texts: [...prompts, ...commits.map((c) => `${ticket}: ${c}`)], hint: 'Feature Build', allocations: [{ category, fraction: 1 }], summary: `${ticket}: ${summary}`, sessions, commits: cs, items: [item] });
   });
   const other = [];
   if (OTHER[date]) {
@@ -159,7 +161,7 @@ for (const date of daysBetween(from, last)) {
   store.saveDay(build(date));
 }
 for (const date of daysBetween(from, '2026-10-01')) if (weekday(date) % 6) store.setMark(date, 'locked', true, 'submitted');
-store.editHours('2026-10-06', 'billing-api', 'Integration', 3);
-store.editBlock('2026-10-07', 1, 'Team Meeting');
+store.editHours('2026-10-06', 'billing-api', 'Connectors', 3);
+store.editBlock('2026-10-07', 1, 'Meetings');
 store.close();
 console.log(`demo home: ${home}\nrun with:\n  HOME=${home} TIMESHEET_HOME=${home}/.timesheet TIMESHEET_SECRETS=file PATH=${dirname(process.execPath)}:/usr/bin:/bin TZ=Europe/Berlin \\\n  (unset CLAUDE_CONFIG_DIR XDG_DATA_HOME first) \\\n  node --experimental-sqlite --no-warnings timesheet/bin/timesheet.js serve --port 4391`);

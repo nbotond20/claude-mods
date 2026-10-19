@@ -21,7 +21,7 @@ function setup(opts: { classifier?: Classifier | null; claude?: RawEvent[]; cale
       : opts.classifier ??
         (async ({ blocks }) => {
           classifyCalls++;
-          return { allocations: Object.fromEntries(blocks.map((b) => [b.id, [{ category: b.kind === 'meeting' ? 'Team Meeting' : 'Testing', fraction: 1 }]])), summary: '- tested' };
+          return { allocations: Object.fromEntries(blocks.map((b) => [b.id, [{ category: b.kind === 'meeting' ? 'Meetings' : 'QA', fraction: 1 }]])), summary: '- tested' };
         });
   const store = new Store(':memory:');
   const engine = new Engine({
@@ -51,7 +51,7 @@ describe('engine', () => {
     const [day] = await engine.days(D, D);
     assert.equal(day.status, 'final');
     assert.equal(day.realTotal, 4);
-    assert.deepEqual(day.entries.map((e) => [e.category, e.hours]), [['Testing', 6], ['Team Meeting', 2]]);
+    assert.deepEqual(day.entries.map((e) => [e.category, e.hours]), [['QA', 6], ['Meetings', 2]]);
     assert.equal(day.summary, '- tested');
   });
 
@@ -115,7 +115,7 @@ describe('engine', () => {
     assert.equal(counts().claudeCalls, 2, 'recomputed');
     assert.equal(day.status, 'final');
     assert.equal(day.summary, '- tested');
-    assert.deepEqual(day.entries.map((e) => e.category), ['Testing', 'Team Meeting']);
+    assert.deepEqual(day.entries.map((e) => e.category), ['QA', 'Meetings']);
   });
 
   it('counts recorded minutes without lead-ins, padding or gap bridging', async () => {
@@ -135,7 +135,7 @@ describe('engine', () => {
     assert.equal(work.measured, 65);
     assert.equal(day.blocks.find((b) => b.kind === 'meeting')!.measured, 60);
     assert.equal(day.measuredTotal, 125);
-    assert.deepEqual(day.entries.map((e) => [e.category, e.measured]), [['Testing', 65], ['Team Meeting', 60]]);
+    assert.deepEqual(day.entries.map((e) => [e.category, e.measured]), [['QA', 65], ['Meetings', 60]]);
   });
 
   it('marks days with unclassified paths partial and warns', async () => {
@@ -151,7 +151,7 @@ describe('engine', () => {
     const { engine } = setup({ classifier: async () => { throw new Error('boom'); } });
     const [day] = await engine.days(D, D);
     assert.equal(day.status, 'partial');
-    assert.deepEqual(day.entries.map((e) => e.category), ['Development', 'Team Meeting']);
+    assert.deepEqual(day.entries.map((e) => e.category), ['Feature Build', 'Meetings']);
     assert.match(day.warnings.join(), /boom/);
   });
 
@@ -173,11 +173,11 @@ describe('engine', () => {
   it('applies overrides and block recategorization on report', async () => {
     const { engine, store } = setup();
     await engine.days(D, D);
-    store.setBlockOverride(D, 1, 'Development');
-    store.setOverride(D, 'Default', 'Team Meeting', 1);
+    store.setBlockOverride(D, 1, 'Feature Build');
+    store.setOverride(D, 'Default', 'Meetings', 1);
     const [day] = await engine.days(D, D);
     // The block not overridden takes what the 1h override leaves of the 8h target.
-    assert.deepEqual(day.entries.map((e) => [e.category, e.hours]), [['Development', 7], ['Team Meeting', 1]]);
+    assert.deepEqual(day.entries.map((e) => [e.category, e.hours]), [['Feature Build', 7], ['Meetings', 1]]);
   });
 
   it('skips future days in a range', async () => {
@@ -198,13 +198,13 @@ describe('web api', () => {
       const page = await fetch(base + '/');
       assert.match(await page.text(), /<title>Timesheet<\/title>/);
       const rep = await (await fetch(`${base}/api/report?view=day&at=${D}&wait=true`)).json();
-      assert.match(rep.paste.daily, /Testing\t6/);
+      assert.match(rep.paste.daily, /QA\t6/);
       const h = { 'x-timesheet': '1' };
-      const blocked = await fetch(base + '/api/override', { method: 'POST', body: JSON.stringify({ date: D, project: 'Default', category: 'Testing', hours: 1 }) });
+      const blocked = await fetch(base + '/api/override', { method: 'POST', body: JSON.stringify({ date: D, project: 'Default', category: 'QA', hours: 1 }) });
       assert.equal(blocked.status, 403, 'writes without the X-Timesheet header are rejected');
-      await fetch(base + '/api/override', { method: 'POST', headers: h, body: JSON.stringify({ date: D, project: 'Default', category: 'Testing', hours: 5 }) });
+      await fetch(base + '/api/override', { method: 'POST', headers: h, body: JSON.stringify({ date: D, project: 'Default', category: 'QA', hours: 5 }) });
       const again = await (await fetch(base + '/api/report', { method: 'POST', headers: h, body: JSON.stringify({ view: 'week', at: D }) })).json();
-      assert.match(again.paste.grid, /Default\tTesting\t\t5\t/);
+      assert.match(again.paste.grid, /Default\tQA\t\t5\t/);
       const cfg = await (await fetch(base + '/api/config')).json();
       const bad = await fetch(base + '/api/config', { method: 'PUT', headers: h, body: JSON.stringify({ config: { ...cfg.config, target: -1 } }) });
       assert.equal(bad.status, 400);
@@ -239,7 +239,7 @@ describe('cache invalidation', () => {
 
 describe('jobs', () => {
   const dates = ['2026-09-14', '2026-09-15', '2026-09-16'];
-  function jobSetup(store = new Store(':memory:'), classify: Classifier = async ({ blocks }) => ({ allocations: Object.fromEntries(blocks.map((b) => [b.id, [{ category: 'Testing', fraction: 1 }]])), summary: '- ok' })) {
+  function jobSetup(store = new Store(':memory:'), classify: Classifier = async ({ blocks }) => ({ allocations: Object.fromEntries(blocks.map((b) => [b.id, [{ category: 'QA', fraction: 1 }]])), summary: '- ok' })) {
     const engine = new Engine({
       config: testConfig(),
       store,
@@ -273,7 +273,7 @@ describe('jobs', () => {
         calls++;
         const fail = () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
         opts?.signal?.addEventListener('abort', fail);
-        release = () => resolve({ allocations: Object.fromEntries(input.blocks.map((b) => [b.id, [{ category: 'Testing', fraction: 1 }]])), summary: '- ok' });
+        release = () => resolve({ allocations: Object.fromEntries(input.blocks.map((b) => [b.id, [{ category: 'QA', fraction: 1 }]])), summary: '- ok' });
       });
     const { runner, engine } = jobSetup(new Store(':memory:'), slow);
     (engine.config.classifier as { concurrency: number }).concurrency = 1;

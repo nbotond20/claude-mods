@@ -6,11 +6,14 @@ import { join } from 'node:path';
 process.env.TIMESHEET_HOME = mkdtempSync(join(tmpdir(), 'timesheet-test-'));
 
 const { defaultConfig } = await import('../src/core/config.ts');
+const { CATEGORIES } = await import('./example-categories.ts');
+export { CATEGORIES };
 type Config = import('../src/core/config.ts').Config;
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
   return {
     ...defaultConfig(),
+    categories: CATEGORIES,
     claudeDirs: [],
     opencodeDirs: [],
     // Span expectations are written against a 5-minute prompt lead-in.

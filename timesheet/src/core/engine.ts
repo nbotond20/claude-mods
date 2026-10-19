@@ -85,7 +85,7 @@ function classificationKey(blocks: Block[], categories: Category[], config: Conf
   const input = {
     prompt: PROMPT_VERSION,
     blocks: blocks.map((b) => [b.id, b.kind, b.project, b.start, b.end, b.texts, b.paths, (b.items ?? []).map((it) => [it.id, it.path, it.texts, it.commits.map((c) => [c.added, c.removed]), it.work])]),
-    categories: categories.map((c) => [c.name, c.classify !== false]),
+    categories: categories.map((c) => [c.name, c.classify !== false, ...(c.role ? [c.role] : [])]),
     classifier: [config.classifier.model, config.classifier.notes ?? ''],
   };
   return createHash('sha256').update(JSON.stringify(input)).digest('hex').slice(0, 16);
@@ -435,7 +435,9 @@ export class Engine {
     let summary = '';
     let classifyFailed = false;
     const previous = this.store.getDay(date);
-    const classifyKey = blocks.length && this.classifier ? classificationKey(blocks, categories, this.config) : undefined;
+    // Nothing to choose from until categories are set up: blocks stay under their default.
+    const classifier = categories.some((c) => c.classify !== false) ? this.classifier : null;
+    const classifyKey = blocks.length && classifier ? classificationKey(blocks, categories, this.config) : undefined;
     const reuse = classifyKey && previous && !reclassify && (previous.classifyKey === classifyKey || this.classifiedBeforeMeasuring(previous, blocks)) ? previous : null;
     if (reuse) {
       // Same blocks, categories and classifier settings as last time: its answer still holds.
@@ -448,10 +450,10 @@ export class Engine {
         for (const it of b.items ?? []) it.summary = items.get(it.id) ?? it.summary;
       }
       summary = reuse.summary;
-    } else if (blocks.length && this.classifier) {
+    } else if (blocks.length && classifier) {
       try {
         this.log(`Classifying ${date} (${blocks.length} blocks)…`);
-        const out = sanitize(await this.classifier({ date, categories, blocks, notes: this.config.classifier.notes }, { signal }), blocks, categories);
+        const out = sanitize(await classifier({ date, categories, blocks, notes: this.config.classifier.notes }, { signal }), blocks, categories);
         for (const b of blocks) {
           b.allocations = out.allocations[b.id];
           b.summary = out.blockSummaries?.[b.id] ?? b.summary;
@@ -465,7 +467,7 @@ export class Engine {
       } catch (e) {
         if (isAbort(e) || signal?.aborted) throw e;
         classifyFailed = true;
-        warnings.push(`Classification: ${(e as Error).message}; booked as Development / Team Meeting`);
+        warnings.push(`Classification: ${(e as Error).message}; booked under the default categories`);
       }
     }
     if (!summary && blocks.length) summary = fallbackSummary(blocks);

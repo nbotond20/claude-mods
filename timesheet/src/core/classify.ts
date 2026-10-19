@@ -27,12 +27,23 @@ export interface ClassifyOutput {
 
 export type Classifier = (input: ClassifyInput, opts?: { signal?: AbortSignal }) => Promise<ClassifyOutput>;
 
-const FALLBACK = 'General';
+/** Booked when no categories are configured yet. */
+export const UNCATEGORIZED = 'Uncategorized';
 
-/** Category a block gets when classification is off or fails: Team Meeting for meetings, Development otherwise. */
+const withRole = (categories: Category[], role: Category['role']) => categories.find((c) => c.role === role)?.name;
+
+/**
+ * Category a block gets when classification is off or fails: the meeting role for meetings, the
+ * work role otherwise, then the fallback role, then the first category the classifier may pick.
+ */
 export function defaultCategory(kind: Block['kind'], categories: Category[]): string {
-  const dflt = kind === 'meeting' ? 'Team Meeting' : 'Development';
-  return categories.some((c) => c.name === dflt) ? dflt : FALLBACK;
+  return (
+    (kind === 'meeting' ? withRole(categories, 'meeting') : undefined) ??
+    withRole(categories, 'work') ??
+    withRole(categories, 'fallback') ??
+    (categories.find((c) => c.classify !== false) ?? categories[0])?.name ??
+    UNCATEGORIZED
+  );
 }
 
 /** Keeps only known categories and normalizes fractions to sum to 1; falls back to the default category. */
@@ -135,7 +146,34 @@ function describeBlock(b: Block) {
 }
 
 /** Bumped when the prompt or what it is shown changes, so cached classifications are redone. */
-export const PROMPT_VERSION = 5;
+export const PROMPT_VERSION = 6;
+
+const cats0 = (categories: Category[]) => categories.find((c) => c.classify !== false)?.name ?? UNCATEGORIZED;
+
+/** How to pick categories: each one's own description, plus what its role means. */
+function roleGuidance(categories: Category[]): string {
+  const pickable = categories.filter((c) => c.classify !== false);
+  const named = (role: Category['role']) => pickable.filter((c) => c.role === role).map((c) => `"${c.name}"`);
+  const list = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} or ${names.at(-1)}` : names[0]);
+  const lines = ['- Follow each category\'s description: it says what belongs there.'];
+  const work = named('work');
+  if (work.length) lines.push(`- ${work[0]} is the usual category for building and coding work; when unsure between it and a similar category, choose it.`);
+  const incident = named('incident');
+  if (incident.length)
+    lines.push(
+      `- ${list(incident)}: only when the prompts, commits or branches explicitly show a production problem (alerts, crashes, outages, errors reported from production, hotfixes, reverts); an ordinary bug fix, or a problem in a local or dev environment, is not an incident. When they do, the whole effort on that problem belongs there: investigating, writing and shipping the fix, and checking afterwards, in every block where that happens. Routine deployment approvals are not a production problem.`,
+    );
+  const deploy = named('deploy');
+  if (deploy.length)
+    lines.push(`- ${list(deploy)}: only the time actually spent releasing: publishing releases, running deploy/release workflows, approving deployments. A release, approval or workflow run takes minutes: it never turns a block of coding into ${list(deploy)}. Fixing CI/CD or deployment pipelines is not releasing.`);
+  const noCode = named('no-code');
+  if (noCode.length) lines.push(`- ${list(noCode)}: work that produced NO code (few or no edits outside docs, mostly reads/searches, talks). Never use them for a block where code files were edited or committed in any real amount.`);
+  const meeting = named('meeting');
+  if (meeting.length) lines.push(`- Meetings are ${meeting[0]} unless a meeting clearly matches another category by its topic.`);
+  const fallback = named('fallback');
+  if (fallback.length) lines.push(`- ${fallback[0]} only when nothing else fits.`);
+  return `How to pick categories:\n${lines.join('\n')}\n`;
+}
 
 export function buildPrompt(input: ClassifyInput): string {
   const cats = input.categories
@@ -153,28 +191,12 @@ Evidence per block (and per item: work in one repo; items may overlap in time):
 - "assistant": what the AI assistant actually did in the session: files it edited with lines written and their areas, how many reads/searches, shell and web calls, and which shell commands ran (program + subcommand only).
 Judge the MEANING of the work from all of this together, not from the wording of one prompt. Book time where the effort went: minutes follow the sessions and code, not one-off events inside them. What was changed outweighs what was asked: a prompt that says "analyze" or "look into" followed by hundreds of lines of new code is building, not analysis.
 
-How to pick categories:
-- Development: building new functionality: new features, screens, endpoints, modules, jobs (feat commits, new files, mostly added code lines, edits to application code). Also bug fixes and refactors done while building that same new functionality.
-- Integration: the new work is mainly an interface to another system (API clients, webhooks, GraphQL/REST schema to connect services, SSO/identity providers).
-- Small Enhancements: a small change to existing, already-working functionality (tweak, copy/style change, small non-urgent bug fix, a minor refactor); a few files, modest line counts, usually under a day in total.
-- Medium Enhancements: a substantial rework of an existing feature that users already rely on (redesign, larger refactor with behaviour change) over several days. Adding new capabilities is Development, not an enhancement; when unsure between the two, choose Development.
-- Incident Management: restoring or fixing production: alerts, crashes, pod restarts, errors reported from production, hotfix branches, reverts, urgent fixes. Only when the prompts, commits or branches explicitly show a production problem; an ordinary bug fix, or a problem in a local or dev environment, is not an incident. When they do, the whole effort on that problem is Incident Management: investigating, debugging pods/memory/logs, writing and shipping the fix, and checking afterwards whether it is resolved, in every block where that happens. Routine deployment approvals are not a production problem.
-- Change Management: dependency updates and patches (deps-only or lockfile-dominated changes, renovate/dependabot branches, version bumps, pinning), low-risk operational config changes.
-- Infrastructure (Build): creating new environments, CI/CD pipelines, Docker/k8s/helm/terraform setups. Infrastructure (S&M): maintaining or tuning them (pipeline fixes, resource limits, memory/perf tuning of running services, build tooling upkeep).
-- Security (Build): setting up auth, IAM, permissions, encryption, secret handling, hardening. Security (S&M): handling security alerts and vulnerability findings.
-- Testing: the work is mainly writing or running tests (test-area files dominate, test commands, QA of a feature).
-- Deployment: only the time actually spent releasing: publishing releases, running deploy/release workflows, approving deployments, promotion work, hypercare right after a release. A release, approval or workflow run takes minutes: it never turns a block of coding into Deployment. Fixing CI/CD or deployment pipelines is Infrastructure, not Deployment.
-- Monitoring: reviewing logs, dashboards and alerts without changing code.
-- Requirements: functional design (specs, designs, planning a feature with stakeholders). Admin/Analysis: investigation, analysis, documentation and reporting that produced NO code: few or no edits outside docs, mostly reads/searches. Never use Requirements or Admin/Analysis for a block where code files were edited or committed in any real amount.
-- Service Requests: access, accounts and configuration done for someone else on request. Training: learning, courses, tutorials. Management: coordination, status reporting, planning people's work.
-- General only when nothing else fits.
-
+${roleGuidance(input.categories)}
 Rules:
 - Split a block into allocations {category, fraction} when its items (or clear phases of it) are different kinds of work: weight fractions by the items' minutes. Keep a single category when the whole block is one kind of work. Fractions per block sum to 1; ignore slivers under a quarter of the block.
 - Classify by the dominant purpose of each piece of work, not by every topic that was touched.
 - Be consistent: the same feature, fix or topic gets the same category in every block of the day (work on one feature that spans several blocks is one kind of work). Decide per feature first, then allocate.
 - Use only the exact category names above.
-- Meetings are "Team Meeting" unless the meeting is clearly about development or testing work (then Development or Testing), or clearly matches another category (incident, training, requirements workshop, deployment/release, ...).
 ${input.notes ? `- ${input.notes}\n` : ''}- For each block write "summary": one short line (at most ~10 words, no trailing period) saying what was actually done, e.g. "Fixed token refresh race in auth middleware". For meetings, restate the meeting's topic.
 - Give each item its own "summary" line the same way.
 - Summaries are titles in a calendar: write them in your own words. Never copy or quote a prompt.
@@ -184,7 +206,7 @@ Blocks:
 ${JSON.stringify(input.blocks.map(describeBlock), null, 1)}
 
 Respond with ONLY a JSON object, no prose, in this shape:
-{"blocks":[{"id":1,"summary":"...","allocations":[{"category":"Development","fraction":1}],"items":[{"id":"1.1","summary":"..."}]}],"summary":"- ..."}`;
+{"blocks":[{"id":1,"summary":"...","allocations":[{"category":${JSON.stringify(cats0(input.categories))},"fraction":1}],"items":[{"id":"1.1","summary":"..."}]}],"summary":"- ..."}`;
 }
 
 export function parseResponse(text: string): ClassifyOutput {

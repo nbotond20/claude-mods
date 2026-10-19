@@ -54,24 +54,24 @@ function day(date: string, entries: [string, string, number][], status: DayStatu
 }
 
 const RULES: SubmitRule<RedmineTarget>[] = [
-  { project: 'NLP', category: 'Development', target: { issueId: 4242, activity: 'Development' } },
-  { project: 'NLP', category: 'Team Meeting', target: { issueId: 101, activity: 'Meeting' } },
+  { project: 'NLP', category: 'Feature Build', target: { issueId: 4242, activity: 'Development' } },
+  { project: 'NLP', category: 'Meetings', target: { issueId: 101, activity: 'Meeting' } },
   { project: 'NLP', category: 'Learning', target: { issueId: 102, activity: 'Overhead - learning' } },
 ];
 
 /** A week with hours on four days (Thursday is today). */
 const WEEK_REPORTS = [
-  day('2026-09-28', [['NLP', 'Development', 6], ['NLP', 'Team Meeting', 2]]),
-  day('2026-09-29', [['NLP', 'Development', 8]]),
-  day('2026-09-30', [['NLP', 'Development', 7.25], ['NLP', 'Learning', 0.75]]),
-  day('2026-10-01', [['NLP', 'Development', 4]], 'today'),
+  day('2026-09-28', [['NLP', 'Feature Build', 6], ['NLP', 'Meetings', 2]]),
+  day('2026-09-29', [['NLP', 'Feature Build', 8]]),
+  day('2026-09-30', [['NLP', 'Feature Build', 7.25], ['NLP', 'Learning', 0.75]]),
+  day('2026-10-01', [['NLP', 'Feature Build', 4]], 'today'),
 ];
 
 /** Only two days with hours; the others are empty. */
 const SMALL_REPORTS = [
   day('2026-09-28', []),
-  day('2026-09-29', [['NLP', 'Development', 8]]),
-  day('2026-09-30', [['NLP', 'Team Meeting', 1.5]]),
+  day('2026-09-29', [['NLP', 'Feature Build', 8]]),
+  day('2026-09-30', [['NLP', 'Meetings', 1.5]]),
   day('2026-10-01', [], 'today'),
 ];
 

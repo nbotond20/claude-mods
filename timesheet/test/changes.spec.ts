@@ -75,36 +75,36 @@ describe('guards', () => {
     ...extra,
   });
   const block = (items: BlockItem[], extra: Partial<Block> = {}): Block => ({
-    id: 1, start: 0, end: Math.max(...items.map((i) => i.end)), kind: 'work', project: 'P', sources: ['claude'], branches: [], paths: ['/w/app'], texts: ['build it'], hint: 'Development', allocations: [], items, ...extra,
+    id: 1, start: 0, end: Math.max(...items.map((i) => i.end)), kind: 'work', project: 'P', sources: ['claude'], branches: [], paths: ['/w/app'], texts: ['build it'], hint: 'Feature Build', allocations: [], items, ...extra,
   });
   const approval = { kind: 'approval' as const, repo: 'o/r', title: 'Approved deployment to production', url: 'u' };
 
-  it('limits Deployment to the time its events take', () => {
+  it('limits the deploy role to the time its events take', () => {
     const b = block([item('1.1', 200, 500)], { actions: [approval] });
-    assert.deepEqual(enforce([{ category: 'Deployment', fraction: 0.7 }, { category: 'Development', fraction: 0.3 }], b, cats), [{ category: 'Development', fraction: 1 }]);
+    assert.deepEqual(enforce([{ category: 'Release', fraction: 0.7 }, { category: 'Feature Build', fraction: 0.3 }], b, cats), [{ category: 'Feature Build', fraction: 1 }]);
     const deployOnly = block([item('1.1', 20, 0)], { actions: [approval] });
-    assert.deepEqual(enforce([{ category: 'Deployment', fraction: 1 }], deployOnly, cats), [{ category: 'Deployment', fraction: 1 }]);
+    assert.deepEqual(enforce([{ category: 'Release', fraction: 1 }], deployOnly, cats), [{ category: 'Release', fraction: 1 }]);
   });
 
-  it('keeps analysis categories out of time spent writing code', () => {
+  it('keeps no-code categories out of time spent writing code', () => {
     const b = block([item('1.1', 60, 400), item('1.2', 60, 0)]);
-    assert.deepEqual(enforce([{ category: 'Admin/Analysis', fraction: 1 }], b, cats), [{ category: 'Admin/Analysis', fraction: 0.5 }, { category: 'Development', fraction: 0.5 }]);
+    assert.deepEqual(enforce([{ category: 'Discovery', fraction: 1 }], b, cats), [{ category: 'Discovery', fraction: 0.5 }, { category: 'Feature Build', fraction: 0.5 }]);
   });
 
-  it('needs production evidence for Incident Management', () => {
+  it('needs production evidence for the incident role', () => {
     const b = block([item('1.1', 60, 50)], { texts: ['fix the sorting of the table'] });
-    assert.deepEqual(enforce([{ category: 'Incident Management', fraction: 1 }], b, cats), [{ category: 'Small Enhancements', fraction: 1 }]);
+    assert.deepEqual(enforce([{ category: 'Firefighting', fraction: 1 }], b, cats), [{ category: 'Feature Build', fraction: 1 }]);
     const approved = block([item('1.1', 60, 50)], { texts: ['fix the table', approval.title], actions: [approval] });
-    assert.deepEqual(enforce([{ category: 'Incident Management', fraction: 1 }], approved, cats), [{ category: 'Small Enhancements', fraction: 1 }]);
+    assert.deepEqual(enforce([{ category: 'Firefighting', fraction: 1 }], approved, cats), [{ category: 'Feature Build', fraction: 1 }]);
     const prod = block([item('1.1', 60, 50)], { texts: ['pods restarting in production, fix it'] });
-    assert.deepEqual(enforce([{ category: 'Incident Management', fraction: 1 }], prod, cats), [{ category: 'Incident Management', fraction: 1 }]);
+    assert.deepEqual(enforce([{ category: 'Firefighting', fraction: 1 }], prod, cats), [{ category: 'Firefighting', fraction: 1 }]);
   });
 
   it('gives empty blocks the category of their nearest neighbour', () => {
     const empty = block([item('1.1', 15, 0)], { id: 1, texts: ['/clear'] });
     const work = { ...block([item('2.1', 60, 300)]), id: 2, start: 20 * M, end: 80 * M };
-    const allocations = { 1: [{ category: 'General', fraction: 1 }], 2: [{ category: 'Small Enhancements', fraction: 1 }] };
+    const allocations = { 1: [{ category: 'Other', fraction: 1 }], 2: [{ category: 'Polish', fraction: 1 }] };
     inheritEmpty([empty, work], allocations);
-    assert.deepEqual(allocations[1], [{ category: 'Small Enhancements', fraction: 1 }]);
+    assert.deepEqual(allocations[1], [{ category: 'Polish', fraction: 1 }]);
   });
 });

@@ -25,7 +25,9 @@ HOME=/tmp/ts-demo/home TIMESHEET_HOME=/tmp/ts-demo/home/.timesheet TIMESHEET_SEC
   node --experimental-sqlite --no-warnings timesheet/bin/timesheet.js serve --port 4391
 ```
 
-Run the server in that environment only. Without it the app reads your real `~/.timesheet`, profiles and keychain. The data covers weekdays from Sep 1 to Oct 12, 2026; the week of Oct 5 is the fullest.
+Run the server in that environment only. Without it the app reads your real `~/.timesheet`, profiles and keychain. The data covers weekdays from Sep 1 to Oct 12, 2026; the week of Oct 5 is the fullest. The categories are the made-up list in `timesheet/test/example-categories.ts`.
+
+With the server up, `node scripts/demo/shoot-timesheet.mjs /tmp/shots` takes every timesheet screenshot (1440×900, 2x; block details at 1000×625, the dark week at 1100×900) in headless Chrome. Pass names to take only some. Run `pngquant --quality 80-95 --ext .png --force` on the results before copying them to `docs/images/timesheet/`.
 
 ## observability dashboards
 

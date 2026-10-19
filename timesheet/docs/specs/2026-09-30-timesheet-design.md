@@ -23,13 +23,13 @@ One TypeScript package (Node ≥ 22) with a shared core:
 | `collectors/gcal.ts` | Google Calendar API (OAuth desktop, `calendar.readonly`), selected calendars; skip declined, all-day, attendee-less busy blocks; OOO → day = 0 |
 | `scope.ts` | Glob rules work→project / personal; most specific wins; unmatched → "unclassified" warning, day marked partial |
 | `timeline.ts` | Merge events into blocks (gap > 30 min splits); meetings take precedence over overlapping activity |
-| `classify.ts` | One `claude -p` call per day assigning categories and writing the daily summary; runs from a dedicated dir excluded from collection; without it meetings are Team Meeting and other work Development; fallback category `General` |
+| `classify.ts` | One `claude -p` call per day assigning categories and writing the daily summary; runs from a dedicated dir excluded from collection; without it blocks go to the categories holding the meeting, work or fallback rule (`Uncategorized` when there are none) |
 | `hours.ts` | Real hours per category; normalization to target, rounded to 0.25 with largest-remainder so the day sums exactly; no-activity days stay 0 |
 | `store.ts` | SQLite (`node:sqlite`) at `~/.timesheet/db.sqlite`: days, blocks, entries, overrides |
 | `format.ts` | grid / lines / internal renderers |
 
 ## Task categories
-Configurable list with CAPEX/OPEX flag and optional validity dates (default: the September 2026 list; legacy Maintenance/Development valid until 2026-12-31). A meeting about development or testing is classified as Development/Testing; otherwise Team Meeting.
+Configurable list with CAPEX/OPEX flag, optional validity dates and an optional rule (work, meeting, fallback, no-code, deploy, incident). Empty by default; a list can be pasted in Settings. Meetings go to the meeting-rule category unless the classifier finds a better fit.
 
 ## Caching rules
 - Past, complete days are final; today is always recomputed.

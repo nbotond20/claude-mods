@@ -21,7 +21,22 @@ export interface Category {
   validTo?: string;
   /** Colour in the calendar view: accent | info | good | warn | danger | conflict | working | waiting */
   tone?: string;
+  /** What the category stands for in classification and its evidence checks; see CATEGORY_ROLES. */
+  role?: CategoryRole;
 }
+
+/**
+ * Roles tie a company's own category names to the built-in behaviour:
+ * - work / meeting: the default for work blocks / meetings (without classification, or when it fails),
+ * - fallback: work that fits nowhere else,
+ * - no-code: analysis, meetings, planning; never claims time in which code was written,
+ * - deploy: releasing; capped at the time its release events take,
+ * - incident: production problems; needs a sign of one in the prompts, commits or branches.
+ */
+export const CATEGORY_ROLES = ['work', 'meeting', 'fallback', 'no-code', 'deploy', 'incident'] as const;
+export type CategoryRole = (typeof CATEGORY_ROLES)[number];
+/** Roles at most one category may have. */
+export const SINGLE_ROLES: CategoryRole[] = ['work', 'meeting', 'fallback'];
 
 export interface ScopeRule {
   path: string;
@@ -83,42 +98,15 @@ export interface Config {
     /** Time credited before each action (an approval, a release, an issue…), like commitLeadMinutes */
     leadMinutes: number;
   };
-  /** notes: extra guidance appended to the classification prompt, e.g. how your team splits Development vs Small Enhancements */
+  /** notes: extra guidance appended to the classification prompt, e.g. how your team tells two similar categories apart */
   classifier: { enabled: boolean; command: string; model: string; timeoutSeconds: number; concurrency: number; notes?: string };
   categories: Category[];
   /** Entering booked hours into Redmine (Worktime) and NetSuite (weekly timesheet) through the browser */
   submit: { redmine: SubmitSystemConfig<RedmineTarget>; netsuite: SubmitSystemConfig<NetsuiteTarget> };
 }
 
-export const DEFAULT_CATEGORIES: Category[] = [
-  { name: 'Incident Management', subtask: 'Production incident handling', description: 'Fixing, troubleshooting, restoring service', capex: false },
-  { name: 'Change Management', subtask: 'Operational changes', description: 'Patches, low-risk changes', capex: false },
-  { name: 'Small Enhancements', subtask: 'Small enhancements', description: 'Minor improvements <8h', capex: false },
-  { name: 'Medium Enhancements', subtask: 'Medium enhancements', description: 'Feature creation, redesign; < 10 days of work', capex: true },
-  { name: 'Service Requests', subtask: 'User access & Configurations', description: 'Standard requests, access, config changes', capex: false },
-  { name: 'Monitoring', subtask: 'System monitoring', description: 'Alert handling, log review', capex: false },
-  { name: 'Backups', subtask: 'Backup testing', description: 'Restore tests, backup validation', capex: false },
-  { name: 'Infrastructure (Build)', subtask: 'Environment build', description: 'Servers, cloud setups', capex: true },
-  { name: 'Infrastructure (S&M)', subtask: 'Maintenance', description: 'Patching, tuning', capex: false },
-  { name: 'Security (Build)', subtask: 'Hardening (asset-related)', description: 'IAM, encryption setup', capex: true },
-  { name: 'Security (S&M)', subtask: 'Monitoring', description: 'Security alert handling', capex: false },
-  { name: 'General', subtask: 'Generic work', description: 'Tasks that do not fit in the other descriptions', capex: false },
-  { name: 'Training', subtask: 'Training', description: 'Learning & certifications', capex: false },
-  { name: 'Admin/Analysis', subtask: '(Pre) work for project/request', description: 'Process, analysis, documentation, reporting', capex: false },
-  { name: 'Requirements', subtask: 'Functional design', description: 'Workshops, analysis, documentation', capex: true },
-  { name: 'Development', subtask: 'Build/configuration', description: 'Coding, scripting, config', capex: true },
-  { name: 'Integration', subtask: 'API development', description: 'Interfaces, API work', capex: true },
-  { name: 'Testing', subtask: 'System & integration testing', description: 'Test cases, execution', capex: true },
-  { name: 'Deployment', subtask: 'Releases', description: 'Deployments, hypercare setup', capex: true },
-  { name: 'Management', subtask: 'PM tasks', description: 'Status reporting, coordination', capex: false },
-  {
-    name: 'Team Meeting',
-    subtask: 'General Team meeting',
-    description: 'Team meeting with project workers about status, reporting. A meeting about development or testing is Development or Testing instead.',
-    capex: false,
-  },
-  { name: 'Maintenance', subtask: 'Maintenance (legacy)', description: 'Legacy task, available until end of 2026', capex: false, classify: false, validTo: '2026-12-31' },
-];
+/** Empty: task categories are company specific; add them in Settings or paste your list there. */
+export const DEFAULT_CATEGORIES: Category[] = [];
 
 export function defaultConfig(): Config {
   return {
@@ -181,26 +169,11 @@ export function loadConfig(): Config {
 
 export const TONES = ['accent', 'info', 'good', 'warn', 'danger', 'conflict', 'working', 'waiting'];
 
-const DEFAULT_TONES: Record<string, string> = {
-  Development: 'accent',
-  'Medium Enhancements': 'accent',
-  'Small Enhancements': 'accent',
-  Integration: 'accent',
-  Testing: 'working',
-  Deployment: 'conflict',
-  'Team Meeting': 'info',
-  Management: 'info',
-  'Incident Management': 'danger',
-  'Security (S&M)': 'danger',
-  'Security (Build)': 'danger',
-  Requirements: 'warn',
-  'Admin/Analysis': 'warn',
-  Training: 'good',
-};
+const ROLE_TONES: Partial<Record<CategoryRole, string>> = { work: 'accent', meeting: 'info', incident: 'danger', deploy: 'conflict', 'no-code': 'warn' };
 
 /** The category's configured tone, or a sensible default for the calendar view. */
 export function categoryTone(c: Category): string {
-  return c.tone || DEFAULT_TONES[c.name] || (c.capex ? 'good' : 'waiting');
+  return c.tone || (c.role && ROLE_TONES[c.role]) || (c.capex ? 'good' : 'waiting');
 }
 
 /**
@@ -221,7 +194,7 @@ export function computeKey(c: Config, schema = SCHEMA): string {
     timing: [c.gapMinutes, c.commitLeadMinutes, c.promptLeadMinutes, c.minBlockMinutes, c.idleMinutes],
     // Reply settings only when changed from the old behaviour (unanswered counted, declined not), so cached days keep their key.
     calendar: c.calendar.enabled ? [c.calendar.calendarIds, c.calendar.includeTentative, c.calendar.skipWithoutAttendees, c.calendar.project, c.calendar.maxMeetingHours, ...(c.calendar.includeUnanswered && !c.calendar.includeDeclined ? [] : [c.calendar.includeUnanswered, c.calendar.includeDeclined])] : null,
-    categories: c.categories.map((x) => [x.name, x.classify !== false, x.validFrom, x.validTo]),
+    categories: c.categories.map((x) => [x.name, x.classify !== false, x.validFrom, x.validTo, ...(x.role ? [x.role] : [])]),
     classifier: c.classifier.enabled ? [c.classifier.model, c.classifier.notes ?? ''] : null,
     // Only present when on, so days computed before GitHub existed keep their key.
     ...(c.github.enabled ? { github: [c.github.repos, c.github.leadMinutes] } : {}),
@@ -285,9 +258,12 @@ export function validateConfig(c: Config): string[] {
     names.add(cat.name);
     if (!isDate(cat.validFrom) || !isDate(cat.validTo)) errors.push(`category "${cat.name}" has an invalid validFrom/validTo (use YYYY-MM-DD)`);
     if (cat.tone && !TONES.includes(cat.tone)) errors.push(`category "${cat.name}" has unknown tone "${cat.tone}"`);
+    if (cat.role !== undefined && !CATEGORY_ROLES.includes(cat.role)) errors.push(`category "${cat.name}" has unknown role "${cat.role}" (${CATEGORY_ROLES.join(', ')})`);
   }
-  if (!names.size) errors.push('at least one category is required');
-  if (c.categories?.length && !c.categories.some((x) => x.name === 'General')) errors.push('keep a "General" category: it is the fallback for unclassifiable work');
+  for (const role of SINGLE_ROLES) {
+    const holders = (c.categories ?? []).filter((x) => x.role === role).map((x) => `"${x.name}"`);
+    if (holders.length > 1) errors.push(`only one category can have the ${role} role (${holders.join(', ')})`);
+  }
 
   for (const system of ['redmine', 'netsuite'] as const) {
     const s = c.submit?.[system];
