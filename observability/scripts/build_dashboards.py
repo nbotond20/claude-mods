@@ -30,6 +30,9 @@ M = ' | model=~"$model"'  # for events that carry the model
 SESSION = ' | session_id=~"$session"'
 
 
+# Profiles are named after ~/.claude* folders; test runs and probes tagged otherwise stay out of the lists.
+PROFILES = '/^claude(-.+)?$/'
+
 class Dash:
     def __init__(self, uid, title, description, vars_=('profile', 'model'), tags=()):
         self.uid, self.title, self.description = uid, title, description
@@ -72,7 +75,7 @@ class Dash:
         for v in self.vars:
             if v == 'profile':
                 tvars.append({'name': 'profile', 'label': 'Profile', 'type': 'query', 'datasource': LOKI,
-                              'query': 'label_values(claude_profile)', 'definition': 'label_values(claude_profile)',
+                              'query': 'label_values(claude_profile)', 'definition': 'label_values(claude_profile)', 'regex': PROFILES,
                               'includeAll': True, 'multi': True, 'allValue': '.*', 'refresh': 2, 'sort': 1,
                               'current': {'text': ['All'], 'value': ['$__all']}})
             elif v == 'model':
@@ -97,7 +100,7 @@ class Dash:
             elif v in ('a_profile', 'b_profile'):
                 side = v[0].upper()
                 tvars.append({'name': v, 'label': f'{side}: profile', 'type': 'query', 'datasource': LOKI,
-                              'query': 'label_values(claude_profile)', 'definition': 'label_values(claude_profile)',
+                              'query': 'label_values(claude_profile)', 'definition': 'label_values(claude_profile)', 'regex': PROFILES,
                               'includeAll': True, 'multi': True, 'allValue': '.*', 'refresh': 2, 'sort': 1,
                               'description': f'The profile(s) on side {side}; pick several to pool them.',
                               'current': CMP_DEFAULT[v]})

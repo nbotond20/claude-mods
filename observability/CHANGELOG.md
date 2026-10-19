@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7
+- Profiles that share one `settings.json` through a symlink are told apart. The profile is no longer a fixed `OTEL_RESOURCE_ATTRIBUTES` value (whichever profile wrote it last tagged them all). Instead an `otelHeadersHelper` sends the session's config dir name, and the collector, now configured by the mod, writes it into `claude.profile`. Live data recorded before this may sit under the wrong profile; backfilled data was always right.
+- The profile lists only show `claude` and `claude-*` profiles, so test runs and probes tagged otherwise stay out.
+
 ## 0.1.6
 - `/obs setup` asks whether to replay past sessions (30 days, 7 days or no) in the same selectable question as the other settings, instead of offering it in plain text.
 

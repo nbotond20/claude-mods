@@ -589,8 +589,21 @@ export const KEYS = [
   'BETA_TRACING_ENDPOINT',
 ]
 
+/**
+ * Tags each session's telemetry with its profile: Claude Code runs it through a shell, in the session's
+ * environment, and the collector copies the header into claude.profile. A fixed OTEL_RESOURCE_ATTRIBUTES
+ * would be wrong for profiles that share one settings.json through a symlink.
+ */
+export const HEADERS_HELPER = "printf '{\"X-Claude-Profile\":\"%s\"}' \"$(basename \"${CLAUDE_CONFIG_DIR:-$HOME/.claude}\" | sed 's/^\\.//;s/[^A-Za-z0-9_.-]/_/g')\""
+
+/** The settings' otelHeadersHelper after the env plan: ours while telemetry is on, never someone else's. */
+export function planHelper(current: unknown, plan: EnvPlan, on: boolean): string | undefined {
+  if (current !== undefined && current !== HEADERS_HELPER) return current as string
+  return on && plan.action !== 'foreign' && plan.action !== 'remove' ? HEADERS_HELPER : undefined
+}
+
 /** The environment a profile's settings get. */
-export function telemetryEnv(c: Config, profile: string): Record<string, string> {
+export function telemetryEnv(c: Config): Record<string, string> {
   const endpoint = `http://127.0.0.1:${c.otlpHttpPort}`
   const env: Record<string, string> = {
     [MARK]: '1',
@@ -606,7 +619,6 @@ export function telemetryEnv(c: Config, profile: string): Record<string, string>
     OTEL_METRIC_EXPORT_INTERVAL: '10000',
     OTEL_LOGS_EXPORT_INTERVAL: '2000',
     OTEL_METRICS_INCLUDE_VERSION: 'true',
-    OTEL_RESOURCE_ATTRIBUTES: `claude.profile=${profile.replace(/[^\w.-]/g, '_')}`,
   }
   if (c.content) Object.assign(env, { OTEL_LOG_USER_PROMPTS: '1', OTEL_LOG_TOOL_DETAILS: '1' })
   if (c.content && c.toolContent) env.OTEL_LOG_TOOL_CONTENT = '1'
@@ -701,13 +713,16 @@ async function applyProfile($: EngineInterface, p: Profile, on = cfg.telemetry):
   const exists = await $.fs.exists(path).catch(() => false)
   const settings = exists ? await readJson<Record<string, unknown>>($, path) : {}
   if (!settings) return 'none' // unreadable JSON: never overwrite it
-  const plan = planEnv(settings.env as Record<string, string> | undefined, on ? telemetryEnv(cfg, p.name) : null)
-  if (plan.action === 'write' || plan.action === 'remove') {
-    const next = { ...settings, env: plan.env }
-    if (!Object.keys(plan.env).length) delete next.env
+  const plan = planEnv(settings.env as Record<string, string> | undefined, on ? telemetryEnv(cfg) : null)
+  const helper = planHelper(settings.otelHeadersHelper, plan, on)
+  if (plan.action === 'write' || plan.action === 'remove' || helper !== settings.otelHeadersHelper) {
+    const next: Record<string, unknown> = plan.action === 'write' || plan.action === 'remove' ? { ...settings, env: plan.env } : { ...settings }
+    if (next.env && !Object.keys(next.env as object).length) delete next.env
+    if (helper === undefined) delete next.otelHeadersHelper
+    else next.otelHeadersHelper = helper
     await $.fs.write(path, JSON.stringify(next, null, 2) + '\n')
   }
-  return plan.action
+  return plan.action === 'none' && helper !== settings.otelHeadersHelper ? 'write' : plan.action
 }
 
 // ---- the stack --------------------------------------------------------------------------------------
@@ -795,11 +810,13 @@ async function statusText($: EngineInterface) {
   )
   const rows: string[] = []
   for (const p of await allProfiles($)) {
-    const env = ((await readJson<{ env?: Record<string, string> }>($, `${p.dir}/settings.json`))?.env ?? {}) as Record<string, string>
-    const plan = planEnv(env, telemetryEnv(cfg, p.name))
+    const settings = (await readJson<{ env?: Record<string, string>; otelHeadersHelper?: string }>($, `${p.dir}/settings.json`)) ?? {}
+    const env = (settings.env ?? {}) as Record<string, string>
+    const plan = planEnv(env, telemetryEnv(cfg))
+    const current = plan.action === 'none' && planHelper(settings.otelHeadersHelper, plan, true) === settings.otelHeadersHelper
     rows.push(
       `  ${p.name}: ${
-        env[MARK] === '1' ? (plan.action === 'none' ? 'on' : 'on (settings out of date)') : plan.action === 'foreign' ? `another OpenTelemetry setup (${plan.endpoint}), left alone` : 'off'
+        env[MARK] === '1' ? (current ? 'on' : 'on (settings out of date)') : plan.action === 'foreign' ? `another OpenTelemetry setup (${plan.endpoint}), left alone` : 'off'
       }`,
     )
   }

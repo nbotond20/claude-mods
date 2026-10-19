@@ -1,24 +1,32 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { DEFAULTS, MARK, planEnv, telemetryEnv } from '../hooks/register'
+import { DEFAULTS, HEADERS_HELPER, MARK, planEnv, planHelper, telemetryEnv } from '../hooks/register'
 
 describe('observability', () => {
-  test('the telemetry env points every signal at the local collector, tagged with the profile', () => {
-    const env = telemetryEnv(DEFAULTS, 'claude-work')
+  test('the telemetry env points every signal at the local collector', () => {
+    const env = telemetryEnv(DEFAULTS)
     expect(env.CLAUDE_CODE_ENABLE_TELEMETRY).toBe('1')
     expect(env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://127.0.0.1:4318')
     expect(env.OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE).toBe('cumulative')
-    expect(env.OTEL_RESOURCE_ATTRIBUTES).toBe('claude.profile=claude-work')
+    expect(env.OTEL_RESOURCE_ATTRIBUTES).toBeUndefined()
     expect(env.BETA_TRACING_ENDPOINT).toBe('http://127.0.0.1:4318')
     expect(env.OTEL_LOG_USER_PROMPTS).toBe('1')
     expect(env.OTEL_LOG_TOOL_CONTENT).toBeUndefined()
-    const lean = telemetryEnv({ ...DEFAULTS, content: false, detailedTracing: false, otlpHttpPort: 5318 }, 'claude')
+    const lean = telemetryEnv({ ...DEFAULTS, content: false, detailedTracing: false, otlpHttpPort: 5318 })
     expect(lean.OTEL_LOG_USER_PROMPTS).toBeUndefined()
     expect(lean.ENABLE_BETA_TRACING_DETAILED).toBeUndefined()
     expect(lean.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('http://127.0.0.1:5318')
   })
 
+  test('the profile comes from a header helper: set while on, removed when off, someone else\'s kept', () => {
+    const on = planEnv({}, telemetryEnv(DEFAULTS))
+    expect(planHelper(undefined, on, true)).toBe(HEADERS_HELPER)
+    expect(planHelper(HEADERS_HELPER, planEnv({ [MARK]: '1' }, null), false)).toBeUndefined()
+    expect(planHelper('their-helper.sh', on, true)).toBe('their-helper.sh')
+    expect(planHelper(undefined, { action: 'foreign', endpoint: 'x' }, true)).toBeUndefined()
+  })
+
   test('adds the env next to existing keys, and is a no-op once in place', () => {
-    const want = telemetryEnv(DEFAULTS, 'claude')
+    const want = telemetryEnv(DEFAULTS)
     const plan = planEnv({ FOO: 'bar' }, want)
     expect(plan.action).toBe('write')
     if (plan.action !== 'write') return
@@ -29,9 +37,9 @@ describe('observability', () => {
   })
 
   test('turning content off drops only the content keys it wrote', () => {
-    const on = planEnv({}, telemetryEnv(DEFAULTS, 'claude'))
+    const on = planEnv({}, telemetryEnv(DEFAULTS))
     if (on.action !== 'write') throw new Error('expected write')
-    const off = planEnv(on.env, telemetryEnv({ ...DEFAULTS, content: false }, 'claude'))
+    const off = planEnv(on.env, telemetryEnv({ ...DEFAULTS, content: false }))
     expect(off.action).toBe('write')
     if (off.action !== 'write') return
     expect(off.env.OTEL_LOG_USER_PROMPTS).toBeUndefined()
@@ -40,12 +48,12 @@ describe('observability', () => {
 
   test('never touches an OpenTelemetry setup it did not write', () => {
     const theirs = { OTEL_EXPORTER_OTLP_ENDPOINT: 'https://otel.example.com', OTEL_METRICS_EXPORTER: 'otlp' }
-    expect(planEnv(theirs, telemetryEnv(DEFAULTS, 'claude')).action).toBe('foreign')
+    expect(planEnv(theirs, telemetryEnv(DEFAULTS)).action).toBe('foreign')
     expect(planEnv(theirs, null).action).toBe('none')
   })
 
   test('removing takes out exactly its own keys', () => {
-    const on = planEnv({ KEEP: '1' }, telemetryEnv(DEFAULTS, 'claude'))
+    const on = planEnv({ KEEP: '1' }, telemetryEnv(DEFAULTS))
     if (on.action !== 'write') throw new Error('expected write')
     const off = planEnv(on.env, null)
     expect(off.action).toBe('remove')
@@ -82,7 +90,7 @@ describe('observability', () => {
     const mine = JSON.parse(files.get('/h/.claude-my/settings.json')!)
     expect(mine.model).toBe('opus')
     expect(mine.env.FOO).toBe('1')
-    expect(mine.env.OTEL_RESOURCE_ATTRIBUTES).toBe('claude.profile=claude-my')
+    expect(mine.otelHeadersHelper).toBe(HEADERS_HELPER)
     expect(toasts.some(t => t.includes('from the next session'))).toBe(true)
     expect(files.get('/h/.claude-shared/observability/config.json')).toBeDefined()
 
@@ -90,6 +98,7 @@ describe('observability', () => {
     expect(r.text).toContain('claude-my: off')
     expect(r.text).toContain('claude-work: already off')
     expect(JSON.parse(files.get('/h/.claude-my/settings.json')!).env).toEqual({ FOO: '1' })
+    expect(JSON.parse(files.get('/h/.claude-my/settings.json')!).otelHeadersHelper).toBeUndefined()
     expect(JSON.parse(files.get('/h/.claude-work/settings.json')!).env.OTEL_EXPORTER_OTLP_ENDPOINT).toBe('https://otel.corp')
 
     const on2: any = await $.command.run({ command: 'obs', args: 'telemetry on all' } as any)

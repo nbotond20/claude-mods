@@ -195,6 +195,7 @@ cmd_up() {
     -v "$S/loki.yaml:/otel-lgtm/loki-config.yaml:ro" \
     -v "$S/prometheus.yaml:/otel-lgtm/prometheus.yaml:ro" \
     -v "$S/pyroscope.yaml:/otel-lgtm/pyroscope-config.yaml:ro" \
+    -v "$S/otelcol.yaml:/otel-lgtm/otelcol-config.yaml:ro" \
     -v "$S/provisioning/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/grafana-dashboards.yaml:ro" \
     -v "$S/provisioning/datasources.yaml:/otel-lgtm/grafana/conf/provisioning/datasources/grafana-datasources.yaml:ro" \
     -v "$S/dashboards:/claude-obs/dashboards:ro" \

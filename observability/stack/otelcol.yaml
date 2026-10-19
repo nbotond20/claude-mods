@@ -1,0 +1,73 @@
+# The OpenTelemetry collector for claude-observability: the image's own pipelines, plus the profile.
+# Profiles can share one settings.json (a symlink), so the profile cannot be a fixed resource attribute
+# there. Each session's otelHeadersHelper sends X-Claude-Profile (its config dir's name), and the
+# collector writes it into claude.profile before batching drops the request's headers.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        include_metadata: true
+      http:
+        endpoint: 0.0.0.0:4318
+        include_metadata: true
+        cors:
+          allowed_origins:
+            - http://*
+  prometheus/collector:
+    config:
+      scrape_configs:
+        - job_name: "opentelemetry-collector"
+          scrape_interval: 1s
+          static_configs:
+            - targets: ["127.0.0.1:8888"]
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+    path: "/ready"
+
+processors:
+  resource/profile:
+    attributes:
+      - key: claude.profile
+        from_context: metadata.x-claude-profile
+        action: upsert
+  batch:
+
+exporters:
+  otlp_http/metrics:
+    endpoint: http://127.0.0.1:9090/api/v1/otlp
+    tls:
+      insecure: true
+  otlp_http/traces:
+    endpoint: http://127.0.0.1:4418
+    tls:
+      insecure: true
+  otlp_http/logs:
+    endpoint: http://127.0.0.1:3100/otlp
+    tls:
+      insecure: true
+  otlp_grpc/profiles:
+    endpoint: http://127.0.0.1:4040
+    tls:
+      insecure: true
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [resource/profile, batch]
+      exporters: [otlp_http/traces]
+    metrics:
+      receivers: [otlp, prometheus/collector]
+      processors: [resource/profile, batch]
+      exporters: [otlp_http/metrics]
+    logs:
+      receivers: [otlp]
+      processors: [resource/profile, batch]
+      exporters: [otlp_http/logs]
+    profiles:
+      receivers: [otlp]
+      exporters: [otlp_grpc/profiles]

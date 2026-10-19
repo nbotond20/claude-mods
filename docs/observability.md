@@ -12,7 +12,7 @@ Needs Docker. Any free runtime works: on macOS `brew install colima docker && co
 
 | On right after install | Off until you turn it on |
 | --- | --- |
-| Telemetry written into every profile's `settings.json` `env` at the next session start (metrics, events, traces, detailed tracing), tagged `claude.profile=<profile>` | full tool outputs in events (`toolContent`) |
+| Telemetry written into every profile's `settings.json` `env` at the next session start (metrics, events, traces, detailed tracing), tagged `claude.profile=<profile>` through an `otelHeadersHelper` (right even when profiles symlink one `settings.json`) | full tool outputs in events (`toolContent`) |
 | prompt text, commands and file paths kept in the local store (`content`) | replaying past sessions (`claude-obs backfill`) |
 | the stack started in the background at session start when Docker is running (`autostart`); data kept 90 days | |
 

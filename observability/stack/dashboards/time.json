@@ -36,6 +36,7 @@
     },
     "query": "label_values(claude_profile)",
     "definition": "label_values(claude_profile)",
+    "regex": "/^claude(-.+)?$/",
     "includeAll": true,
     "multi": true,
     "allValue": ".*",
