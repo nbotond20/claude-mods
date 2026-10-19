@@ -2,7 +2,7 @@
 
 One local store of how every profile spends tokens, with a live web dashboard and a terminal report. It reads every transcript on disk (all history, subagents included) and its own event log, which adds what transcripts lack: time to first token, tool latency, the `/context` breakdown, system prompt and tool schema sizes, rate limits and compactions.
 
-- **Dashboard:** http://127.0.0.1:8787, one server per machine, updated within about a second of any activity. Tabs for live sessions, overview, cost, context, tools, agents, projects, prompts, frustration, health, engine internals, mod spend, the advisor, recurring asks, mod impact, savings and SQL.
+- **Dashboard:** http://127.0.0.1:8787, one server per machine, updated within about a second of any activity. Tabs for live sessions, overview, cost, context, tools, agents, projects, prompts, mod dialogs (what each mod asked you and what you answered), frustration, health, engine internals, mod spend, the advisor, recurring asks, mod impact, savings and SQL.
 - **Full history from day one:** the first start imports every transcript already on disk, for `~/.claude` and every `~/.claude-*` profile.
 - **Mod impact:** each mod that changes what the model does runs a holdout. The Mod impact tab says whether it saves money or costs more, with 95% intervals.
 - **Advisor:** on request, researches how to use Claude cheaper, faster and more reliably from your own data, then measures each change you apply.
@@ -36,7 +36,7 @@ Everything is on after install. `/analytics setup` picks the profiles, whether p
 | Command | Effect |
 | --- | --- |
 | `/dashboard [tab]` | restarts the dashboard server and opens it, optionally on a tab; `/dashboard stop` closes it |
-| `/analytics [overview\|daily\|models\|projects\|tools\|context\|quality\|frustration\|…] [--days N]` | terminal report |
+| `/analytics [overview\|daily\|models\|projects\|tools\|context\|dialogs\|quality\|frustration\|…] [--days N]` | terminal report |
 | `/analytics impact` | are the mods saving money or costing more |
 | `/analytics advise` · `advise bg` · `advise show` | the advisor, here or in the background · its findings |
 | `/analytics recurring` · `recurring classify` | the prompts you keep typing · drafts an automation for each |

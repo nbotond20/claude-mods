@@ -1,5 +1,8 @@
 import { describe, expect, test } from 'claude-code/testing'
-import { adviceData, inScope, keyId, parseDailyActivity, projectOf, setupPrompt, trialArm } from '../hooks/register'
+import { adviceData, inScope, keyId, modOfText, parseAnswers, parseDailyActivity, projectOf, setupPrompt, trialArm } from '../hooks/register'
+
+/** Per-test answers in place of the default prompt.submit and tool.call mocks. */
+const mocks: { submit?: (e: any) => any; tool?: (e: any) => any } = {}
 
 function engine(on: any, env: Record<string, string>, runs: string[][] = [], toasts: string[] = [], out: (argv: string[]) => string | undefined = () => undefined, agents: any[] = [], registered = true) {
   const files = new Map<string, string>()
@@ -18,7 +21,7 @@ function engine(on: any, env: Record<string, string>, runs: string[][] = [], toa
   on('process.run', ($: any, e: any) => (runs.push([...e.argv, `env:${JSON.stringify(e.init?.env ?? {})}`]), { value: { exitCode: 0, stdout: out(e.argv) ?? 'ok', stderr: '' } }))
   on('fs.exists', ($: any, e: any) => ({ value: [...files.keys()].some(f => f === e.path || f.startsWith(`${e.path}/`)) }))
   on('ui.toast', ($: any, e: any) => (toasts.push(e.text), { value: undefined }))
-  on('prompt.submit', ($: any, e: any) => ({ text: e.text }))
+  on('prompt.submit', ($: any, e: any) => mocks.submit?.(e) ?? { text: e.text })
   on('agent.list', () => ({ value: [] }))
   on('fs.write', ($: any, e: any) => (files.set(e.path, e.text), { value: undefined }))
   on('fs.read', ($: any, e: any) => (files.has(e.path) ? { value: files.get(e.path) } : { deny: 'ENOENT' }))
@@ -31,7 +34,7 @@ function engine(on: any, env: Record<string, string>, runs: string[][] = [], toa
     return { value: [...kids].map(([name, kind]) => ({ name, kind, size: 1, mtimeMs: 0, isLink: false })) }
   })
   on('session.end', ($: any, e: any) => ({ sessionId: e.sessionId }))
-  on('tool.call', () => ({ result: 'a\nb\nc', text: 'a\nb\nc' }) as any)
+  on('tool.call', ($: any, e: any) => mocks.tool?.(e) ?? ({ result: 'a\nb\nc', text: 'a\nb\nc' }) as any)
   on('tool.register', ($: any, e: any) => (registered ? { value: { tool: `mcp__usage-analytics__${e.name}` } } : { deny: 'already registered' }))
   on('agent.register', ($: any, e: any) => (agents.push(e), { value: { agent: `usage-analytics:${e.name}` } }))
   return files
@@ -56,7 +59,7 @@ describe('usage-analytics', () => {
     expect(chunks.length).toBeGreaterThan(0)
     const text = chunks.map(([, t]) => t).join('')
     for (const [path] of chunks) expect(path).toMatch(/^\/h\/\.claude-mods\/usage-analytics\/events\/claude-work\/\d{4}-\d\d-\d\d\/sess-1\./)
-    const evs = text.trim().split('\n').map(l => JSON.parse(l))
+    const evs = text.trim().split('\n').map(l => JSON.parse(l)).filter(e => e.ev !== 'dialog')
     expect(evs.map(e => e.ev)).toEqual(['session_start', 'tool', 'session_end'])
     expect(evs[0].gatewayHost).toBe('gateway.example.com')
     expect(evs[0].hasAuthToken).toBe(true)
@@ -295,6 +298,38 @@ describe('usage-analytics', () => {
     expect(inScope(t, '~/code/application', 'claude-work')).toBe(false)
     expect(inScope(t, '~/code/app', 'claude')).toBe(false)
   })
+})
+
+test('records mod dialogs per profile: questions and answers, command replies, held prompts, toasts', async ($, on) => {
+  const answered = 'User has answered your questions: "Allow image reads?"="Allow for this turn". You can now continue.'
+  mocks.tool = e => (e.tool === 'AskUserQuestion' ? { result: answered, text: answered } : undefined)
+  mocks.submit = e => (e.origin.kind === 'composer' ? { drop: 'budget-guard: context is 310k (limit 300k). Run /compact.' } : undefined)
+  const files = engine(on, ENV)
+  await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+  await $.command.run({ command: 'analytics', args: 'status', origin: { kind: 'user' }, presentation: 'text' } as any)
+  // A mod's setup wizard: its prompt makes the model's questions in that turn the mod's.
+  await $.prompt.submit({ text: 'Ask me which budget', origin: { kind: 'plugin', name: 'budget-guard' }, attachments: [] } as any).catch(() => {})
+  await $.tool.call({ tool: 'AskUserQuestion', tool_use_id: 'q1', questions: [{ question: 'Allow image reads?', header: 'budget', multiSelect: false,
+    options: [{ label: 'Allow once', description: '' }, { label: 'Allow for this turn', description: '' }] }] } as any)
+  await $.prompt.submit({ text: 'next big task', origin: { kind: 'composer' }, attachments: [] } as any).catch(() => {})
+  await new Promise(r => setTimeout(r, 0))
+  await $.session.end({ reason: 'exit', sessionId: 'sess-1' } as any)
+  mocks.tool = mocks.submit = undefined
+  const evs = [...files.entries()].filter(([p]) => p.includes('/events/')).flatMap(([, t]) => t.trim().split('\n').map(l => JSON.parse(l)))
+  const d = evs.filter(e => e.ev === 'dialog')
+  for (const x of d) expect(x.profile).toBe('claude-work')
+  expect(d.find(x => x.kind === 'command')).toMatchObject({ mod: 'usage-analytics', command: 'analytics', question: '/analytics status' })
+  expect(d.find(x => x.kind === 'hold')).toMatchObject({ mod: 'budget-guard', question: 'next big task' })
+  // A mod's toast (here the first-run notice) under the mod that showed it.
+  expect(d.find(x => x.kind === 'toast')).toMatchObject({ mod: 'usage-analytics' })
+  expect(d.find(x => x.kind === 'ask')).toMatchObject({ mod: 'budget-guard', via: 'model', question: 'Allow image reads?', answer: 'Allow for this turn', options: ['Allow once', 'Allow for this turn'] })
+})
+
+test('parses AskUserQuestion answers and names the mod behind a held prompt', () => {
+  expect(parseAnswers('User has answered your questions: "A?"="x", "B \\"q\\"?"="y, z".')).toEqual({ 'A?': 'x', 'B \\"q\\"?': 'y, z' })
+  expect(parseAnswers(undefined)).toEqual({})
+  expect(modOfText('budget-guard: context is 310k')).toBe('budget-guard')
+  expect(modOfText('Context too large')).toBe('mod')
 })
 
 test('advisor text handed to the model cannot close its quoted block', () => {

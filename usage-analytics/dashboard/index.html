@@ -563,6 +563,7 @@ const ICON = {
   agents: I('<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.4 3-5.2 6-5.2s5.4 1.8 6 5.2"/><circle cx="17.5" cy="9" r="2.4"/><path d="M16.5 14.6c2.4.2 4 1.8 4.5 4.4"/>'),
   projects: I('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
   prompts: I('<path d="M4 5h16v11H8l-4 4z"/>'),
+  dialogs: I('<path d="M3 4h12v8H7l-4 3z"/><path d="M9 15v1h8l4 3v-11h-4"/>'),
   mood: I('<circle cx="12" cy="12" r="9"/><path d="M8 16.5c1-1.2 2.4-1.8 4-1.8s3 .6 4 1.8M7.5 8.5l2.5 1.3M16.5 8.5 14 9.8"/>'),
   health: I('<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>'),
   engine: I('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>'),
@@ -831,7 +832,7 @@ function drawTable(P, opts = P.opts || {}) {
   const d = P.data, el = P.body
   if (!d) return
   if (!d.rows.length) { el.innerHTML = '<div class="empty">No data for this filter</div>'; return }
-  const long = new Set(opts.long || ['text', 'prompt', 'description', 'title', 'error', 'target', 'section', 'summary', 'finding'])
+  const long = new Set(opts.long || P.p.long || ['text', 'prompt', 'description', 'title', 'error', 'target', 'section', 'summary', 'finding'])
   let rows = d.rows
   if (P.filter) rows = rows.filter(r => r.some(v => v != null && String(v).toLowerCase().includes(P.filter)))
   const { col, asc } = P.sort
@@ -916,7 +917,7 @@ function toggleMax(P) {
 $('#scrim').onclick = () => maxed && toggleMax(maxed)
 
 // ---------- tabs ----------
-const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context', 'background']], ['Work', ['tools', 'agents', 'projects', 'prompts']], ['Quality', ['mood', 'health', 'engine']], ['Improve', ['advisor', 'recurring', 'impact', 'savings']], ['Data', ['sql']]]
+const GROUPS = [['Now', ['live', 'overview']], ['Spend', ['cost', 'context', 'background']], ['Work', ['tools', 'agents', 'projects', 'prompts', 'dialogs']], ['Quality', ['mood', 'health', 'engine']], ['Improve', ['advisor', 'recurring', 'impact', 'savings']], ['Data', ['sql']]]
 const TABS = {
   live: { label: 'Live', sub: 'right now, pushed as you work', custom: renderLive, live: true, noKpis: true, filters: ['profiles'] },
   overview: { label: 'Overview', sub: 'spend, efficiency and where it goes', panels: [
@@ -986,6 +987,13 @@ const TABS = {
     { title: 'Slash commands', q: 'commands', kind: 'table' },
     { title: 'Most expensive prompts', q: 'expensive_prompts', kind: 'table', wide: true, info: 'A prompt’s cost is every request until the next prompt.' },
     { title: 'Recent prompts', q: 'recent_prompts', kind: 'table', wide: true },
+  ] },
+  dialogs: { label: 'Mod dialogs', sub: 'what each mod asked you, what you answered, and what it said back', kpis: renderDialogKpis,
+    about: ['Every question a mod puts to you (budget-guard\u2019s allow once / turn / session / deny, the setup wizards\u2019 questions, the new-task clear / compact / keep) with the answer you picked, every mod slash command with its reply, prompts a mod held back with its reason, and the mod\u2019s toasts. Per profile; answers typed under Other are kept only when prompt text is (storePrompts).'], panels: [
+    { title: 'Mod dialogs per day', q: 'dialog_daily', kind: 'stacked', x: 'day', series: 'mod', y: 'n', wide: true, note: 'by mod' },
+    { title: 'By mod and profile', q: 'dialog_by_mod', kind: 'table', wide: true },
+    { title: 'Questions and answers', q: 'dialog_answers', kind: 'table', wide: true, note: 'most frequent first', long: ['question'] },
+    { title: 'Recent', q: 'dialog_recent', kind: 'table', wide: true, note: 'newest first · click an id for its timeline', long: ['asked', 'answer'] },
   ] },
   background: { label: 'Mod spend', sub: 'what the mods themselves spend on models: classifiers, agents, pings', kpis: renderBgKpis,
     about: ['Only the mods\u2019 own model calls, nothing you or your scripts ran: the timesheet classifier (claude -p), the usage-analytics advisor and recurring agents, and budget-guard\u2019s Haiku classifier (routing, new-task check) and keep-alive pings. The Haiku classifier logs only its input size, so its cost is an estimate at Haiku list price; everything else is from the transcripts or the call\u2019s own usage. A run is one claude -p session or one agent. A claude -p classifier that sends 15k+ tokens per call is mostly carrying Claude Code\u2019s own system prompt and tools: run it with no tools and a short system prompt, as timesheet does since 0.3.7. Your own claude -p and SDK scripts are under Cost \u2192 by entrypoint.'], panels: [
@@ -1174,6 +1182,22 @@ async function renderKpis(seq) {
 }
 
 /** The Frustration tab's tiles: the same tiles, sparklines and comparison as the spend row. */
+async function renderDialogKpis(seq) {
+  try {
+    const cur = await api('/api/dialog_kpis')
+    if (seq !== state.seq) return
+    const k = asObjs(cur)[0] || {}
+    const cards = [
+      [big(k.questions), 'Questions asked', 'by mods, or by the model inside a mod command', 'hero'],
+      [big(k.answered), 'Answered', ''], [big(k.dismissed), 'Dismissed', 'closed without an answer'],
+      [big(k.commands), 'Mod commands', 'slash commands a mod answered'], [big(k.held_prompts), 'Held prompts', 'prompts a mod stopped, with its reason'],
+      [big(k.toasts), 'Toasts', 'what mods told you'], [big(k.mods), 'Mods', ''],
+    ]
+    $('#kpis').classList.remove('flat')
+    $('#kpis').innerHTML = cards.map(([v, label, title, cls = '']) => tile({ label, value: v, title, cls })).join('')
+  } catch (e) { $('#kpis').innerHTML = `<div class="err">${esc(e.message)}</div>` }
+}
+
 async function renderBgKpis(seq) {
   try {
     const pr = prevRange(), n = +state.days

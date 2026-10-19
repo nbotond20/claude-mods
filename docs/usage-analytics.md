@@ -173,6 +173,12 @@ The mods call models on their own: the timesheet classifier, the advisor and rec
 
 A caller is flagged when a mod's call sends more than 15k tokens of context for one or two requests. That is Claude Code's own system prompt and tool list riding along with a short classification. Timesheet 0.3.7 runs its classifier with no tools, MCP servers or skills and a one-line system prompt: about 3.5k tokens of context per day instead of 25–36k, around 7× cheaper on the same model. The classifiers in this mod (frustration, quality, recurring detection) are rules and cost nothing. Only the recurring labels and the advisor use a model, and only when you start them.
 
+## Mod dialogs
+
+What the mods ask you and what you answer, per profile. Every question a mod puts to you is recorded with its options and the answer you picked (or that you dismissed it): budget-guard's allow once / this turn / this session / deny, the questions the model asks for a mod's setup wizard (the turn a mod's prompt started is that mod's), and budget-guard's clear / compact / keep on a held new-task prompt. Beside them: every mod slash command with the reply it showed, every prompt a mod held back with its reason, and the mods' toasts. No mod needs changing: a mod's `$.ui.ask` reaches usage-analytics as an AskUserQuestion call naming the mod that made it.
+
+The **Mod dialogs** tab (under Work, `/dashboard dialogs`) has the counts, dialogs per day by mod, a table by mod and profile, the questions with their most frequent answers, and the newest 200 with a link to each session. `/analytics dialogs` prints the same in the terminal. They read the `v_dialogs` view (`dialog` events plus budget-guard's `resolve`). An answer typed under Other is kept only when `storePrompts` is on.
+
 ## Recurring asks
 
 Some prompts you type again and again: "bump the version and tag it", "why did CI fail on this branch", "write the PR description". Each one could be a skill, a slash command, a hook or a line in CLAUDE.md. The Recurring tab finds them.

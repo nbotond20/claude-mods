@@ -25,6 +25,7 @@ COLS = {
     'v_context': ('day', 'profile'),
     'v_compactions': ('day', 'profile'),
     'v_system_prompt': ('day', 'profile'),
+    'v_dialogs': ('day', 'profile'),
     'v_tool_schemas': ('profile',),
     'gateway_spend': ('day', 'profile', 'model'),
     'mood': ('day', 'profile', 'project', 'model'),
@@ -236,6 +237,19 @@ Q = {
         GROUP BY profile, category ORDER BY profile, tokens DESC'''),
     'mod_context_daily': ('v_context', 'SELECT day, category, ROUND(AVG(tokens)) tokens FROM v_context WHERE {W} GROUP BY 1, 2 ORDER BY day'),
     'mod_tool_schemas': ('v_tool_schemas', 'SELECT tool, MAX(chars) chars, MAX(deferred) deferred, GROUP_CONCAT(DISTINCT profile) profiles, MAX(last_seen) last_seen FROM v_tool_schemas WHERE {W} GROUP BY tool ORDER BY chars DESC LIMIT 80'),
+    # Mod dialogs: questions mods put to the person and the answers, command replies, held prompts, toasts.
+    'dialog_kpis': ('v_dialogs', """SELECT SUM(kind = 'ask') questions, SUM(kind = 'ask' AND dismissed = 0) answered, SUM(kind = 'ask' AND dismissed != 0) dismissed,
+        SUM(kind = 'command') commands, SUM(kind = 'hold') held_prompts, SUM(kind = 'toast') toasts, COUNT(DISTINCT mod) mods FROM v_dialogs WHERE {W}"""),
+    'dialog_daily': ('v_dialogs', 'SELECT day, mod, COUNT(*) n FROM v_dialogs WHERE {W} GROUP BY 1, 2 ORDER BY 1'),
+    'dialog_by_mod': ('v_dialogs', """SELECT mod, profile, SUM(kind = 'ask') questions, SUM(kind = 'ask' AND dismissed != 0) dismissed, SUM(kind = 'command') commands,
+        SUM(kind = 'hold') held, SUM(kind = 'hold_answer') hold_answers, SUM(kind = 'toast') toasts, MAX(at) last
+        FROM v_dialogs WHERE {W} GROUP BY 1, 2 ORDER BY COUNT(*) DESC"""),
+    'dialog_answers': ('v_dialogs', """SELECT mod, COALESCE(header, '') header, question, CASE WHEN dismissed != 0 THEN '(dismissed)' ELSE answer END answer,
+        COUNT(*) n, COUNT(DISTINCT profile) profiles, MAX(at) last FROM v_dialogs WHERE {W} AND kind IN ('ask', 'hold_answer')
+        GROUP BY 1, 2, 3, 4 ORDER BY n DESC LIMIT 100"""),
+    'dialog_recent': ('v_dialogs', """SELECT at, profile, mod, kind, via, substr(COALESCE(question, ''), 1, 300) asked,
+        CASE WHEN dismissed != 0 THEN '(dismissed)' ELSE substr(COALESCE(answer, reply, ''), 1, 400) END answer, sid session_id
+        FROM v_dialogs WHERE {W} ORDER BY ts DESC LIMIT 200"""),
     'mod_system_prompt': ('v_system_prompt', 'SELECT section, MAX(section_chars) chars, MAX(chars) prompt_chars, COUNT(DISTINCT sid) sessions FROM v_system_prompt WHERE {W} GROUP BY section ORDER BY chars DESC'),
     'mod_rate_limits': ('v_measure', '''SELECT ts, profile, json_extract(r.value, '$.kind') kind, json_extract(r.value, '$.percentUsed') percent
         FROM v_measure, json_each(v_measure.rate_limits) r WHERE {W} ORDER BY ts DESC LIMIT 200'''),

@@ -611,6 +611,26 @@ const tag = Math.random().toString(36).slice(2, 8)
 const agentsSeen = new Set<string>()
 const describedTools = new Set<string>()
 
+// Mod dialogs: what each mod asks the person, what they answer, and what the mod says back (command replies,
+// held prompts, toasts). Command owners are learnt from command.register; a mod command that hands the model a
+// prompt (its setup wizards submit one) makes the model's AskUserQuestion calls in that turn the mod's too.
+const commandOwner = new Map<string, string>([['analytics', 'usage-analytics'], ['dashboard', 'usage-analytics'], ['mods', 'mods']])
+let dialogMod = ''
+const DIALOG_CHARS = 2000
+
+/** "q"="a" pairs from an AskUserQuestion result, by question. */
+export function parseAnswers(text: string | undefined): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const m of (text ?? '').matchAll(/"((?:[^"\\]|\\.)*)"="((?:[^"\\]|\\.)*)"/g)) out[m[1]!] = m[2]!
+  return out
+}
+
+/** The mod a held prompt's reason names ("budget-guard: context is …"), else the one that answered. */
+export function modOfText(text: string, fallback = 'mod') {
+  const m = /^([a-z][a-z0-9-]{1,40}):\s/.exec(text.trim())
+  return m ? m[1]! : fallback
+}
+
 const localDay = (t: number) => new Date(t - new Date(t).getTimezoneOffset() * 60_000).toISOString().slice(0, 10)
 const clip = (s: unknown, n: number) => {
   if (n <= 0 || s === undefined || s === null) return undefined
@@ -638,6 +658,24 @@ async function emit($: EngineInterface, ev: string, data: Ev) {
   buf.push({ ts, ev, sid: await sessionId($), profile, ...data })
   if (LIVE.has(ev)) void pulse($, ev, ts).catch(() => {})
   else if (buf.length >= FLUSH_AT) void flush($).catch(() => {})
+}
+
+/** One `dialog` event per question of an AskUserQuestion call: the question, its options and the answer. */
+async function emitAsks($: EngineInterface, mod: string, via: 'mod' | 'model', input: Record<string, unknown>, text: string | undefined, ms: number, dismissed: boolean) {
+  const answers = parseAnswers(text)
+  const qs = Array.isArray(input.questions) ? (input.questions as { question?: string; header?: string; options?: { label?: string }[]; multiSelect?: boolean }[]) : []
+  for (const q of qs) {
+    const question = String(q.question ?? '')
+    const options = (q.options ?? []).map(o => String(o.label ?? ''))
+    const answer = answers[question]
+    // Free text typed under "Other" is the person's own words: kept only where prompt text is.
+    const picked = answer === undefined ? undefined : answer.split(', ').every(a => options.includes(a)) || cfg.storePrompts ? clip(answer, DIALOG_CHARS) : '(typed)'
+    await emit($, 'dialog', {
+      kind: 'ask', mod, via,
+      question: clip(question, DIALOG_CHARS), header: q.header, options, multi: q.multiSelect === true || undefined,
+      answer: picked, dismissed: dismissed || answer === undefined || undefined, ms,
+    })
+  }
 }
 
 // Live dashboard: after every prompt, model request, tool call and turn, flush and touch live/<profile>.json.
@@ -713,7 +751,7 @@ async function git($: EngineInterface, cwd: string, args: string[]) {
   }
 }
 
-const TABS = ['live', 'overview', 'cost', 'context', 'background', 'tools', 'agents', 'projects', 'prompts', 'mood', 'health', 'engine', 'advisor', 'recurring', 'impact', 'savings', 'sql']
+const TABS = ['live', 'overview', 'cost', 'context', 'background', 'tools', 'agents', 'projects', 'prompts', 'dialogs', 'mood', 'health', 'engine', 'advisor', 'recurring', 'impact', 'savings', 'sql']
 /** Runs the claude-usage CLI (Python 3, standard library only) on the same data folder as this mod. */
 async function cli($: EngineInterface, args: string[], timeoutMs: number) {
   return $.process.run(['python3', `${$.plugin.root}/bin/claude-usage`, ...args], { timeoutMs, env: { CLAUDE_USAGE_DIR: root } })
@@ -1432,7 +1470,7 @@ export const register: Register = on => {
 
     await $.command.register({
       name: 'analytics',
-      description: 'Usage analytics across all profiles: setup · dashboard [tab|stop] · digest (last week) · summary [--days N] [--format md|html] (a shareable report) · advise (research how to use Claude cheaper/faster from your own data, A/B-trial, apply and verify) · recurring [classify] (the prompts you keep typing, and what could automate them) · impact (are the mods saving money?) · status · ingest · stop · or a report: overview|daily|models|projects|tools|agents|sessions|context|hours [--days N] [--profile P]',
+      description: 'Usage analytics across all profiles: setup · dashboard [tab|stop] · digest (last week) · summary [--days N] [--format md|html] (a shareable report) · advise (research how to use Claude cheaper/faster from your own data, A/B-trial, apply and verify) · recurring [classify] (the prompts you keep typing, and what could automate them) · impact (are the mods saving money?) · status · ingest · stop · or a report: overview|daily|models|projects|tools|agents|sessions|context|dialogs|hours [--days N] [--profile P]',
       argumentHint: '[setup | dashboard [tab|stop] | digest | summary [--days N] [--format md|html] | advise [bg|show|apply <id>|trial <id>|applied <id>|dismiss <id>|reproduce <id>] | recurring [classify [bg]|show <id>|automated <id>|dismiss <id>] | impact | status | ingest | stop | <report>] [--days N] [--profile P]',
     })
     await $.command.register({
@@ -1535,7 +1573,19 @@ export const register: Register = on => {
       attachments: e.attachments?.map(a => (a as any).type ?? (a as any).kind ?? 'item'),
       contextChars: size(e.context),
     })
-    return next(e)
+    // A mod's wizard prompt makes that turn's model questions the mod's; the person's own prompt ends it.
+    if (e.origin.kind === 'plugin') dialogMod = e.origin.name
+    else if (e.origin.kind === 'composer') dialogMod = ''
+    const r = await next(e)
+    if (r.drop !== undefined) {
+      await emit($, 'dialog', {
+        kind: 'hold',
+        mod: modOfText(r.drop),
+        question: cfg.storePrompts ? clip(e.text, DIALOG_CHARS) : undefined,
+        reply: clip(r.drop, DIALOG_CHARS),
+      })
+    }
+    return r
   }).catch(($, e, next) => next(e))
 
   on('turn.start', async ($, e, next) => {
@@ -1612,6 +1662,7 @@ export const register: Register = on => {
       answerChars: e.answer.length,
     })
     if (!e.agentId) {
+      dialogMod = ''
       mainTurns++
       if (cfg.breakdownEvery > 0 && (mainTurns === 1 || mainTurns % cfg.breakdownEvery === 0)) void breakdown($, `turn ${mainTurns}`).catch(() => {})
     }
@@ -1646,6 +1697,13 @@ export const register: Register = on => {
       readOnly: 'isReadOnly' in r && r.isReadOnly === true,
       contextChars: 'context' in r ? size(r.context) : 0,
     })
+    if (e.tool === 'AskUserQuestion') {
+      // A mod's $.ui.ask arrives here as this tool call, its caller in next.origin; the model's own asks count
+      // only inside a turn a mod command started.
+      const caller = next.origin.plugin
+      const mod = caller && caller !== 'engine' ? caller : dialogMod
+      if (mod) await emitAsks($, mod, caller && caller !== 'engine' ? 'mod' : 'model', input, text, ms, 'deny' in r && !!r.deny || ('isError' in r && r.isError === true))
+    }
     return r
   }).catch(($, e, next) => {
     // Nothing after this hook answers the advisor's tools: serve them here even when the logging above failed.
@@ -1716,6 +1774,30 @@ export const register: Register = on => {
 
   on('command.run', async ($, e, next) => {
     if (e.command !== 'analytics') await emit($, 'command', { command: e.command, args: clip(e.args, 300), origin: e.origin.kind })
+    const r = await next(e)
+    const mod = commandOwner.get(e.command)
+    if (mod) {
+      // A command that left the model notes owns that turn's questions.
+      if ((r.context?.length ?? 0) > 0) dialogMod = mod
+      await emit($, 'dialog', {
+        kind: 'command', mod, command: e.command,
+        question: clip(`/${e.command}${e.args ? ` ${e.args}` : ''}`, 300),
+        reply: clip(r.text, DIALOG_CHARS), toModel: r.context?.length ? true : undefined,
+      })
+    }
+    return r
+  }).catch(($, e, next) => next(e))
+
+  // Which mod owns each slash command, and what mods tell the person in toasts.
+  on('command.register', async ($, e, next) => {
+    const owner = next.origin.plugin
+    if (owner && owner !== 'engine' && !commandOwner.has(e.name)) commandOwner.set(e.name, owner)
+    return next(e)
+  }).catch(($, e, next) => next(e))
+
+  on('ui.toast', async ($, e, next) => {
+    const owner = next.origin.plugin
+    if (owner && owner !== 'engine') await emit($, 'dialog', { kind: 'toast', mod: owner, reply: clip(e.text, DIALOG_CHARS) })
     return next(e)
   }).catch(($, e, next) => next(e))
 

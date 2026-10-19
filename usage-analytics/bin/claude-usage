@@ -13,7 +13,7 @@ Commands:
   ingest  [--quiet] [--full]          fold new data in (lock-protected, incremental by byte offset)
   report  [what] [--days N] [--profile P[,P]] [--project S] [--limit N] [--ingest]
           what: overview (default) | profiles | daily | models | projects | tools | bash | files |
-                agents | sessions | context | hours | cache | prompts | gateway | quality | frustration | all
+                agents | sessions | context | hours | cache | prompts | dialogs | gateway | quality | frustration | all
   sql     "SELECT ..."                run any query (tables: see `schema`)
   schema                              list tables and views
   export  TABLE|VIEW [--format csv|jsonl] [--out FILE]
@@ -178,6 +178,20 @@ CREATE VIEW IF NOT EXISTS v_mod_actions AS
          json_extract(data,'$.nudge') nudge, json_extract(data,'$.chars') chars, json_extract(data,'$.bytesAll') bytes_all,
          json_extract(data,'$.bytesKept') bytes_kept, json_extract(data,'$.followed') followed, json_extract(data,'$.total') total, data
   FROM events WHERE ev = 'mod';
+-- Mod dialogs: what each mod asked the person and what they answered, mod command replies, held prompts and toasts;
+-- budget-guard's band choice on a held new-task prompt is the hold's answer.
+CREATE VIEW IF NOT EXISTS v_dialogs AS
+  SELECT ts, day, profile, sid, strftime('%Y-%m-%d %H:%M:%S', ts / 1000.0, 'unixepoch', 'localtime') at,
+         json_extract(data,'$.mod') mod, json_extract(data,'$.kind') kind, COALESCE(json_extract(data,'$.via'), 'mod') via,
+         json_extract(data,'$.command') command, json_extract(data,'$.header') header, json_extract(data,'$.question') question,
+         json_extract(data,'$.options') options, json_extract(data,'$.answer') answer, json_extract(data,'$.reply') reply,
+         COALESCE(json_extract(data,'$.dismissed'), 0) dismissed, json_extract(data,'$.ms') ms
+  FROM events WHERE ev = 'dialog'
+  UNION ALL
+  SELECT ts, day, profile, sid, strftime('%Y-%m-%d %H:%M:%S', ts / 1000.0, 'unixepoch', 'localtime'),
+         json_extract(data,'$.mod'), 'hold_answer', 'band', NULL, 'new task', 'Clear, compact or keep the held prompt?',
+         '["clear","compact","keep"]', json_extract(data,'$.how'), NULL, 0, NULL
+  FROM events WHERE ev = 'mod' AND json_extract(data,'$.kind') = 'resolve';
 """
 
 
@@ -1052,6 +1066,15 @@ def cmd_report(args):
         table(con, 'Slash commands', f'''SELECT substr(text, instr(text, '<command-name>') + 14,
               instr(text, '</command-name>') - instr(text, '<command-name>') - 14) command, COUNT(*) n
             FROM prompts WHERE {W} AND kind = 'command' GROUP BY command ORDER BY n DESC LIMIT ?''', p + [L])
+    if want('dialogs'):
+        # Mod dialogs have no project: filtered by day and profile only.
+        DW, dp = ' AND '.join(x for x in w if not x.startswith('project')), [x for x in p if not str(x).startswith('%')]
+        table(con, 'Mod dialogs by mod and profile', f'''SELECT mod, profile, SUM(kind = 'ask') questions, SUM(kind = 'ask' AND dismissed != 0) dismissed,
+              SUM(kind = 'command') commands, SUM(kind = 'hold') held, SUM(kind = 'toast') toasts FROM v_dialogs WHERE {DW}
+            GROUP BY 1, 2 ORDER BY COUNT(*) DESC''', dp)
+        table(con, 'Mod questions and your answers', f'''SELECT mod, substr(question, 1, 80) question,
+              CASE WHEN dismissed != 0 THEN '(dismissed)' ELSE answer END answer, COUNT(*) n FROM v_dialogs
+            WHERE {DW} AND kind IN ('ask', 'hold_answer') GROUP BY 1, 2, 3 ORDER BY n DESC LIMIT ?''', dp + [L])
     con.close()
     return 0
 
@@ -1575,7 +1598,7 @@ def main(argv=None):
     r = sub.add_parser('report')
     r.add_argument('what', nargs='?', default='overview',
                    choices=['overview', 'profiles', 'daily', 'models', 'projects', 'tools', 'bash', 'files', 'agents',
-                            'sessions', 'context', 'hours', 'cache', 'prompts', 'gateway', 'quality', 'frustration', 'all'])
+                            'sessions', 'context', 'hours', 'cache', 'prompts', 'dialogs', 'gateway', 'quality', 'frustration', 'all'])
     r.add_argument('--days', type=int, default=30, help='0 = all time')
     r.add_argument('--profile'); r.add_argument('--project'); r.add_argument('--limit', type=int, default=15)
     r.add_argument('--ingest', action='store_true', help='ingest new data first')

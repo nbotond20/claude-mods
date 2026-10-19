@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.0
+- Mod dialogs, per profile: every question a mod asks you (budget-guard's allow once / turn / session / deny, the setup wizards' questions the model asks for a mod, the new-task clear / compact / keep) with the answer you picked or that you dismissed it, every mod slash command with its reply, prompts a mod held back with its reason, and the mods' toasts. Works for every mod without changes to it: the questions are seen as AskUserQuestion calls and attributed to the calling mod.
+- A **Mod dialogs** tab (under Work, `/dashboard dialogs`): counts, per day by mod, by mod and profile, the questions with their most frequent answers, and the newest dialogs with a link to the session. `/analytics dialogs` is the terminal report.
+- Answers typed under Other are kept only when prompt text is (`storePrompts`).
+
 ## 0.15.0
 - Gateway spend stays current: every open session on the key refreshes it every 15 minutes, not only once at start, and a failed fetch is recorded instead of silently keeping old numbers.
 - One file per gateway key (`gateway/key-<fingerprint>.json`, never the key itself) listing every profile that used it, so a key shared by two profiles is counted once, under the profile that uses it most; its list-price comparison covers all of them. Older per-profile files are used only until the key's file exists.
