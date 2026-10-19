@@ -29,6 +29,9 @@
   .cur { display: inline-block; width: 9px; height: 17px; background: #c9f4ff; vertical-align: -3px; }
   .toast { display: inline-block; border: 1px solid #3f3f46; border-radius: 8px; padding: 6px 12px; background: #202024; }
   .scene { display: none; } .scene.on { display: block; }
+  .ask .chip { background: #2f3a4a; color: #cfe3ff; padding: 0 6px; border-radius: 3px; }
+  .ask .tab { padding: 0 6px; } .ask .tab.at { background: #2f3a4a; color: #cfe3ff; border-radius: 3px; }
+  .ask .sel { color: var(--blue); } .ask .top { display: block; border-top: 1px solid var(--blue); margin: 2px 0 8px; opacity: .7; }
 </style>
 </head>
 <body>
@@ -47,13 +50,6 @@
  <span class="c b">◆ sonnet 5.5</span><span class="c"> · medium</span>  <span class="d">│ </span>≈$1.92<span class="d"> · $2.40/h API-equiv  │ </span><span class="y">day $21.30/$25 85%</span><span class="d"> ≈</span><span class="d">  │ </span><span class="y">5h 74% resets 1h52</span><span class="d"> · 7d 38%</span>
  <span class="g">saved ~$0.86</span>
  <span class="y b">● 162k ctx</span><span class="d"> (16%)</span>  <span class="d">▲31.4k last turn</span>  <span class="d">│ compacts ~200k · hold 300k</span>
-<span class="rule"></span><span class="d">❯</span> <span class="cur"></span></pre></div></div>
-
-<div class="scene" id="newtask-hold" style="--w:1040px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>~/code/acme-web — claude</span></div><pre><span class="d">❯</span> now add rate limiting to the public search endpoint
-  <span class="d">⎿</span>  <span class="y">budget-guard: this looks like a new task with 96.4k of earlier context loaded. Pick in the band: [c] clear, [k] compact, [y] keep and send.</span>
-
- <span class="c b">◆ opus 5.5</span><span class="c"> · medium</span>  <span class="d">│ </span>$6.12<span class="d"> · $3.70/h  │ day $24.90/$40 62%</span>
- <span class="y b">● 96.4k ctx</span><span class="d"> (10%)  │ compacts ~200k · hold 300k</span>
 <span class="rule"></span><span class="d">❯</span> <span class="cur"></span></pre></div></div>
 
 <div class="scene" id="budget-savings" style="--w:760px"><div class="win"><div class="bar"><i></i><i></i><i></i><span>Budget savings</span></div><pre><span class="b">Saved ~$279 · spent $819 · 25% less than without the guard</span>
@@ -149,6 +145,70 @@ my-mods · profile claude-work · data in ~/.claude-mods
      - this session: 1 tool call(s) refused (attribution, Cl&#97;ude as author, or skipped hooks)
      - global git hooks active (~/.claude-mods/no-attribution/git-hooks): commit-msg strips attribution, pre-commit refuses a Cl&#97;ude author</pre></div></div>
 
+<script>
+  // AskUserQuestion dialogs: what a mod (or the model, running a mod's setup) asks inline.
+  const ASKS = {
+    'newtask-hold': { w: 1120, cwd: '~/code/acme-web', lead: '<span class="d">❯</span> now add rate limiting to the public search endpoint\n  <span class="d">⎿</span>  <span class="y">budget-guard: held as a new task with 96.4k of earlier context loaded (Esc leaves it in the prompt box; Enter sends it as is).</span>\n\n', header: 'new task',
+      q: 'budget-guard: this looks like a new task with 96.4k of earlier context loaded, which every call re-reads. Clear or compact it before sending?',
+      opts: ['Clear and send', 'Compact and send', 'Keep and send'] },
+    'ask-image': { w: 1120, cwd: '~/code/acme-web', lead: '<span class="g">⏺</span> I\'ll look at the screenshot of the broken checkout layout.\n\n', header: 'budget',
+      q: 'budget-guard: let Claude read the image ~/code/acme-web/screenshots/checkout-mobile.png? Images stay in context every turn.',
+      opts: ['Allow once', 'Allow for this turn', 'Allow for this session', 'Deny'] },
+    'ask-agents': { w: 1120, cwd: '~/code/billing-api', lead: '<span class="m">⚙ 3 agents</span><span class="d">  │ </span>Explore<span class="d">·haiku 5.5 Map the invoice routes</span><span class="d">  │ </span>Explore<span class="d">·haiku 5.5 Find webhook handlers</span><span class="d">  │ …</span>\n\n', header: 'budget',
+      q: 'budget-guard: 3/3 subagents are already running. Start another one?',
+      opts: ['Allow once', 'Allow for this turn', 'Allow for this session', 'Deny'] },
+    'ask-budget-setup': { w: 1120, cwd: '~/code/acme-web', lead: '<span class="d">❯</span> /budget setup\n\n', tabs: ['Limits', 'Model', 'Effort', 'Compact', 'Hold'], header: 'Limits',
+      q: 'Spending limits for the claude-work profile?',
+      opts: [['$25 a day / $500 a month (current)', 'Soft: shown as gauges in the band, never blocking'], ['$10 a day / $200 a month', ''], ['None', '']] },
+    'ask-lean-setup': { w: 1120, cwd: '~/code/acme-web', lead: '<span class="d">❯</span> /lean setup\n\n', tabs: ['Cap output', 'Nudges', 'Measure'], header: 'Cap output',
+      q: 'Cap long shell output?',
+      opts: [['Yes, at 400 lines / 24 KB (recommended) (current)', 'The model sees the head and tail; the rest stays in a temp file it can grep'], ['Yes, more generous: 1000 lines / 60 KB', ''], ['No', '']] },
+    'ask-lsp-setup': { w: 1120, cwd: '~/code/design-system', lead: '<span class="d">❯</span> /lsp-first setup\n\n', tabs: ['LSP', 'Reminders', 'Measure'], header: 'LSP',
+      q: 'Steer code navigation to the language server?',
+      opts: [['Yes (recommended) (current)', 'The LSP tool is loaded up front and a short guide says when it beats grep'], ['Off', '']] },
+    'ask-noattr-setup': { w: 1120, cwd: '~/code/billing-api', lead: '<span class="d">❯</span> /no-attribution setup\n\n', header: 'Git hooks',
+      q: 'Also clean commit messages in every repository with global git hooks?',
+      opts: [['Yes (recommended) (current)', 'commit-msg strips attribution lines from every commit, pre-commit refuses Claude as author; each repository\'s own hooks still run'], ['No, only what Claude does', 'A repository with its own core.hooksPath (Husky, lefthook) bypasses global hooks either way']] },
+    'ask-analytics-setup': { w: 1120, cwd: '~/code/acme-web', lead: '<span class="d">❯</span> /analytics setup\n\n', tabs: ['Profiles', 'Prompts', 'Dashboard'], at: 1, header: 'Prompts',
+      q: 'Keep the text of your prompts?',
+      opts: [['Full text (searchable in the dashboard) (current)', 'Stays in the local database on this machine'], ['Length only', 'Counts and lengths, no text']] },
+    'ask-advisor': { w: 1120, cwd: '~/code/acme-web', lead: '<span class="d">❯</span> /analytics advise apply 7\n\n<span class="g">⏺</span> The advisor suggests capping Opus effort at medium on acme-web: 41 sessions at high cost ~$96 more over 14 days with the same success rate.\n  <span class="d">⎿</span>  ~/.claude-mods/budget-guard/config.json: <span class="r">"opusMaxEffort": "high"</span> → <span class="g">"opusMaxEffort": "medium"</span>\n\n', header: 'Advisor',
+      q: 'Apply recommendation 7: cap Opus effort at medium?',
+      opts: [['Apply it (recommended)', 'Measured from now; /analytics advise shows the effect'], ['Dismiss', '']] },
+    'ask-obs-setup': { w: 1120, cwd: '~/code/infra', lead: '<span class="d">❯</span> /obs setup\n\n', tabs: ['Content', 'Profiles', 'Replay'], header: 'Content',
+      q: 'Keep prompt text, commands and file paths in the local store?',
+      opts: [['Yes (recommended) (current)', 'Full-text search and readable traces; nothing leaves this machine'], ['No, only counts and timings', '']] },
+    'ask-timesheet-setup': { w: 1120, cwd: '~/code/acme-web', lead: '<span class="d">❯</span> /timesheet setup\n\n', header: 'Wizard',
+      q: 'There is no timesheet config yet. Where should the setup wizard run?',
+      opts: [['In the browser (recommended)', 'Opens the wizard page; scope, daily target, calendar, GitHub and submission'], ['In the terminal', 'You run ! timesheet init and answer its questions']] },
+    'ask-mods-setup': { w: 1120, cwd: '~/code/acme-web', lead: '<span class="d">❯</span> /mods setup\n\n', header: 'Mods', multi: true,
+      q: 'Which mods should I set up?',
+      opts: [['budget-guard', 'Limits, model routing, effort cap, compaction'], ['usage-analytics', 'Profiles, prompt text, dashboard'], ['lean-tools', 'Output caps and nudges'], ['lsp-first', 'Language server navigation'], ['no-attribution', 'Global git hooks']], checked: [0, 1] },
+  }
+  const esc = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  for (const [id, a] of Object.entries(ASKS)) {
+    const opts = a.opts.map(o => Array.isArray(o) ? o : [o, ''])
+    let out = a.lead || ''
+    out += '<span class="top"></span>'
+    if (a.tabs) out += '<span class="d">←</span> ' + a.tabs.map((t, i) => `<span class="tab${i === (a.at || 0) ? ' at' : ''}">${i < (a.at || 0) ? '<span class="g">☒</span>' : '☐'} ${t}</span>`).join(' ') + ' <span class="tab"><span class="g">✔</span> Submit</span> <span class="d">→</span>\n\n'
+    else out += `<span class="chip">☐ ${a.header}</span>\n`
+    out += `<span class="b">${esc(a.q)}</span>\n\n`
+    opts.forEach(([label, desc], i) => {
+      const cur = i === 0, box = a.multi ? ((a.checked || []).includes(i) ? '<span class="g">[✔]</span> ' : '[ ] ') : ''
+      out += `${cur ? '<span class="sel">❯</span>' : ' '} ${cur ? `<span class="sel">${i + 1}. ${box}${esc(label)}</span>` : `${i + 1}. ${box}${esc(label)}`}\n`
+      if (desc) out += `     <span class="d">${esc(desc)}</span>\n`
+    })
+    const n = opts.length
+    out += `  <span class="d">${n + 1}. ${a.multi ? '[ ] ' : ''}Type something.</span>\n`
+    out += '<span class="rule"></span>'
+    out += `  ${n + 2}. Chat about this\n\n`
+    out += `<span class="d">${a.multi ? 'Enter to select · Space to toggle · ↑/↓ to navigate · Esc to cancel' : a.tabs ? 'Enter to select · Tab/Arrow keys to navigate · Esc to cancel' : 'Enter to select · ↑/↓ to navigate · Esc to cancel'}</span>`
+    const div = document.createElement('div')
+    div.className = 'scene ask'; div.id = id; div.style.setProperty('--w', a.w + 'px')
+    div.innerHTML = `<div class="win"><div class="bar"><i></i><i></i><i></i><span>${a.cwd} — claude</span></div><pre>${out}</pre></div>`
+    document.body.insertBefore(div, document.body.querySelector('script'))
+  }
+</script>
 <script>
   const s =new URLSearchParams(location.search).get('s') || 'band-gateway'
   document.getElementById(s)?.classList.add('on')

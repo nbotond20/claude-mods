@@ -1202,11 +1202,11 @@ async function compactNow($: EngineInterface, tokens: number): Promise<number> {
 }
 
 /** The held new-task prompt: clear or compact first (both shrink every later call), or send it as is. */
-async function resolvePending($: EngineInterface, how: 'clear' | 'compact' | 'keep') {
+async function resolvePending($: EngineInterface, how: 'clear' | 'compact' | 'keep', via: 'ask' | 'band' = 'band') {
   const p = await read($, pending)
   if (!p) return
   await update($, pending, () => null)
-  await trackLog($, 'resolve', { how, tokens: p.tokens })
+  await trackLog($, 'resolve', { how, tokens: p.tokens, via })
   if (how === 'clear') {
     await $.command.run({ command: 'clear' })
     await update($, prompts, () => [])
@@ -1331,6 +1331,32 @@ async function approve($: EngineInterface, kind: GrantKind, question: string, st
   })
   asking = run.catch(() => {})
   return run
+}
+
+const HOLD_CLEAR = 'Clear and send'
+const HOLD_COMPACT = 'Compact and send'
+const HOLD_KEEP = 'Keep and send'
+
+/**
+ * The held new-task prompt asks in the same dialog as the approvals: clear, compact or keep, each
+ * then sending it. Esc leaves it in the prompt box, where Enter sends it as is.
+ */
+function askHeld($: EngineInterface, text: string, tokens: number) {
+  const ask = async () => {
+    const p = await read($, pending)
+    if (!p || p.text !== text) return
+    const pick = await $.ui
+      .ask(`budget-guard: this looks like a new task with ${k(tokens)} of earlier context loaded, which every call re-reads. Clear or compact it before sending?`, {
+        header: 'new task',
+        options: [HOLD_CLEAR, HOLD_COMPACT, HOLD_KEEP],
+      })
+      .catch(() => null)
+    const how = pick === HOLD_CLEAR ? 'clear' : pick === HOLD_COMPACT ? 'compact' : pick === HOLD_KEEP ? 'keep' : null
+    if (how) await resolvePending($, how, 'ask')
+    else await update($, pending, q => (q && q.text === text ? { ...q, asking: false } : q))
+  }
+  // Detached, so the drop returns first; queued behind any approval already open.
+  asking = asking.then(ask).catch(() => {})
 }
 
 /** A held prompt goes back into the prompt box, so nothing typed is lost (unless the person typed anew). */
@@ -1490,10 +1516,11 @@ export const register: Register = on => {
     const previous = await read($, prompts)
     const isSubstantial = e.text.trim().length >= 25 && !/^(yes|no|ok|go|continue|do it|apply|proceed)\b/i.test(e.text.trim())
     if (!resent && tokens >= l.newTaskAt && previous.length > 0 && isSubstantial && (await looksLikeNewTask($, previous, e.text))) {
-      await update($, pending, () => ({ text: e.text, tokens }))
+      await update($, pending, () => ({ text: e.text, tokens, asking: interactive }))
       await trackLog($, 'hold', { reason: 'new_task', tokens })
       refill($, e.text)
-      return { drop: `budget-guard: this looks like a new task with ${k(tokens)} of earlier context loaded. Pick in the band: [c] clear, [k] compact, [y] keep and send (or press Enter again to send it as is).` }
+      if (interactive) askHeld($, e.text, tokens)
+      return { drop: `budget-guard: held as a new task with ${k(tokens)} of earlier context loaded (Esc leaves it in the prompt box; Enter sends it as is).` }
     }
 
     if (isSubstantial) await update($, prompts, p => [...p, e.text].slice(-3))
@@ -1769,6 +1796,7 @@ export const register: Register = on => {
     const { Box, Button, Text } = $.ui.resolve(e)
     const p = await read($, pending)
 
+    if (p?.asking) return next(e)
     if (p) {
       return (
         <Box paddingX={1} flexDirection="column">

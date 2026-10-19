@@ -45,6 +45,10 @@ On after install, with no setup, provided an LSP tool exists (see below). Withou
 | `/lsp-first holdout <0-1>` | share of sessions that stay passive (0 = never; applies from the next session) |
 | `/lsp-first nudges\|guide on\|off` | switch that part |
 
+`/lsp-first setup` asks in the session's own dialog:
+
+![/lsp-first setup asking whether to steer code navigation to the language server](images/lsp-first/setup.png)
+
 `/mods pause` pauses it with the other mods. Setting changes apply from the next session.
 
 ## The TypeScript language server

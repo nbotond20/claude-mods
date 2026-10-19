@@ -47,6 +47,10 @@ Everything is on after install, with no setup. `/lean setup` only asks about the
 | `/lean holdout <0-1>` | share of sessions that stay passive (0 = never; applies from the next session) |
 | `/lean cap\|nudges\|guide on\|off` | switch that part |
 
+`/lean setup` asks its questions in the session's own dialog, one tab each:
+
+![/lean setup asking whether to cap long shell output](images/lean-tools/setup.png)
+
 `/mods pause` pauses it together with the other mods. Changes to the settings apply from the next session.
 
 ## Config: `<mods home>/lean-tools/config.json`

@@ -11,7 +11,7 @@
       "name": "budget-guard",
       "source": "./budget-guard",
       "description": "Keeps token spend down: Opus capped at medium effort, compaction at 200k, context guard, subagent cap, image/generated-file read guard, and a budget HUD above the prompt (with LiteLLM key spend).",
-      "version": "0.15.0",
+      "version": "0.16.0",
       "author": {
         "name": "nbotond"
       },
@@ -29,7 +29,7 @@
       "name": "usage-analytics",
       "source": "./usage-analytics",
       "description": "Records every model request, tool call, prompt, context breakdown, compaction and rate-limit reading from every profile into one store in the mods data folder, with a live dashboard, a weekly digest, shareable summaries, mod impact verdicts and a statistical advisor.",
-      "version": "0.16.0",
+      "version": "0.16.1",
       "author": {
         "name": "nbotond"
       },

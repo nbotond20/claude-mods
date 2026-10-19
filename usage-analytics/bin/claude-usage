@@ -179,7 +179,7 @@ CREATE VIEW IF NOT EXISTS v_mod_actions AS
          json_extract(data,'$.bytesKept') bytes_kept, json_extract(data,'$.followed') followed, json_extract(data,'$.total') total, data
   FROM events WHERE ev = 'mod';
 -- Mod dialogs: what each mod asked the person and what they answered, mod command replies, held prompts and toasts;
--- budget-guard's band choice on a held new-task prompt is the hold's answer.
+-- budget-guard's band choice on a held new-task prompt (before it asked in the dialog) is the hold's answer.
 CREATE VIEW IF NOT EXISTS v_dialogs AS
   SELECT ts, day, profile, sid, strftime('%Y-%m-%d %H:%M:%S', ts / 1000.0, 'unixepoch', 'localtime') at,
          json_extract(data,'$.mod') mod, json_extract(data,'$.kind') kind, COALESCE(json_extract(data,'$.via'), 'mod') via,
@@ -191,7 +191,8 @@ CREATE VIEW IF NOT EXISTS v_dialogs AS
   SELECT ts, day, profile, sid, strftime('%Y-%m-%d %H:%M:%S', ts / 1000.0, 'unixepoch', 'localtime'),
          json_extract(data,'$.mod'), 'hold_answer', 'band', NULL, 'new task', 'Clear, compact or keep the held prompt?',
          '["clear","compact","keep"]', json_extract(data,'$.how'), NULL, 0, NULL
-  FROM events WHERE ev = 'mod' AND json_extract(data,'$.kind') = 'resolve';
+  FROM events WHERE ev = 'mod' AND json_extract(data,'$.kind') = 'resolve'
+    AND COALESCE(json_extract(data,'$.via'), 'band') = 'band';
 """
 
 

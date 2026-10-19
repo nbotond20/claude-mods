@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.1
+- budget-guard's new-task choice made in its dialog counts once (as the dialog's answer), not again as a band choice.
+- Docs: screenshots of `/analytics setup` and `/analytics advise apply` asking.
+
 ## 0.16.0
 - Mod dialogs, per profile: every question a mod asks you (budget-guard's allow once / turn / session / deny, the setup wizards' questions the model asks for a mod, the new-task clear / compact / keep) with the answer you picked or that you dismissed it, every mod slash command with its reply, prompts a mod held back with its reason, and the mods' toasts. Works for every mod without changes to it: the questions are seen as AskUserQuestion calls and attributed to the calling mod.
 - A **Mod dialogs** tab (under Work, `/dashboard dialogs`): counts, per day by mod, by mod and profile, the questions with their most frequent answers, and the newest dialogs with a link to the session. `/analytics dialogs` is the terminal report.

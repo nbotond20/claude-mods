@@ -43,7 +43,8 @@ export type Route = {
 }
 
 /** A prompt held because it looks like a new task over a big context. */
-export type Pending = { text: string; tokens: number }
+/** A held new-task prompt; `asking` while its dialog is open (the band offers the choice once it is dismissed). */
+export type Pending = { text: string; tokens: number; asking?: boolean }
 
 export type SavingCategory = 'route-session' | 'route-agents' | 'new-task' | 'output-trim' | 'keep-alive' | 'guards'
 

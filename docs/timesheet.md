@@ -29,6 +29,10 @@ Installing the mod puts `~/.local/bin/timesheet` in place at the next session st
 | `/timesheet <anything else>` | handed to the skill as a request |
 | `/timesheet install [--force]` | (re)installs the `timesheet` launcher |
 
+Without a config, `/timesheet setup` asks where to run the wizard:
+
+![/timesheet setup asking whether to run the wizard in the browser or the terminal](images/timesheet/setup.png)
+
 Once a week, about half a minute into a session, a toast says when last week still needs something: days not computed, days flagged for a look, or (with submission set up) workdays not entered yet. It reads only days already computed and never starts the classifier.
 
 ## The web app

@@ -59,6 +59,10 @@ It also reinstalls the hooks if they are missing. They are installed again at ev
 | `sh no-attribution/bin/install-git-hooks.sh [remove]` | the installer behind the above; prints `installed`, `ok`, `other:<path>`, `removed` or `absent` |
 | `/mods status`, `/mods doctor`, `/mods uninstall` | `doctor` checks the hooks; `uninstall` also unsets the hooks it installed |
 
+`/no-attribution setup` asks one question:
+
+![/no-attribution setup asking whether to install global git hooks](images/no-attribution/setup.png)
+
 There is no pause. To stop the mod, uninstall it (`/mods uninstall`); to turn off only the git layer, use `hooks off`.
 
 ### Config: `<mods home>/no-attribution/config.json`

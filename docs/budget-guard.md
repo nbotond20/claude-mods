@@ -25,7 +25,7 @@ On a Claude subscription the money is API-equivalent (`≈`) and the plan's 5-ho
 - context tokens and the share of the window, the change in the last turn (`▲`/`▼`, yellow past `bigTurn`), and `compacts ~200k · hold 300k`: the mod's `compactAt` (or `autoCompactWindow` when that is lower) and the `block` limit;
 - live subagents with the model each one actually runs on, and background tasks.
 
-When a new-task prompt is held, the band shows the choice `[c] clear · [k] compact · [y] keep`. A held prompt (new task or context hold) goes back into the prompt box, so nothing typed is lost; pressing Enter on a held new-task prompt again sends it as is.
+When a new-task prompt is held, budget-guard asks in the same dialog as its approvals: **Clear and send**, **Compact and send** or **Keep and send**. Esc closes it and the band offers the same three (`[c]`, `[k]`, `[y]`). A held prompt (new task or context hold) goes back into the prompt box, so nothing typed is lost; pressing Enter on a held new-task prompt again sends it as is.
 
 ![A prompt held as a new task with 96k of earlier context loaded](images/budget-guard/new-task-hold.png)
 
@@ -49,6 +49,10 @@ When a new-task prompt is held, the band shows the choice `[c] clear · [k] comp
 sh bin/mods install --only budget-guard     # every profile on this machine; or, in Claude Code:
 /plugin install budget-guard@my-mods
 ```
+
+`/budget setup` (or `/mods setup`) asks about limits, routing, the effort cap, compaction and the hold, one tab each:
+
+![/budget setup asking for the profile's spending limits](images/budget-guard/setup.png)
 
 ## What it does
 
@@ -76,6 +80,10 @@ When the subagent cap, the image guard or the generated-file guard would refuse 
 | Allow for this turn | that guard steps aside until the current turn ends |
 | Allow for this session | that guard steps aside until the session ends or is cleared (`/clear`) |
 | Deny | the call is refused with the usual message to Claude |
+
+![budget-guard asking before Claude reads an image](images/budget-guard/ask-image.png)
+
+![budget-guard asking before a fourth subagent starts](images/budget-guard/ask-agents.png)
 
 Parallel calls wait for the one dialog, so a turn or session answer covers them. `/budget` lists what is allowed; `/budget reset` takes it back. Under `-p` and the SDK nobody is asked and the guards refuse as before.
 

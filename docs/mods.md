@@ -39,6 +39,10 @@ The screenshots use generated demo data ([scripts/demo](../scripts/demo/README.m
 | `/mods update` · `/mods install [mod…]` | run `bin/mods` from inside a session |
 | `/mods uninstall [confirm] [purge]` | without `confirm` it only shows the plan |
 
+`/mods setup` first asks which mods to tailor (several can be picked), then their questions together:
+
+![/mods setup asking which mods to set up](images/mods/setup.png)
+
 Each mod's own pause (`/budget pause`, `/lean off 1h`, `/lsp-first off 1h`) writes the same file, `<mods home>/mods/pause.json`. Only a mod's own pause takes `session` (this session only); `/mods pause` needs a duration.
 
 ## On by default

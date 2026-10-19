@@ -247,12 +247,12 @@ describe('budget-guard', () => {
 
   test('a new task over a big context is held with clear / compact / keep', async ($, on) => {
     engine(on, { classify: 'an unrelated new task' })
-    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    await $.session.start({ surface: 'terminal', isInteractive: false, cwd: '/work' } as any)
     await measure($, 10_000)
     await $.prompt.submit({ text: 'add validation to the signup form fields', wait: false, origin: { kind: 'composer' } } as any)
     await measure($, 120_000)
     const held = await $.prompt.submit({ text: 'write a migration script for the billing tables', wait: false, origin: { kind: 'composer' } } as any)
-    expect((held as any).drop).toMatch(/looks like a new task with 120k/)
+    expect((held as any).drop).toMatch(/held as a new task with 120k/)
 
     const ui = await $.ui.mount({
       plugin: 'budget-guard',
@@ -503,5 +503,48 @@ describe('budget-guard', () => {
     await clock.advance(100)
     expect(box).toBe(task)
     expect((await say(task)).text).toBe(task)
+  })
+
+  test('a held new task asks in the dialog; dismissed, the band offers the choice', async ($, on) => {
+    const clock = mock.clock(on)
+    engine(on, { classify: 'an unrelated new task', clock: false })
+    const answers: (string | null)[] = []
+    const asked: any[] = []
+    on('tool.call', { tool: 'AskUserQuestion' }, ($: any, e: any) => {
+      const q = e.questions[0]
+      asked.push(q)
+      const a = answers.shift()
+      if (a === null) return { deny: 'dismissed' } as any
+      return { result: { questions: e.questions, answers: { [q.question]: a } } } as any
+    })
+    let compactions = 0
+    on('session.compact', () => (compactions++, { messages: [{ role: 'user', text: 'summary', toolUses: [] }], tokensBefore: 120_000, tokensAfter: 8_000 }) as any)
+    on('prompt.read', () => ({ value: { text: '', cursor: 0 } }) as any)
+    on('prompt.fill', () => ({ isFilled: true, text: '', cursor: 0 }) as any)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const say = (text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' } } as any) as any
+
+    await measure($, 10_000)
+    await say('add validation to the signup form fields')
+    await measure($, 120_000)
+    answers.push('Compact and send')
+    expect((await say('write a migration script for the billing tables')).drop).toMatch(/held as a new task with 120k/)
+    await clock.advance(200)
+    expect(asked[0].header).toBe('new task')
+    expect(asked[0].question).toMatch(/^budget-guard: this looks like a new task with 120k/)
+    expect(asked[0].options.map((o: any) => o.label)).toEqual(['Clear and send', 'Compact and send', 'Keep and send'])
+    expect(compactions).toBe(1)
+
+    await measure($, 120_000)
+    answers.push(null)
+    await say('now write the release notes for the billing changes')
+    await clock.advance(200)
+    expect(asked.length).toBe(2)
+    const ui = await $.ui.mount({
+      plugin: 'budget-guard', surface: 'terminal', component: 'AbovePrompt',
+      props: { hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns: 120 },
+    } as any)
+    expect(await ui.find({ type: 'Button', key: 'compact' })).toBeDefined()
+    await ui.unmount()
   })
 })

@@ -32,6 +32,10 @@ The mod only changes settings keys it wrote. It marks them with `CLAUDE_OBS_MANA
 | `/obs content on\|off` | keep or drop prompt text, commands and paths |
 | `/obs setup` | a short guided setup |
 
+`/obs setup` asks in the session's own dialog:
+
+![/obs setup asking whether to keep prompt text, commands and paths in the local store](images/observability/setup.png)
+
 The same from a shell, through `<plugin>/bin/claude-obs`:
 
 ```sh

@@ -47,6 +47,8 @@ Active right after install, with no setup:
 
 Nothing is required: on first start the mod writes its config with defaults, registers the profile's config dir, starts the dashboard server and joins the one `/mods` toast of the session. **`/analytics setup`** first checks for python3 (and says how to install it when it is missing), then runs `claude-usage setup --json` (detected profiles with history, what is already imported, the port) and asks which profiles to track, whether to keep prompt text, and when the dashboard runs.
 
+![/analytics setup asking whether to keep the text of your prompts](images/usage-analytics/setup.png)
+
 **Backfill.** When the server starts it imports every transcript already on disk in the background, so the dashboard has your full history from day one. The page shows a progress bar (the stage — sessions, subagents, mod events — with the profile being read, files, requests, %, and a note that the numbers are partial until it finishes) and redraws as data arrives; an empty database shows a first-run screen instead of empty charts. `/api/meta` carries the same `progress`.
 
 **One server per machine, started when needed.** Every session start, every `/analytics` command and `/dashboard` start it if it is not running (a lock file keeps it to one), and replace one older than the installed mod. `claude-usage autostart on` also starts it at login and re-checks every 10 minutes (a launchd agent `dev.claude-mods.usage-dashboard` on macOS, a systemd user timer on Linux); `off` removes it. It is off until you turn it on. `"dashboard": false` keeps it off until you run `/dashboard`.
@@ -92,6 +94,10 @@ A loop that keeps looking for ways to spend less on Claude Code, and checks whet
 2. **Detect.** Deterministic findings, no model involved, each tied to the metric it moves: large contexts, a low cache hit rate, whole-file reads, heavy tool output, a failing tool, serial tool calls, premium models in subagents, non-English prompts, frequent compaction, API errors, and big always-loaded MCP schemas. It also diffs consecutive session starts to show your own setting changes (model, effort, plugins, version).
 3. **Research.** An agent (`usage-analytics:advisor`) reads all of the above. That includes every earlier recommendation with its measured verdict and evidence grade, a track record per goal and per kind of change, its earlier notes, each metric per project, profile and entrypoint, and a sample of prompts. It looks up current guidance on the web and records 3–6 recommendations, held to the rules below.
 4. **Apply or trial.** `/analytics advise apply <id>` shows the change and asks before making it. You can also make the change yourself and run `/analytics advise applied <id>`, or use the dashboard's buttons. A recommendation that is a model instruction (read ranges, batch calls, …) can instead run as an **A/B trial** (`/analytics advise trial <id>`, or *Start A/B trial*).
+
+
+   ![/analytics advise apply showing the change and asking before making it](images/usage-analytics/advisor-apply.png)
+
 5. **Verify.** Each applied or trialled recommendation is measured on its own metric and on the guard metrics (cost per prompt, round trips, tool errors, API errors, turn time, and the quality guards: corrections, checks passing, interrupts) for side effects. A saving that makes the output worse is not graded as *helped*. Verdicts:
    - **helped**
    - **helped, with a cost**: a guard metric got worse by at least 10% and past a small absolute floor

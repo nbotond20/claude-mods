@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.16.0
+- The new-task check asks in the same dialog as the approvals: Clear and send, Compact and send, or Keep and send. Esc closes it; the band then offers the same three, and Enter on the prompt sends it as is.
+- Docs: screenshots of the approval dialogs, the new-task dialog and `/budget setup`.
+
 ## 0.15.0
 - Approvals: when the subagent cap, the image guard or the generated-file guard would refuse a call, an interactive session asks first: allow once, for this turn, for this session, or deny. Parallel calls share one dialog. `/budget` lists what is allowed; `/budget reset` takes it back. `-p` and SDK runs refuse as before.
 - `/budget` limits and switches (and approvals) last until the session ends or is cleared: a `/clear` puts limits, approvals, routing and the subagent count back to the starting values. `--save` also writes the change to config.json for every new session.
