@@ -1258,8 +1258,8 @@ async function adviseCommand($: EngineInterface, rest: string[]) {
 <recommendation>
 ${data}
 </recommendation>${rec.instruction ? `
-This one is a model instruction, so it can run as an A/B trial instead: the mod adds it to a random half of new sessions and compares them with the other half. If I want that, tell me to run /analytics advise trial ${rec.id} myself (you cannot start a trial); there is nothing else to change.` : ''}
-Show me the exact change (file and diff, setting, or command) and ask me with AskUserQuestion before making it. If I approve, make it, then call the advisor_set tool (usage-analytics; load it with ToolSearch) with id ${rec.id}, status "applied" and a one-line note of what changed: that starts measuring its effect. If I decline, call it with status "dismissed" and my reason as the note.`
+This one is a model instruction, so it can run as an A/B trial instead: the mod adds it to a random half of new sessions and compares them with the other half. Offer it as an AskUserQuestion option ("Run as an A/B trial"); if I pick it, tell me to run /analytics advise trial ${rec.id} myself (you cannot start a trial) and change nothing else.` : ''}
+Show me the exact change (file and diff, setting, or command) and ask me with AskUserQuestion before making it, with options "Apply it (recommended)" and "Dismiss" (Other lets me give a reason). If I approve, make it, then call the advisor_set tool (usage-analytics; load it with ToolSearch) with id ${rec.id}, status "applied" and a one-line note of what changed: that starts measuring its effect. If I decline, call it with status "dismissed" and my reason as the note.`
     $.clock.after(50, () => void $.prompt.submit({ text }).catch(() => {}))
     return `Applying ${rec.id}…`
   }

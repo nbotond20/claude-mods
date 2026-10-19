@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.4.1
+- The timesheet skill asks every question (a low-activity day, unlocking a submitted day, any other choice) as selectable options instead of plain text.
+
 ## 0.4.0
 - Task categories are company specific, so none ship by default: a new setup books everything as `Uncategorized` and skips the classifier until you add some. **Paste a list** in Settings → Task categories takes a spreadsheet copy (name, subtask, description, CAPEX/OPEX per line), a plain list or a JSON array, and adds the new names or replaces the list.
 - Each category can have a rule (work, meetings, fallback, no code, release, incident). The rules replace the built-in names in the default category, the guards (release and no-code time capped by evidence, incidents need incident evidence), the classifier prompt and the colours. An existing config keeps its categories; set the rules in Settings to get those guards back. Prompt version 6: days are reclassified once.

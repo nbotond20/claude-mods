@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.6
+- `/obs setup` asks whether to replay past sessions (30 days, 7 days or no) in the same selectable question as the other settings, instead of offering it in plain text.
+
 ## 0.1.5
 - Docs: a README for the mod with screenshots, and how to remove the stack and telemetry env before uninstalling.
 

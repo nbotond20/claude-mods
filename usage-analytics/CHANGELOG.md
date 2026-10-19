@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.14.5
+- Applying an advisor recommendation asks with selectable options (apply, dismiss, or an A/B trial for model instructions) instead of a plain-text question.
+
 ## 0.14.4
 - Docs: a README for the mod with screenshots; the docs add `dashboardIdleMin`, the `quality` and `frustration` reports, `autostart sync`, the port message, what the dashboard loads from outside, and how keep-alive savings are measured in Mod impact.
 

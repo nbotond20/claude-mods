@@ -33,9 +33,10 @@ Long ranges run as a resumable job: if a run is interrupted (Ctrl+C, closed term
 - Rebook a category's hours for a day: `timesheet edit <date> "<Category>" <hours> [--project P]`, or `clear`.
 - Recategorize a time block (ids from `days[].blocks[].id`): `timesheet block <date> <id> "<Category>"`, or `clear`.
 - Mark paths as work or personal: `timesheet scope add work "<glob>" [project]` / `timesheet scope add personal "<glob>"`.
-- A low-activity day (flagged): ask the user whether it is right. If yes, `timesheet confirm <date>`; if they were off, add the date to `holidays`; otherwise set the hours with `timesheet edit`.
+- A low-activity day (flagged): ask the user with AskUserQuestion: "Right as it is" → `timesheet confirm <date>`; "I was off" → add the date to `holidays`; the user types other hours under Other → `timesheet edit`.
 - Undo a mistaken edit: `timesheet undo [date]`; list edits: `timesheet history [date]`.
-- Locked days (submitted, or locked by the user) refuse edits. Do not unlock a submitted day on your own: ask first, since the site already holds its hours (`timesheet unlock <date>`).
+- Locked days (submitted, or locked by the user) refuse edits. Do not unlock a submitted day on your own: ask first with AskUserQuestion ("Unlock and edit" / "Leave it"), since the site already holds its hours (`timesheet unlock <date>`).
+- Every question to the user (a choice, a confirmation, which day or category) goes through AskUserQuestion with concrete options, never as plain text.
 
 Category names must match the configured list exactly (see `timesheet day --json` entries or the config at `~/.timesheet/config.json`). Hours must be a multiple of the rounding step. After an adjustment, re-run the report and show the updated paste text.
 

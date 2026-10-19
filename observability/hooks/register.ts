@@ -822,9 +822,10 @@ It runs Grafana, Tempo, Loki and Prometheus locally in Docker (127.0.0.1 only, n
 2. Ask me with the AskUserQuestion tool, marking my current choices "(current)":
    a. "Keep prompt text, commands and file paths in the local store?": "Yes (recommended)": full-text search and readable traces (content true). "No, only counts and timings" (content false).
    b. "Which profiles report?": "All profiles (recommended)" or "Only this one".
+   c. "Replay past sessions so the dashboards start with history?": "Last 30 days (recommended)", "Last 7 days" or "No".
 3. Write ${configFile} with content set, keeping other keys.
 4. Run /obs telemetry on all, or /obs telemetry on, to match; then \`sh "${cli}" up\`.
-5. Offer to replay past sessions with \`sh "${cli}" backfill --days 30\` so the dashboards start with history.
+5. If I chose a replay, run \`sh "${cli}" backfill --days <30 or 7>\`.
 6. Tell me in one line where Grafana is and that live data starts with the next session in each profile.
 
 Current config (${configFile}):
