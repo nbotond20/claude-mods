@@ -547,4 +547,36 @@ describe('budget-guard', () => {
     expect(await ui.find({ type: 'Button', key: 'compact' })).toBeDefined()
     await ui.unmount()
   })
+  test('a held prompt with images is asked about in flight, so the images can still go through', async ($, on) => {
+    mock.clock(on)
+    engine(on, { classify: 'an unrelated new task', clock: false })
+    const answers: string[] = []
+    const asked: any[] = []
+    on('tool.call', { tool: 'AskUserQuestion' }, ($: any, e: any) => {
+      const q = e.questions[0]
+      asked.push(q)
+      return { result: { questions: e.questions, answers: { [q.question]: answers.shift() } } } as any
+    })
+    on('prompt.read', () => ({ value: { text: '', cursor: 0 } }) as any)
+    on('prompt.fill', () => ({ isFilled: true, text: '', cursor: 0 }) as any)
+    await $.session.start({ surface: 'terminal', isInteractive: true, cwd: '/work' } as any)
+    const attachments = [{ type: 'image', mediaType: 'image/png', id: 'i1' }]
+    const say = (text: string) => $.prompt.submit({ text, wait: false, origin: { kind: 'composer' }, attachments } as any) as any
+
+    await measure($, 10_000)
+    await say('add validation to the signup form fields')
+    await measure($, 120_000)
+    answers.push('Send it with the images')
+    expect((await say('write a migration script for the billing tables')).text).toBe('write a migration script for the billing tables')
+    expect(asked[0].header).toBe('new task')
+    expect(asked[0].question).toMatch(/carries an image/)
+    expect(asked[0].options.map((o: any) => o.label)).toEqual(['Send it with the images', "Don't send it"])
+
+    await measure($, 320_000)
+    answers.push("Don't send it")
+    expect((await say('check this config')).drop).toMatch(/images were not sent/)
+    expect(asked[1].header).toBe('context')
+    answers.push('Send it with the images')
+    expect((await say('check this config')).text).toBe('check this config')
+  })
 })

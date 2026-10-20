@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.16.1
+- A held prompt with pasted images (new-task check or context hold) asks right away: Send it with the images, or Don't send it. A held prompt goes back into the box as text only, so before this the images were silently lost.
+
 ## 0.16.0
 - The new-task check asks in the same dialog as the approvals: Clear and send, Compact and send, or Keep and send. Esc closes it; the band then offers the same three, and Enter on the prompt sends it as is.
 - Docs: screenshots of the approval dialogs, the new-task dialog and `/budget setup`.

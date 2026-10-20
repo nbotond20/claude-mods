@@ -1359,6 +1359,24 @@ function askHeld($: EngineInterface, text: string, tokens: number) {
   asking = asking.then(ask).catch(() => {})
 }
 
+const SEND_IMAGES = 'Send it with the images'
+const NO_SEND = "Don't send it"
+
+/**
+ * A held prompt goes back into the box as text only (a mod can neither refill nor send an image), so
+ * a prompt carrying images is asked about while it is still in flight: send it as is, or hold it.
+ * Clear and compact are not offered: neither can run under the submission this hook holds.
+ */
+async function askAttached($: EngineInterface, n: number, question: string, header: string): Promise<boolean> {
+  const run = asking.then(() =>
+    $.ui
+      .ask(`${question} It carries ${n === 1 ? 'an image' : `${n} images`}, which a held prompt loses.`, { header, options: [SEND_IMAGES, NO_SEND] })
+      .catch(() => NO_SEND),
+  )
+  asking = run.catch(() => {})
+  return (await run) === SEND_IMAGES
+}
+
 /** A held prompt goes back into the prompt box, so nothing typed is lost (unless the person typed anew). */
 function refill($: EngineInterface, text: string) {
   // After the composer has emptied itself for the submit.
@@ -1485,10 +1503,17 @@ export const register: Register = on => {
     const l = await read($, limits)
     const tokens = (await read($, context))?.tokens ?? 0
 
+    const images = interactive ? (e.attachments?.length ?? 0) : 0
+    const lost = images > 0 ? ' The images were not sent: paste them again.' : ''
+
     if (tokens >= l.block) {
+      if (images > 0 && (await askAttached($, images, `budget-guard: context is ${k(tokens)} (limit ${k(l.block)}). Send this prompt anyway?`, 'context'))) {
+        await trackLog($, 'force', { via: 'ask' })
+        return next(e)
+      }
       await trackLog($, 'hold', { reason: 'block', tokens })
       refill($, e.text)
-      return { drop: `budget-guard: context is ${k(tokens)} (limit ${k(l.block)}). Run /compact or /clear, or prefix the prompt with "force:" to send it anyway.` }
+      return { drop: `budget-guard: context is ${k(tokens)} (limit ${k(l.block)}). Run /compact or /clear, or prefix the prompt with "force:" to send it anyway.${lost}` }
     }
 
     if (!(await read($, routeDecided)) && tokens === 0) {
@@ -1516,6 +1541,16 @@ export const register: Register = on => {
     const previous = await read($, prompts)
     const isSubstantial = e.text.trim().length >= 25 && !/^(yes|no|ok|go|continue|do it|apply|proceed)\b/i.test(e.text.trim())
     if (!resent && tokens >= l.newTaskAt && previous.length > 0 && isSubstantial && (await looksLikeNewTask($, previous, e.text))) {
+      if (images > 0) {
+        if (await askAttached($, images, `budget-guard: this looks like a new task with ${k(tokens)} of earlier context loaded, which every call re-reads. Send it into this context anyway?`, 'new task')) {
+          await trackLog($, 'resolve', { how: 'keep', tokens, via: 'ask' })
+          await update($, prompts, p => [...p, e.text].slice(-3))
+          return next(e)
+        }
+        await trackLog($, 'hold', { reason: 'new_task', tokens })
+        refill($, e.text)
+        return { drop: `budget-guard: held as a new task with ${k(tokens)} of earlier context loaded. Run /clear or /compact, then send it again.${lost}` }
+      }
       await update($, pending, () => ({ text: e.text, tokens, asking: interactive }))
       await trackLog($, 'hold', { reason: 'new_task', tokens })
       refill($, e.text)
