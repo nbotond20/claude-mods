@@ -7,7 +7,7 @@ import { useJobs } from './jobs';
 import { UnitInput } from './settings/fields';
 import { useReport } from './useReport';
 import { Delta } from './Delta';
-import { SubmitPreview } from './SubmitPreview';
+import { MonthSubmission, SubmitPreview } from './SubmitPreview';
 import { useShowOther, useShowPersonal, useShowRecorded } from './prefs';
 
 type View = 'day' | 'week' | 'month';
@@ -343,6 +343,7 @@ export function TimesheetView({ meta }: { meta: Meta }) {
           </Card>
 
           {view === 'week' && report && <SubmitPreview week={report.from} version={reportVersion(report)} exportOverride={real || target !== ''} />}
+          {view === 'month' && report && <MonthSubmission from={report.from} to={report.to} version={reportVersion(report)} exportOverride={real || target !== ''} />}
 
           {/* Days */}
           <section className="flex flex-col gap-3">
@@ -373,7 +374,7 @@ export function TimesheetView({ meta }: { meta: Meta }) {
           </section>
         </>
       )}
-      <BlockDetails open={detailsOpen} onClose={() => setDetailsOpen(false)} value={details} repos={report?.repos ?? {}} meta={meta} />
+      <BlockDetails open={detailsOpen} onClose={() => setDetailsOpen(false)} value={details} repos={report?.repos ?? {}} meta={meta} onChanged={() => reload()} />
     </div>
   );
 }
@@ -689,7 +690,7 @@ function DayCard({ day, meta, repos, pending, showOther, showRecorded, showPerso
                 </span>
               </Tooltip>
             )}
-            {day.holiday && <span className="text-12 font-medium text-ink-3">Holiday</span>}
+            {day.holiday && <span className="text-12 font-medium text-ink-3">Day off · nothing booked unless you set hours</span>}
           </span>
           {day.activity && (
             <span className="text-12 text-ink-3">
@@ -778,6 +779,7 @@ function DayCard({ day, meta, repos, pending, showOther, showRecorded, showPerso
                 <span className="shrink-0 text-12 text-ink-3">
                   {e.capex ? 'CAPEX' : 'OPEX'}
                   {meta.projects.length > 1 ? ` · ${e.project}` : ''}
+                  {e.uncounted ? ` · ${fmt(e.uncounted)} h on top of the day` : ''}
                 </span>
               </span>
               {showRecorded && <span className="text-right tabular-nums text-ink-2">{fmtMin(e.measured)}</span>}

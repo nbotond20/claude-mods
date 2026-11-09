@@ -341,12 +341,12 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
     }
   });
 
-  it('conflicting hours abort the week with zero posts', async () => {
+  it('conflicting hours hold back that day only; a stale fingerprint still aborts with zero posts', async () => {
     const t = await setup({ state: { entries: [{ id: 7, issueId: 4242, date: '2026-09-29', hours: 3, activityId: 9, comments: '' }] } });
     try {
-      const prep = await t.runner.prepare('redmine', WEEK);
-      assert.equal(prep.state, 'conflict');
-      assert.deepEqual((prep as { reasons: string[] }).reasons, ['2026-09-29 #4242 · Development: 3.00 h already entered, plan says 8.00 h']);
+      const prep = ready(await t.runner.prepare('redmine', WEEK));
+      assert.deepEqual(prep.held, { '2026-09-29': ['2026-09-29 #4242 · Development: 3.00 h already entered, plan says 8.00 h'] });
+      assert.ok(prep.write.length > 0 && prep.write.every((c) => c.date !== '2026-09-29'), JSON.stringify(prep.write));
       t.runner.execute('redmine', WEEK, '0123456789abcdefs');
       const done = await t.runner.wait();
       assert.equal(done?.status, 'aborted');
@@ -547,7 +547,8 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       assert.equal(prep.state, 'aborted', JSON.stringify(prep));
       assert.match((prep as { reason: string }).reason, /2026-09-29: entry 41 has an activity Redmine no longer offers; fix it by hand/);
       t.fx.state.entries[0].activityId = 15;
-      assert.equal((await t.runner.prepare('redmine', WEEK)).state, 'conflict', 'readable again (an entry the plan does not have)');
+      const again = ready(await t.runner.prepare('redmine', WEEK));
+      assert.deepEqual(Object.keys(again.held), ['2026-09-29'], 'readable again (an entry the plan does not have holds back its day)');
       t.fx.state.script = `document.addEventListener('DOMContentLoaded', function () { var i = document.querySelector('input[name="time_entry[41][hours]"]'); if (i) i.value = '1.5'; });`;
       const changed = await t.runner.prepare('redmine', WEEK);
       assert.equal(changed.state, 'aborted');
@@ -647,7 +648,7 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
     }
   });
 
-  it('blocks without opening the site when the plan is incomplete; NetSuite is not enabled', async () => {
+  it('blocks without opening the site when the plan is incomplete (Redmine and NetSuite)', async () => {
     const t = await setup({ reports: [day('2026-09-28', [['NLP', 'Unknown', 3]])] });
     try {
       const prep = await t.runner.prepare('redmine', WEEK);
@@ -655,7 +656,9 @@ describe('redmine adapter and run flow', { skip: !chromeAvailable() && 'Google C
       assert.ok((prep as { reasons: string[] }).reasons.includes('2026-09-28: no redmine mapping for NLP / Unknown'));
       assert.equal(t.fx.rec.gets.length, 0);
       const ns = await t.runner.prepare('netsuite', WEEK);
-      assert.deepEqual(ns, { system: 'netsuite', week: WEEK, state: 'blocked', reasons: ['NetSuite automation is not enabled yet'] });
+      assert.equal(ns.state, 'blocked');
+      assert.deepEqual((ns as { reasons: string[] }).reasons, ['set the netsuite address in Settings → Submission first']);
+      assert.equal(t.fx.rec.gets.length, 0);
     } finally {
       await t.close();
     }

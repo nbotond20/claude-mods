@@ -123,7 +123,7 @@ export interface SubmitPlan {
 
 export const SYSTEM_LABEL: Record<SystemId, string> = { redmine: 'Redmine', netsuite: 'NetSuite' };
 
-export type { LabeledCell, PrepareResult, RunProgress, UnitState } from '../../src/core/submit/run.ts';
+export type { CheckProgress, CheckWeek, CheckWeekState, LabeledCell, PrepareResult, RangePlan, RangeWeekPlan, RunProgress, UnitState, WeekProgress, WeekState } from '../../src/core/submit/run.ts';
 export type { RedmineCatalog, RedmineIssue } from '../../src/core/submit/redmine.ts';
 export type { NetsuiteTarget, RedmineTarget, SubmitRule } from '../../src/core/submit/types.ts';
 

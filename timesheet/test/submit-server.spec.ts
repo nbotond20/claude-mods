@@ -199,7 +199,8 @@ describe('submit run api', () => {
       assert.equal(prep.week, WEEK);
       assert.ok(prep.reasons.includes('2026-09-14: not computed yet'));
       const ns = await (await app.post('/api/submit/prepare', { system: 'netsuite', week: WEEK })).json();
-      assert.deepEqual(ns.reasons, ['NetSuite automation is not enabled yet']);
+      assert.equal(ns.state, 'blocked');
+      assert.deepEqual(ns.reasons, ['set the netsuite address in Settings → Submission first']);
       const discoverNs = await app.post('/api/submit/discover', { system: 'netsuite' });
       assert.equal(discoverNs.status, 400);
 

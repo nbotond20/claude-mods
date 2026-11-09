@@ -145,12 +145,62 @@ describe('out of office and holidays', () => {
     assert.equal(day.target, null);
   });
 
-  it('gives holidays no target', async () => {
-    const { engine } = setup({ config: { holidays: [D] } });
-    const [day] = await engine.days(D, D);
+  it('books nothing on a holiday unless hours are set by hand', async () => {
+    const { engine, store } = setup({ config: { holidays: [D] } });
+    let [day] = await engine.days(D, D);
     assert.equal(day.holiday, true);
     assert.equal(day.target, null);
-    assert.equal(day.total, 4);
+    assert.equal(day.total, 0);
+    assert.equal(day.realTotal, 4);
+    assert.ok(day.warnings.some((w) => /Day off: 4h of recorded work is not booked/.test(w)), day.warnings.join('\n'));
+    store.editHours(D, 'Default', 'QA', 2);
+    [day] = await engine.days(D, D);
+    assert.equal(day.total, 2);
+    assert.ok(!day.warnings.some((w) => /Day off/.test(w)));
+  });
+});
+
+describe("meetings that don't count towards the target", () => {
+  const standup: RawEvent = { source: 'calendar', start: at(D, '14:00'), end: at(D, '15:00'), texts: ['Company all-hands'], project: 'Default' };
+
+  it('books a meeting set by hand on top of the target, and undo restores it', async () => {
+    const { engine, store, src } = setup();
+    src.calendar = [standup];
+    let [day] = await engine.days(D, D);
+    assert.equal(day.total, 8);
+    const meeting = day.blocks.find((b) => b.kind === 'meeting')!;
+    store.editBlockCount(D, meeting.id, false);
+    [day] = await engine.days(D, D);
+    assert.equal(day.blocks.find((b) => b.id === meeting.id)!.uncounted, true);
+    assert.deepEqual(day.entries.map((e) => [e.category, e.hours, e.uncounted]), [['QA', 8, undefined], ['Meetings', 1, 1]]);
+    assert.equal(day.total, 9);
+    assert.equal(day.flags, undefined);
+    assert.equal(store.undo(D)?.kind, 'count');
+    [day] = await engine.days(D, D);
+    assert.equal(day.total, 8);
+  });
+
+  it('applies title rules from config, which a hand setting overrides', async () => {
+    const { engine, store, src } = setup({ config: { calendar: { ...testConfig().calendar, enabled: true, uncounted: ['ALL-HANDS'] } } });
+    src.calendar = [standup];
+    let [day] = await engine.days(D, D);
+    assert.equal(day.total, 9);
+    const meeting = day.blocks.find((b) => b.kind === 'meeting')!;
+    store.editBlockCount(D, meeting.id, true);
+    [day] = await engine.days(D, D);
+    assert.equal(day.total, 8);
+  });
+
+  it('merges into a counted row of the same category', async () => {
+    const { engine, store, src } = setup();
+    src.calendar = [standup, { ...standup, start: at(D, '16:30'), end: at(D, '17:30'), texts: ['Planning'] }];
+    let [day] = await engine.days(D, D);
+    const allHands = day.blocks.find((b) => b.kind === 'meeting' && b.texts[0] === 'Company all-hands')!;
+    store.editBlockCount(D, allHands.id, false);
+    [day] = await engine.days(D, D);
+    const meetings = day.entries.find((e) => e.category === 'Meetings')!;
+    assert.equal(meetings.uncounted, 1);
+    assert.equal(day.total, 9);
   });
 });
 
@@ -292,5 +342,47 @@ describe('git', () => {
     git('cherry-pick', 'side');
     const events = collectGit(testConfig({ authorEmails: ['me@x.test'] }), [repo], at(D, '00:00'), at('2026-09-16', '00:00'));
     assert.deepEqual(events.map((e) => e.texts[0]).sort(), ['base', 'feature']);
+  });
+});
+
+describe('calendar sign-in failures', () => {
+  const make = (store: Store, calendar: () => Promise<RawEvent[]>, connected: { value: boolean }) =>
+    new Engine({
+      config: testConfig({ calendar: { ...testConfig().calendar, enabled: true } }),
+      store,
+      classifier: async ({ blocks }) => ({ allocations: Object.fromEntries(blocks.map((b) => [b.id, [{ category: 'QA', fraction: 1 }]])), summary: '- done' }),
+      today: () => TODAY,
+      now: () => at(TODAY, '12:00'),
+      calendarConnected: () => connected.value,
+      sources: {
+        claude: async () => [{ source: 'claude', start: at(D, '09:00'), end: at(D, '13:00'), path: '/work/repo', texts: ['build it'] }] as RawEvent[],
+        opencode: async () => [],
+        git: () => [],
+        github: null,
+        calendar,
+      },
+    });
+
+  it('waits for a reconnect instead of retrying every few minutes', async () => {
+    const store = new Store(':memory:');
+    const connected = { value: false };
+    const expired = make(store, async () => { throw new Error('Google access expired or was revoked; reconnect'); }, connected);
+    await expired.days(D, D);
+    const day = store.getDay(D)!;
+    assert.equal(day.status, 'partial');
+    assert.equal(day.retry, false);
+    const later = Date.parse(day.computedAt) + 60 * 60_000;
+    assert.equal(expired.isStale(day, later), false, 'not recomputed while signed out');
+    connected.value = true;
+    assert.equal(expired.isStale(day, later), true, 'recomputed once signed in again');
+  });
+
+  it('still retries other calendar failures', async () => {
+    const store = new Store(':memory:');
+    const flaky = make(store, async () => { throw new Error('Google Calendar API 503: backend error'); }, { value: true });
+    await flaky.days(D, D);
+    const day = store.getDay(D)!;
+    assert.equal(day.retry, true);
+    assert.equal(flaky.isStale(day, Date.parse(day.computedAt) + 60 * 60_000), true);
   });
 });

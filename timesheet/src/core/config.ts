@@ -59,7 +59,7 @@ export interface Config {
   /** Target hours for normalized output. weekdayTargets overrides per weekday (0=Sun..6=Sat); null = keep real hours. */
   target: number;
   weekdayTargets: Record<string, number | null>;
-  /** Public holidays and other days off (YYYY-MM-DD): no target, so any work there is booked as real rounded hours */
+  /** Public holidays and other days off (YYYY-MM-DD): nothing is booked unless you set hours by hand (`timesheet edit`) */
   holidays: string[];
   /** A workday with recorded work below this share of its target is flagged and needs confirming before submission; 0 = off */
   lowActivityRatio: number;
@@ -86,6 +86,11 @@ export interface Config {
     skipWithoutAttendees: boolean;
     /** Longer meetings (blockers, conferences, all-afternoon holds) are ignored; 0 = no limit. */
     maxMeetingHours: number;
+    /**
+     * Meetings whose title contains one of these (any case) don't count towards the daily target:
+     * they are booked at their real rounded hours on top of it. Single meetings can be set either way by hand.
+     */
+    uncounted: string[];
   };
   github: {
     enabled: boolean;
@@ -136,7 +141,7 @@ export function defaultConfig(): Config {
     rounding: 0.25,
     decimalSeparator: '.',
     dateFormat: 'YYYY-MM-DD',
-    calendar: { enabled: false, calendarIds: ['primary'], includeTentative: true, includeUnanswered: true, includeDeclined: false, skipWithoutAttendees: true, maxMeetingHours: 4 },
+    calendar: { enabled: false, calendarIds: ['primary'], includeTentative: true, includeUnanswered: true, includeDeclined: false, skipWithoutAttendees: true, maxMeetingHours: 4, uncounted: [] },
     github: { enabled: false, repos: [], leadMinutes: 10 },
     classifier: { enabled: true, command: 'claude', model: 'sonnet', timeoutSeconds: 240, concurrency: 3 },
     categories: DEFAULT_CATEGORIES,
@@ -238,6 +243,7 @@ export function validateConfig(c: Config): string[] {
   if (!['YYYY', 'MM', 'DD'].every((t) => c.dateFormat?.includes(t))) errors.push('dateFormat must contain YYYY, MM and DD');
 
   if (!Array.isArray(c.calendar?.calendarIds)) errors.push('calendar.calendarIds must be a list');
+  if (!Array.isArray(c.calendar?.uncounted) || c.calendar.uncounted.some((t) => typeof t !== 'string' || !t.trim())) errors.push('calendar.uncounted must be a list of meeting title words');
   for (const k of ['includeTentative', 'includeUnanswered', 'includeDeclined', 'skipWithoutAttendees'] as const)
     if (c.calendar && typeof c.calendar[k] !== 'boolean') errors.push(`calendar.${k} must be true or false`);
   if (c.calendar?.project && !c.projects?.includes(c.calendar.project)) errors.push(`calendar.project "${c.calendar.project}" is not in projects`);

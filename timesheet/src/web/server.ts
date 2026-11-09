@@ -19,7 +19,7 @@ import { listClaudeCommandsAsync, runClaude } from '../core/claude-runner.ts';
 import { JobRunner } from '../core/jobs.ts';
 import { categoryHues } from '../core/palette.ts';
 import type { Store } from '../core/store.ts';
-import { applySettingsChange, blockEditProblem, hoursEditProblem } from '../core/edits.ts';
+import { applySettingsChange, blockCountProblem, blockEditProblem, hoursEditProblem } from '../core/edits.ts';
 import type { DayReport } from '../core/types.ts';
 import { daysBetween } from '../core/dates.ts';
 import { CLASSIFIER_CWD } from '../core/config.ts';
@@ -390,6 +390,13 @@ export function createApp(opts: AppOptions) {
           engine.store.editBlock(date, Number(q.blockId), category);
           return json(res, 200, { ok: true });
         }
+        case 'POST /api/block-count': {
+          const date = String(q.date ?? '');
+          const problem = blockCountProblem(engine.store, date, Number(q.blockId));
+          if (problem) return json(res, engine.store.isLocked(date) ? 409 : 400, { error: problem });
+          engine.store.editBlockCount(date, Number(q.blockId), q.counted === null || q.counted === undefined ? null : !!q.counted);
+          return json(res, 200, { ok: true });
+        }
         case 'POST /api/confirm': {
           const date = String(q.date ?? '');
           if (!engine.store.getDay(date)) return json(res, 400, { error: `${date} is not computed yet` });
@@ -502,7 +509,23 @@ export function createApp(opts: AppOptions) {
         case 'GET /api/submit':
           return json(res, 200, submitStatus());
         case 'GET /api/submit/plan':
+          if (q.from || q.to) return json(res, 200, await submitRunner.planRange(systemOf(q.system), String(q.from ?? ''), String(q.to ?? '')));
           return json(res, 200, submitPlan(q));
+        case 'POST /api/submit/check': {
+          const system = systemOf(q.system);
+          return json(res, 200, { check: await submitRunner.check(system, String(q.from ?? ''), String(q.to ?? '')) });
+        }
+        case 'GET /api/submit/check': {
+          const system = q.system ? systemOf(q.system) : undefined;
+          const c = submitRunner.checkProgress();
+          const mine = c && (!system || c.system === system) && (!q.from || c.from === q.from) && (!q.to || c.to === q.to) ? c : null;
+          return json(res, 200, { check: mine });
+        }
+        case 'POST /api/submit/start': {
+          const system = systemOf(q.system);
+          if (typeof q.token !== 'string') throw new HttpError(400, 'token is required: check the site first');
+          return json(res, 200, { progress: await submitRunner.start(system, String(q.from ?? ''), String(q.to ?? ''), q.token) });
+        }
         case 'POST /api/submit/open': {
           const system = systemOf(q.system);
           if (submitRunner.running) throw new HttpError(409, 'A submission is running in the browser: wait for it or cancel it first');
@@ -549,7 +572,7 @@ export function createApp(opts: AppOptions) {
           const system = q.system ? systemOf(q.system) : undefined;
           const week = q.week ? weekOf(q.week) : undefined;
           const progress = submitRunner.progress();
-          const mine = progress && (!system || progress.system === system) && (!week || progress.week === week) ? progress : null;
+          const mine = progress && (!system || progress.system === system) && (!week || progress.week === week || progress.weeks.some((w) => w.week === week)) ? progress : null;
           return json(res, 200, { progress: mine ? { ...mine, screenshots: mine.screenshots.map(contractHome) } : null, runs: runSummary(system, week) });
         }
         case 'POST /api/submit/capture': {

@@ -82,6 +82,18 @@ export class GithubError extends Error {
 }
 
 /** REST and GraphQL over several tokens: each owner's repos are read with the first token that can see them. */
+/** Per token: when its rate limit resets. Requests before then fail without reaching GitHub. */
+const limitedUntil = new Map<string, number>();
+
+function rateLimitMessage(until: number): string {
+  return `GitHub rate limit reached (resets at ${new Date(until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}); the day is retried after that`;
+}
+
+/** For tests: forget remembered rate limits. */
+export function resetGithubRateLimits(): void {
+  limitedUntil.clear();
+}
+
 export class GithubApi {
   readonly tokens: GithubToken[];
   private fetchFn: typeof fetch;
@@ -93,6 +105,8 @@ export class GithubApi {
   }
 
   private async request<T>(token: GithubToken, url: string, init: RequestInit = {}): Promise<T> {
+    const until = limitedUntil.get(token.token) ?? 0;
+    if (Date.now() < until) throw new GithubError(rateLimitMessage(until), 429);
     const res = await this.fetchFn(url, {
       ...init,
       headers: {
@@ -104,8 +118,14 @@ export class GithubApi {
       },
     });
     const body: any = await res.json().catch(() => ({}));
-    if (res.status === 429 || (res.status === 403 && res.headers.get('x-ratelimit-remaining') === '0'))
-      throw new GithubError('GitHub rate limit reached; the day is retried later', res.status);
+    if (res.status === 429 || (res.status === 403 && (res.headers.get('x-ratelimit-remaining') === '0' || res.headers.has('retry-after')))) {
+      // Until the limit resets every request would fail too (and the token is often shared with gh): stop asking.
+      const reset = Number(res.headers.get('x-ratelimit-reset')) * 1000;
+      const retryAfter = Number(res.headers.get('retry-after')) * 1000;
+      const until = reset > Date.now() ? reset : Date.now() + (retryAfter > 0 ? retryAfter : 60_000);
+      limitedUntil.set(token.token, until);
+      throw new GithubError(rateLimitMessage(until), res.status);
+    }
     if (res.status === 401) throw new GithubError(`GitHub token "${token.label}" is invalid or expired; replace it with \`timesheet github add ${token.label}\``, 401);
     if (!res.ok) throw new GithubError(`GitHub ${res.status}: ${body.message ?? 'request failed'}`, res.status);
     if (body.errors?.length && !body.data) throw new GithubError(`GitHub GraphQL: ${body.errors[0].message}`, 400);

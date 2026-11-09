@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { PROMPT_VERSION, blockFallback, claudeClassifier, itemFallback, defaultCategory, fallbackSummary, sanitize } from './classify.ts';
 import { cleanPrompt, clipIntervals } from './collectors/spans.ts';
 import type { Classifier } from './classify.ts';
-import { collectCalendar } from './collectors/gcal.ts';
+import { collectCalendar, isConnected, isSignInError } from './collectors/gcal.ts';
 import { collectClaude } from './collectors/claude.ts';
 import { collectOpenCode } from './collectors/opencode.ts';
 import { collectGit, discoverRepos, repoRoot } from './collectors/git.ts';
@@ -38,6 +38,8 @@ export interface EngineOptions {
   /** The current time; nothing after it is counted */
   now?: () => number;
   log?: (msg: string) => void;
+  /** Whether Google Calendar has a sign-in (default: the keychain); days that failed for lack of one wait for it. */
+  calendarConnected?: () => boolean;
 }
 
 export interface DaysOptions {
@@ -62,6 +64,7 @@ const OTHER_GAP_MINUTES = 60;
 const TODAY_TTL_MS = 15 * 60_000;
 /** A day that failed partway (source down, classifier error) is retried after this long. */
 const RETRY_AFTER_MS = 5 * 60_000;
+const CALENDAR_FAILURE = 'Google Calendar: ';
 /**
  * A day computed before this long after its end is computed once more after it: transcripts,
  * pushes from another machine and calendar edits often land late.
@@ -103,6 +106,7 @@ export class Engine {
   private today: () => string;
   private now: () => number;
   private log: (msg: string) => void;
+  private calendarConnected: () => boolean;
 
   constructor(opts: EngineOptions) {
     this.config = opts.config;
@@ -113,6 +117,9 @@ export class Engine {
     this.today = opts.today ?? today;
     this.now = opts.now ?? Date.now;
     this.log = opts.log ?? (() => {});
+    let checked = { at: 0, value: false };
+    // A keychain lookup per stale check would slow every report; a few seconds old is fine.
+    this.calendarConnected = opts.calendarConnected ?? (() => (Date.now() - checked.at < 5_000 ? checked.value : (checked = { at: Date.now(), value: isConnected() }).value));
     this.sources = {
       claude: (from, to) => collectClaude(this.config, from, to),
       opencode: (from, to) => collectOpenCode(this.config, from, to),
@@ -136,7 +143,11 @@ export class Engine {
     if (Object.entries(day.paths).some(([p, key]) => resolutionKey(this.scope.resolve(p)) !== key)) return true;
     const age = now - Date.parse(day.computedAt);
     if (day.status === 'today') return day.date < this.today() || age > TODAY_TTL_MS;
-    if (day.status === 'partial') return day.retry !== false && age > RETRY_AFTER_MS;
+    if (day.status === 'partial') {
+      if (day.retry !== false) return age > RETRY_AFTER_MS;
+      // Calendar sign-in failures wait for a reconnect instead of retrying every few minutes.
+      return day.warnings.some((w) => w.startsWith(CALENDAR_FAILURE) && isSignInError(w)) && this.calendarConnected();
+    }
     const settled = dayBounds(day.date)[1] + SETTLE_MS;
     return Date.parse(day.computedAt) < settled && now >= settled;
   }
@@ -168,22 +179,29 @@ export class Engine {
 
   report(day: StoredDay, targetOverride?: number): DayReport {
     const blockOverrides = this.store.blockOverrides(day.date);
+    const blockCounts = this.store.blockCounts(day.date);
+    const holiday = isHoliday(this.config, day.date);
+    const offDay = holiday && targetOverride === undefined;
+    const rules = (this.config.calendar.uncounted ?? []).map((t) => t.trim().toLowerCase()).filter(Boolean);
     // Texts stored before prompt cleaning improved are cleaned on the way out.
     const blocks: Block[] = day.blocks.map((b) => {
       const texts = b.texts.map((t) => (b.kind === 'work' ? cleanPrompt(t) : t)).filter((t): t is string => !!t);
-      return blockOverrides.has(b.id) ? { ...b, texts, allocations: [{ category: blockOverrides.get(b.id)!, fraction: 1 }] } : { ...b, texts };
+      const out: Block = blockOverrides.has(b.id) ? { ...b, texts, allocations: [{ category: blockOverrides.get(b.id)!, fraction: 1 }] } : { ...b, texts };
+      const byRule = b.kind === 'meeting' && rules.some((r) => (texts[0] ?? '').toLowerCase().includes(r));
+      if (!offDay && (blockCounts.get(b.id) === false || (byRule && blockCounts.get(b.id) !== true))) out.uncounted = true;
+      return out;
     });
     if (day.summary && day.summary === fallbackSummary(day.blocks)) day = { ...day, summary: fallbackSummary(blocks) };
     let target = day.outOfOffice ? null : targetFor(this.config, day.date, targetOverride);
     // Part of the day out of office: only the rest is expected.
     if (target !== null && targetOverride === undefined && day.oooHours) target = Math.max(0, Math.round((target - day.oooHours) * 100) / 100);
     const overrides = this.store.overrides(day.date);
-    const entries = buildEntries(blocks, this.config.categories, target, this.config.rounding, overrides);
+    // A day off books nothing unless hours were set by hand.
+    const entries = buildEntries(blocks, this.config.categories, offDay ? 0 : target, this.config.rounding, overrides);
     const measured = blocks.every((b) => b.measured !== undefined);
     const realTotal = entries.reduce((s, e) => s + e.real, 0);
     const total = Math.round(entries.reduce((s, e) => s + e.hours, 0) * 100) / 100;
     const locked = this.store.isLocked(day.date);
-    const holiday = isHoliday(this.config, day.date);
     const ratio = this.config.lowActivityRatio ?? 0;
     const lowActivity = day.status !== 'today' && target !== null && target > 0 && ratio > 0 && !overrides.length && realTotal < ratio * target;
     const confirmed = lowActivity && this.store.hasMark(day.date, 'confirmed');
@@ -194,9 +212,12 @@ export class Engine {
           ? `Only ${Math.round(realTotal * 10) / 10}h of recorded work, booked as ${total}h: confirm it (\`timesheet confirm ${day.date}\`) or set the hours (\`timesheet edit\`)`
           : `No work recorded on a workday: add it to holidays if you were off, confirm it (\`timesheet confirm ${day.date}\`), or set the hours (\`timesheet edit\`)`,
       );
-    if (target !== null && overrides.length && Math.abs(total - target) > 1e-6) flags.push(`Booked ${total}h against a ${target}h target after your edits`);
+    const extra = entries.reduce((s, e) => s + (e.uncounted ?? 0), 0);
+    if (target !== null && overrides.length && Math.abs(total - extra - target) > 1e-6) flags.push(`Booked ${total}h against a ${target}h target after your edits`);
+    const warnings = offDay && realTotal > 0 && !overrides.length ? [...day.warnings, `Day off: ${Math.round(realTotal * 10) / 10}h of recorded work is not booked; set hours with \`timesheet edit\` if you worked`] : day.warnings;
     return {
       ...day,
+      warnings,
       blocks,
       target,
       entries,
@@ -295,7 +316,7 @@ export class Engine {
     let calendar: RawEvent[] = [];
     if (this.sources.calendar) {
       calendar = await this.sources.calendar(from, to).catch((e) => {
-        failures.push(`Google Calendar: ${e.message}`);
+        failures.push(`${CALENDAR_FAILURE}${e.message}`);
         return [] as RawEvent[];
       });
     }
@@ -327,38 +348,44 @@ export class Engine {
   }
 
   /**
-   * Block categories set by hand follow their block when a recompute changes the blocks: each goes to
-   * the new block that holds most of the old one. Returns warnings for the ones that could not follow.
+   * Block settings made by hand (categories, counting) follow their block when a recompute changes the
+   * blocks: each goes to the new block that holds most of the old one. Returns warnings for the ones that could not follow.
    */
   private carryBlockOverrides(date: string, before: Block[], after: Block[]): string[] {
-    const set = this.store.blockOverrides(date);
-    if (!set.size) return [];
     const same = JSON.stringify(before.map((b) => [b.id, b.start, b.end])) === JSON.stringify(after.map((b) => [b.id, b.start, b.end]));
     if (same) return [];
+    return [
+      ...this.carry(before, after, this.store.blockOverrides(date), (id, v) => this.store.setBlockOverride(date, id, v), (c) => `"${c}"`, 'category'),
+      ...this.carry(before, after, this.store.blockCounts(date), (id, v) => this.store.setBlockCount(date, id, v), (c) => (c ? '"count"' : '"don\'t count"'), 'setting'),
+    ];
+  }
+
+  private carry<T extends string | boolean>(before: Block[], after: Block[], set: Map<number, T>, save: (id: number, v: T | null) => void, show: (v: T) => string, what: string): string[] {
+    if (!set.size) return [];
     const warnings: string[] = [];
-    const next = new Map<number, string>();
-    const lost = (old: Block | undefined, category: string, why: string) =>
-      warnings.push(`Your category "${category}"${old ? ` for ${fmtTime(old.start)}–${fmtTime(old.end)}` : ''} was dropped: ${why}; check the day`);
-    for (const [id, category] of set) {
+    const next = new Map<number, T>();
+    const lost = (old: Block | undefined, v: T, why: string) =>
+      warnings.push(`Your ${what} ${show(v)}${old ? ` for ${fmtTime(old.start)}–${fmtTime(old.end)}` : ''} was dropped: ${why}; check the day`);
+    for (const [id, v] of set) {
       const old = before.find((b) => b.id === id);
       if (!old) {
-        lost(old, category, 'its block no longer exists');
+        lost(old, v, 'its block no longer exists');
         continue;
       }
       const overlap = (b: Block) => Math.max(0, Math.min(b.end, old.end) - Math.max(b.start, old.start));
       const best = after.filter((b) => b.kind === old.kind).sort((x, y) => overlap(y) - overlap(x))[0];
       if (!best || overlap(best) < CARRY_MIN_OVERLAP * Math.min(old.end - old.start, best.end - best.start)) {
-        lost(old, category, 'the activity there changed');
+        lost(old, v, 'the activity there changed');
         continue;
       }
-      if (next.has(best.id) && next.get(best.id) !== category) {
-        lost(old, category, `it merged into a block you set to "${next.get(best.id)}"`);
+      if (next.has(best.id) && next.get(best.id) !== v) {
+        lost(old, v, `it merged into a block you set to ${show(next.get(best.id)!)}`);
         continue;
       }
-      next.set(best.id, category);
+      next.set(best.id, v);
     }
-    for (const id of set.keys()) if (!next.has(id)) this.store.setBlockOverride(date, id, null);
-    for (const [id, category] of next) this.store.setBlockOverride(date, id, category);
+    for (const id of set.keys()) if (!next.has(id)) save(id, null);
+    for (const [id, v] of next) save(id, v);
     return warnings;
   }
 
@@ -476,7 +503,7 @@ export class Engine {
     const unclassified = blocks.length > 0 && !this.classifier && this.config.classifier.enabled;
     const status = date >= this.today() ? 'today' : failures.length || unknown.size || classifyFailed || unclassified ? 'partial' : 'final';
     if (previous) warnings.push(...this.carryBlockOverrides(date, previous.blocks, blocks));
-    const retry = failures.length > 0 || classifyFailed || unclassified;
+    const retry = failures.some((f) => !(f.startsWith(CALENDAR_FAILURE) && isSignInError(f))) || classifyFailed || unclassified;
     const counts = {
       prompts: work.filter((e) => e.source === 'claude' || e.source === 'opencode').reduce((n, e) => n + e.texts.length, 0),
       commits: work.filter((e) => e.source === 'git').length,

@@ -79,7 +79,10 @@ export function buildEntries(
   overrides: Override[] = [],
 ): Entry[] {
   const capex = new Map(categories.map((c) => [c.name, c.capex]));
-  const rows = [...realByCategory(blocks).values()].sort((a, b) => b.real - a.real);
+  const key = (r: { project: string; category: string }) => `${r.project}\t${r.category}`;
+  const counted = realByCategory(blocks.filter((b) => !b.uncounted));
+  const extra = realByCategory(blocks.filter((b) => b.uncounted));
+  const rows = [...counted.values()].sort((a, b) => b.real - a.real);
   const isOverridden = (r: { project: string; category: string }) => overrides.some((o) => o.project === r.project && o.category === r.category);
   const free = rows.filter((r) => !isOverridden(r));
   // Without a target each entry is its real time rounded up; with one, the day adds up to it.
@@ -89,10 +92,24 @@ export function buildEntries(
   else distribute(free.map((r) => r.real), left, step).forEach((h, i) => hours.set(free[i], h));
   const entries: Entry[] = rows.map((r) => ({ ...r, capex: capex.get(r.category) ?? false, hours: hours.get(r) ?? 0 }));
 
+  // Blocks that don't count towards the target are booked at their real rounded time on top of it.
+  for (const x of [...extra.values()].sort((a, b) => b.real - a.real)) {
+    const add = roundUp(x.real, step);
+    const e = entries.find((y) => key(y) === key(x));
+    if (e) {
+      e.real += x.real;
+      if (e.measured !== undefined && x.measured !== undefined) e.measured += x.measured;
+      e.hours = Math.round((e.hours + add) * 100) / 100;
+      e.uncounted = add;
+    } else entries.push({ ...x, capex: capex.get(x.category) ?? false, hours: add, uncounted: add });
+  }
+
   for (const o of overrides) {
     const e = entries.find((x) => x.project === o.project && x.category === o.category);
-    if (e) Object.assign(e, { hours: o.hours, overridden: true });
-    else entries.push({ project: o.project, category: o.category, capex: capex.get(o.category) ?? false, real: 0, hours: o.hours, overridden: true });
+    if (e) {
+      Object.assign(e, { hours: o.hours, overridden: true });
+      delete e.uncounted;
+    } else entries.push({ project: o.project, category: o.category, capex: capex.get(o.category) ?? false, real: 0, hours: o.hours, overridden: true });
   }
   return entries;
 }

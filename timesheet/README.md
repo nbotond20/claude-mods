@@ -188,7 +188,7 @@ Then `timesheet github add acme` (the token is typed hidden, and the same link i
 
 Approvals have no timestamp on GitHub's side; they are dated by the deployment's first status after it stopped waiting for review.
 
-## Submitting to Redmine and NetSuite (in progress)
+## Submitting to Redmine and NetSuite
 
 There are no API keys, so the timesheet drives the real pages in a separate Chrome window with its own profile (`~/.timesheet/browser`). You log in there yourself (SSO, MFA); only the session cookies are kept, never passwords.
 
@@ -197,8 +197,13 @@ timesheet config set submit.redmine.url https://redmine.example.com/work_time/in
 timesheet submit login redmine        # log in once in the window
 timesheet submit plan last            # what would be entered (read-only)
 timesheet submit week last --system redmine   # compare with the site, confirm, then enter the week (interactive)
-timesheet submit inspect netsuite     # save sanitized page snapshots for building the automation
+
+timesheet config set submit.netsuite.url https://<account>.app.netsuite.com/app/accounting/transactions/time/weeklytimebill.nl
+timesheet submit login netsuite
+timesheet submit week last --system netsuite  # fills in the weekly timesheet; you press Save (never Submit)
 ```
+
+Hours are entered in 0.25 h steps: each day is rebalanced (largest remainder, every entry keeps at least 0.25 h) so the day keeps its total, while the timesheet itself keeps its own rounding. NetSuite rows are added per project + task; existing rows only get empty days filled. The adapter lets exactly one checked save through and blocks Submit, deletes and any other change.
 
 Booked hours map to Redmine issue + activity and NetSuite project + task through `submit.<system>.rules` (`{ "project", "category" | "*", "target" }`). Anything unmapped, a partial day, or hours already on the site that differ from the plan stops that system for the whole week, with nothing entered.
 

@@ -1,3 +1,4 @@
+import { CONFIG_SAVED } from '../useReport';
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import {
   Alert,
@@ -641,13 +642,20 @@ export function CalendarSection({ config, update }: SectionProps) {
   useEffect(() => {
     refresh();
   }, []);
-  useEffect(() => {
-    if (!auth?.connected) return;
+  const loadCalendars = () => {
     setCalError(null);
-    api<{ calendars: NonNullable<typeof calendars> }>('/api/calendars').then(
+    setCalendars(null);
+    return api<{ calendars: NonNullable<typeof calendars> }>('/api/calendars').then(
       (r) => setCalendars(r.calendars),
-      (e) => setCalError((e as Error).message),
+      (e) => {
+        setCalError((e as Error).message);
+        // An expired or revoked token disconnects on the server; re-read the status so Connect shows up.
+        refresh();
+      },
     );
+  };
+  useEffect(() => {
+    if (auth?.connected) loadCalendars();
   }, [auth?.connected]);
 
   const run = async (key: string, fn: () => Promise<unknown>, success: string) => {
@@ -656,6 +664,8 @@ export function CalendarSection({ config, update }: SectionProps) {
       await fn();
       toast({ title: success, severity: 'success' });
       await refresh();
+      // Days computed while signed out recompute once a report asks for them again.
+      window.dispatchEvent(new Event(CONFIG_SAVED));
     } catch (e) {
       toast({ title: 'Google Calendar', description: (e as Error).message, severity: 'error' });
     } finally {
@@ -743,6 +753,7 @@ export function CalendarSection({ config, update }: SectionProps) {
         <SwitchRow label="Count declined meetings" hint="For meetings you joined after declining." disabled={!config.calendar.enabled} checked={config.calendar.includeDeclined} onChange={(includeDeclined) => setCal({ includeDeclined })} />
         <SwitchRow label="Skip events without attendees" hint="Focus time and reminders." disabled={!config.calendar.enabled} checked={config.calendar.skipWithoutAttendees} onChange={(skipWithoutAttendees) => setCal({ skipWithoutAttendees })} />
         <NumberRow label="Ignore meetings longer than" hint="Day-long holds and conferences. 0 counts every length." disabled={!config.calendar.enabled} value={config.calendar.maxMeetingHours} unit="h" step={0.5} onChange={(maxMeetingHours) => setCal({ maxMeetingHours })} />
+        <ListRow label="Don't count towards the day" hint="Meetings whose title contains one of these are booked at their real time on top of the daily target. Single meetings can be switched in their details." disabled={!config.calendar.enabled} value={config.calendar.uncounted ?? []} onChange={(uncounted) => setCal({ uncounted })} placeholder="all-hands" addLabel="Add title" mono={false} />
       </Group>
 
       <Group
@@ -753,6 +764,15 @@ export function CalendarSection({ config, update }: SectionProps) {
         {calError && (
           <Block>
             <Alert tone="danger" title="Could not list calendars" description={calError} />
+            <div className="mt-3 flex gap-2">
+              {auth?.hasClient && !auth.connected ? (
+                <Button variant="primary" size="sm" leadingIcon="link" loading={busy === 'connect'} onClick={() => run('connect', () => api('/api/auth/connect', { body: {} }), 'Connected to Google Calendar')}>Reconnect</Button>
+              ) : (
+                auth?.connected && (
+                  <Button variant="outline" size="sm" loading={busy === 'calendars'} onClick={async () => { setBusy('calendars'); await loadCalendars(); setBusy(null); }}>Try again</Button>
+                )
+              )}
+            </div>
           </Block>
         )}
         {auth?.connected && !calendars && !calError && (

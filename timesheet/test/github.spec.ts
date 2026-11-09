@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 process.env.TIMESHEET_SECRETS = 'file';
 const { at, testConfig } = await import('./helpers.ts');
-const { GithubApi, addToken, collectGithub, removeToken, storedTokens } = await import('../src/core/collectors/github.ts');
+const { GithubApi, addToken, collectGithub, removeToken, resetGithubRateLimits, storedTokens } = await import('../src/core/collectors/github.ts');
 const { computeKey } = await import('../src/core/config.ts');
 const { Engine } = await import('../src/core/engine.ts');
 const { Store } = await import('../src/core/store.ts');
@@ -109,6 +109,24 @@ describe('github collector', () => {
     await assert.rejects(collectGithub(config, [], from, to, bad), /token "acme" is invalid/);
     const limited = new GithubApi([{ label: 'acme', token: 't1' }], fakeFetch({ 'GET /user': () => 429 }));
     await assert.rejects(collectGithub(config, [], from, to, limited), /rate limit/);
+    resetGithubRateLimits();
+  });
+
+  it('stops asking GitHub until a rate limit resets', async () => {
+    let calls = 0;
+    const reset = Math.floor(Date.now() / 1000) + 600;
+    const limitedFetch = (async () => {
+      calls++;
+      return new Response('{"message":"API rate limit exceeded"}', { status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(reset) } });
+    }) as typeof fetch;
+    const api = new GithubApi([{ label: 'gh', token: 't-limited' }], limitedFetch);
+    await assert.rejects(collectGithub(config, [], from, to, api), /rate limit reached \(resets at/);
+    await assert.rejects(collectGithub(config, [], from, to, api), /rate limit reached/);
+    assert.equal(calls, 1, 'the second collection never reached GitHub');
+    resetGithubRateLimits();
+    await assert.rejects(collectGithub(config, [], from, to, api), /rate limit/);
+    assert.equal(calls, 2);
+    resetGithubRateLimits();
   });
 
   it('stores tokens after checking them, by label', async () => {

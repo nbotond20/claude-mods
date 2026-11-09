@@ -116,6 +116,8 @@ export interface Block {
   items?: BlockItem[];
   /** Minutes backed by recorded timestamps only (no lead-ins, padding or gap bridging), unrounded. Absent on days computed before it existed. */
   measured?: number;
+  /** Booked at its real rounded hours on top of the daily target instead of counting towards it (set at report time). */
+  uncounted?: boolean;
 }
 
 /** Activity outside work scope: in a personal folder, or in one no scope rule covers yet. Never booked. */
@@ -157,6 +159,8 @@ export interface Entry {
   /** Recorded minutes (see Block.measured), unrounded; absent when a block lacks it */
   measured?: number;
   overridden?: boolean;
+  /** Hours of it from blocks that don't count towards the target (already included in `hours`) */
+  uncounted?: number;
 }
 
 /** What was detected in work scope on a day. */

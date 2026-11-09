@@ -1,4 +1,5 @@
 import { addDays, daysBetween, weekStart } from '../dates.ts';
+import { distribute } from '../hours.ts';
 import type { DayReport } from '../types.ts';
 import type { Cell, NetsuiteTarget, PlanResult, RedmineTarget, SubmitRule, SystemId } from './types.ts';
 
@@ -63,6 +64,25 @@ export interface PlanInput<T> {
   rules: SubmitRule<T>[];
   /** Whether the target is still offered by the site (from discovery); omitted = not checked */
   exists?: (target: T) => boolean;
+  /** Days to plan (default: the whole week), e.g. only the month's days when entering a month */
+  inScope?: (date: string) => boolean;
+  /** Precision the sites take (hours); each day's cells are rebalanced to it. Default SUBMIT_STEP */
+  step?: number;
+}
+
+/** Sites are booked in quarter hours, whatever step the timesheet itself rounds to. */
+export const SUBMIT_STEP = 0.25;
+
+/**
+ * Rebalances one day's cells to multiples of `step`, keeping the day total (rounded up to the step
+ * when it is not a multiple, e.g. 8 h stays 8 h, 7.3 h becomes 7.5 h). Shares follow the booked
+ * hours; every cell keeps at least one step. Mutates the cells; returns the totals before and after, in cents.
+ */
+export function rebalanceDay<T>(cells: Cell<T>[], step: number): { before: number; after: number } {
+  const total = cells.reduce((s, c) => s + cents(c.hours), 0);
+  const hours = distribute(cells.map((c) => cents(c.hours)), total / 100, step);
+  cells.forEach((c, i) => (c.hours = cents(hours[i]) / 100));
+  return { before: total, after: cells.reduce((s, c) => s + cents(c.hours), 0) };
 }
 
 /**
@@ -76,11 +96,13 @@ export function buildPlan<T extends object>(input: PlanInput<T>): PlanResult<T> 
   if (invalid.length) return { ok: false, reasons: invalid };
   const reasons: string[] = [];
   const notes: string[] = [];
+  const off: string[] = [];
   const byDate = new Map(input.reports.map((r) => [r.date, r]));
   const cells = new Map<string, Cell<T>>();
 
   for (const date of daysBetween(input.week, addDays(input.week, 6))) {
     if (date > input.today) continue;
+    if (input.inScope && !input.inScope(date)) continue;
     const report = byDate.get(date);
     if (!report) {
       reasons.push(`${date}: not computed yet`);
@@ -117,6 +139,13 @@ export function buildPlan<T extends object>(input: PlanInput<T>): PlanResult<T> 
       cells.set(key, { date, target: rule.target, hours: ((before ? cents(before.hours) : 0) + cents(e.hours)) / 100 });
     }
     if (total > 2400) reasons.push(`${date}: ${total / 100} h booked, more than a day`);
+    if (total === 0 && (report.holiday || report.outOfOffice)) off.push(date);
+    const day = [...cells.values()].filter((c) => c.date === date).sort(byCell);
+    const step = input.step ?? SUBMIT_STEP;
+    if (day.length && day.some((c) => cents(c.hours) % cents(step) !== 0)) {
+      const { before, after } = rebalanceDay(day, step);
+      if (after !== before) notes.push(`${date}: ${before / 100} h booked, entered as ${after / 100} h (${step} h steps)`);
+    }
   }
 
   if (input.system === 'redmine') {
@@ -135,5 +164,5 @@ export function buildPlan<T extends object>(input: PlanInput<T>): PlanResult<T> 
   }
 
   if (reasons.length) return { ok: false, reasons };
-  return { ok: true, plan: { system: input.system, week: input.week, cells: [...cells.values()].sort(byCell), notes } };
+  return { ok: true, plan: { system: input.system, week: input.week, cells: [...cells.values()].sort(byCell), notes, ...(off.length ? { off } : {}) } };
 }

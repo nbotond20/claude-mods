@@ -29,13 +29,20 @@ export function hoursEditProblem(config: Config, store: Store, date: string, pro
 
 /** Checks a block recategorization: the block exists on the stored day and the category is known. */
 export function blockEditProblem(config: Config, store: Store, date: string, blockId: number, category: string | null): string | null {
+  const problem = blockCountProblem(store, date, blockId);
+  if (problem) return problem;
+  if (category !== null && !categoriesFor(config, date).some((c) => c.name === category)) return `unknown category "${category}" on ${date}`;
+  return null;
+}
+
+/** Why a block of the day can't be changed (counting, or as part of a category change), or null. */
+export function blockCountProblem(store: Store, date: string, blockId: number): string | null {
   const day = dayProblem(store, date);
   if (day) return day;
   if (!Number.isInteger(blockId)) return `block id must be a whole number, not ${blockId}`;
   const stored = store.getDay(date);
   if (!stored) return `${date} is not computed yet`;
   if (!stored.blocks.some((b) => b.id === blockId)) return `${date} has no block ${blockId} (blocks: ${stored.blocks.map((b) => b.id).join(', ') || 'none'})`;
-  if (category !== null && !categoriesFor(config, date).some((c) => c.name === category)) return `unknown category "${category}" on ${date}`;
   return null;
 }
 

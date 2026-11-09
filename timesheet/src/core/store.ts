@@ -15,7 +15,7 @@ export interface Edit {
   id: number;
   at: string;
   date: string;
-  kind: 'hours' | 'block' | 'confirm';
+  kind: 'hours' | 'block' | 'count' | 'confirm';
   /** hours: "project\tcategory"; block: the block id; confirm: "" */
   key: string;
   /** Value before and after; null = not set */
@@ -119,6 +119,12 @@ export class Store {
         date TEXT NOT NULL,
         block_id INTEGER NOT NULL,
         category TEXT NOT NULL,
+        PRIMARY KEY (date, block_id)
+      );
+      CREATE TABLE IF NOT EXISTS block_counts (
+        date TEXT NOT NULL,
+        block_id INTEGER NOT NULL,
+        counted INTEGER NOT NULL,
         PRIMARY KEY (date, block_id)
       );
       CREATE TABLE IF NOT EXISTS day_marks (
@@ -226,6 +232,25 @@ export class Store {
     else this.db.prepare('INSERT OR REPLACE INTO block_overrides VALUES (?, ?, ?)').run(date, blockId, category);
   }
 
+  /** Blocks set by hand to count (true) or not count (false) towards the daily target. */
+  blockCounts(date: string): Map<number, boolean> {
+    const rows = this.db.prepare('SELECT block_id, counted FROM block_counts WHERE date = ?').all(date) as any[];
+    return new Map(rows.map((r) => [Number(r.block_id), !!r.counted]));
+  }
+
+  setBlockCount(date: string, blockId: number, counted: boolean | null): void {
+    if (counted === null) this.db.prepare('DELETE FROM block_counts WHERE date = ? AND block_id = ?').run(date, blockId);
+    else this.db.prepare('INSERT OR REPLACE INTO block_counts VALUES (?, ?, ?)').run(date, blockId, counted ? 1 : 0);
+  }
+
+  /** Sets whether a block counts towards the target (null = follow the config rule), recorded for undo. */
+  editBlockCount(date: string, blockId: number, counted: boolean | null): void {
+    const prev = this.blockCounts(date).get(blockId);
+    const before = prev === undefined ? null : prev ? 1 : 0;
+    this.setBlockCount(date, blockId, counted);
+    this.logEdit(date, 'count', String(blockId), before, counted === null ? null : counted ? 1 : 0);
+  }
+
   /** Sets an hour override and records it for undo. */
   editHours(date: string, project: string, category: string, hours: number | null): void {
     const before = this.overrides(date).find((o) => o.project === project && o.category === category)?.hours ?? null;
@@ -269,6 +294,7 @@ export class Store {
       const [project, category] = e.key.split('\t');
       this.setOverride(e.date, project, category, e.before as number | null);
     } else if (e.kind === 'block') this.setBlockOverride(e.date, Number(e.key), e.before as string | null);
+    else if (e.kind === 'count') this.setBlockCount(e.date, Number(e.key), e.before === null ? null : !!e.before);
     else this.setMark(e.date, 'confirmed', e.before !== null);
     this.db.prepare('UPDATE edits SET undone = 1 WHERE id = ?').run(e.id);
     return e;

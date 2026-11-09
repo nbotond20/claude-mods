@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon, useToast } from '@loam/ui-web';
-import { fmtMin, isOther, OTHER_LABEL, type Block, type BlockItem, type Meta, type OtherBlock, type RepoInfo, type SessionRef } from './api';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Icon, Switch, useToast } from '@loam/ui-web';
+import { api, fmtMin, isOther, OTHER_LABEL, type Block, type BlockItem, type Meta, type OtherBlock, type RepoInfo, type SessionRef } from './api';
 import { hueColor } from './colors';
 
 export interface BlockRef {
@@ -26,18 +26,32 @@ export function repoOf(repos: Record<string, RepoInfo>, path: string): RepoInfo 
 }
 
 /** Where a block happened and what it did. Quiet by default: one line per piece of work, details on click. */
-export function BlockDetails({ open, onClose, value, repos, meta }: { open: boolean; onClose: () => void; value: BlockRef | null; repos: Record<string, RepoInfo>; meta: Meta }) {
+export function BlockDetails({ open, onClose, value, repos, meta, onChanged }: { open: boolean; onClose: () => void; value: BlockRef | null; repos: Record<string, RepoInfo>; meta: Meta; onChanged?: () => void }) {
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
       <DialogContent size="lg" onOpenAutoFocus={(e) => e.preventDefault()} className="max-h-[calc(100dvh-2rem)] max-w-[min(46rem,100%)] gap-0 overflow-hidden p-0">
-        {value && <Body value={value} repos={repos} meta={meta} onClose={onClose} />}
+        {value && <Body key={`${value.date}:${value.block.id}`} value={value} repos={repos} meta={meta} onClose={onClose} onChanged={onChanged} />}
       </DialogContent>
     </Dialog>
   );
 }
 
-function Body({ value: { date, block: b, itemId }, repos, meta, onClose }: { value: BlockRef; repos: Record<string, RepoInfo>; meta: Meta; onClose: () => void }) {
+function Body({ value: { date, block: b, itemId }, repos, meta, onClose, onChanged }: { value: BlockRef; repos: Record<string, RepoInfo>; meta: Meta; onClose: () => void; onChanged?: () => void }) {
   const { toast } = useToast();
+  const [counts, setCounts] = useState(!(b as Block).uncounted);
+  const [saving, setSaving] = useState(false);
+  const setCounted = async (counted: boolean) => {
+    setSaving(true);
+    try {
+      await api('/api/block-count', { body: { date, blockId: b.id, counted } });
+      setCounts(counted);
+      onChanged?.();
+    } catch (err) {
+      toast({ title: 'Could not change the meeting', description: (err as Error).message, severity: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  };
   const hues = new Map(meta.categories.map((c) => [c.name, c.hue]));
   const blockRepos = [...new Map([...b.paths, ...(b.commits ?? []).map((c) => c.repo)].map((p) => repoOf(repos, p)).map((r) => [r.root, r])).values()];
   const items = b.items ?? [];
@@ -110,6 +124,15 @@ function Body({ value: { date, block: b, itemId }, repos, meta, onClose }: { val
           </ul>
         )}
         {b.kind === 'meeting' && b.texts.length > 0 && <p className="px-3 py-2 text-14 text-ink-2">{b.texts.join(' · ')}</p>}
+        {b.kind === 'meeting' && (
+          <label className="mx-3 my-2 flex items-center justify-between gap-4 rounded-md border border-line px-3 py-2.5 text-13">
+            <span className="flex flex-col">
+              <span className="font-medium text-ink">Counts towards the daily target</span>
+              <span className="text-ink-3">{counts ? 'Part of the normal day.' : 'Booked at its real time on top of the day.'}</span>
+            </span>
+            <Switch checked={counts} disabled={saving} onCheckedChange={setCounted} aria-label="Counts towards the daily target" />
+          </label>
+        )}
         {items.length === 0 && b.kind !== 'meeting' && <p className="px-3 py-2 text-13 text-ink-3">No detailed activity recorded for this block.</p>}
 
         {(blockRepos.length > 0 || branches.length > 0 || source) && (

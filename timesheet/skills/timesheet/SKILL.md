@@ -32,6 +32,7 @@ Long ranges run as a resumable job: if a run is interrupted (Ctrl+C, closed term
 
 - Rebook a category's hours for a day: `timesheet edit <date> "<Category>" <hours> [--project P]`, or `clear`.
 - Recategorize a time block (ids from `days[].blocks[].id`): `timesheet block <date> <id> "<Category>"`, or `clear`.
+- Meetings that should not count towards the daily target (booked at their real rounded hours on top of the day): `timesheet count <date> <blockId> no`; `yes` counts it again, `auto` returns to the config rule. For a recurring meeting, add a title word to `calendar.uncounted` (e.g. `timesheet config set calendar.uncounted '["All-hands"]'`).
 - Mark paths as work or personal: `timesheet scope add work "<glob>" [project]` / `timesheet scope add personal "<glob>"`.
 - A low-activity day (flagged): ask the user with AskUserQuestion: "Right as it is" → `timesheet confirm <date>`; "I was off" → add the date to `holidays`; the user types other hours under Other → `timesheet edit`.
 - Undo a mistaken edit: `timesheet undo [date]`; list edits: `timesheet history [date]`.
@@ -44,7 +45,7 @@ Category names must match the configured list exactly (see `timesheet day --json
 
 - Read any option: `timesheet config get <key.path>` (e.g. `target`, `scope.work`, `classifier.notes`); all: `timesheet config show`.
 - Change one: `timesheet config set <key.path> <json-or-string>`; it is validated and rejected with reasons if invalid. It reports how many cached days will recompute; when the user wants past days kept as they are, add `--from <date>`.
-- Days off: `timesheet config set holidays '["2026-12-24","2026-12-25"]'` (the full list).
+- Days off (nothing is booked on them; recorded work only raises a warning, and hours set with `timesheet edit` still count): `timesheet config set holidays '["2026-12-24","2026-12-25"]'` (the full list).
 - Never print or ask for Google client secrets or tokens; they live in the OS keychain.
 
 ## Setup problems
@@ -58,4 +59,5 @@ Category names must match the configured list exactly (see `timesheet day --json
 ## Submission (Redmine, NetSuite)
 
 - You may show what would be entered: `timesheet submit plan [week] --json` (read-only). Relay blocking reasons as they are.
+- Entering happens in the web app: **Check {site}** first reads what the site already holds (read-only) and shows a grid of what is already there, what will be entered, and which days are held back because the site holds other hours. **Enter** only writes what that check showed, and re-reads each week before writing. Days off with hours already on the site are left as they are.
 - Never run anything that enters data (`timesheet submit week …`), and never run `timesheet submit login|inspect`: they open a browser for the user. Tell the user the command instead.

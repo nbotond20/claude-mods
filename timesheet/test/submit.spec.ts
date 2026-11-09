@@ -202,26 +202,43 @@ describe('submit diff', () => {
   };
 
   it('writes into an empty week', () => {
-    assert.deepEqual(diff(p, { week: WEEK, cells: [] }), { kind: 'write', cells: p.cells, unchanged: 0 });
+    assert.deepEqual(diff(p, { week: WEEK, cells: [] }), { kind: 'write', cells: p.cells, unchanged: 0, skipped: [] });
   });
 
   it('is a no-op when everything is already there (rounding-safe), and writes only what is missing', () => {
-    assert.deepEqual(diff(p, { week: WEEK, cells: [{ date: '2026-09-28', target: { activity: 'Development', issueId: 4242 }, hours: 7.1 + 0.2 }, p.cells[1]] }), { kind: 'noop' });
-    assert.deepEqual(diff(p, { week: WEEK, cells: [p.cells[1]] }), { kind: 'write', cells: [p.cells[0]], unchanged: 1 });
+    assert.deepEqual(diff(p, { week: WEEK, cells: [{ date: '2026-09-28', target: { activity: 'Development', issueId: 4242 }, hours: 7.1 + 0.2 }, p.cells[1]] }), { kind: 'noop', skipped: [] });
+    assert.deepEqual(diff(p, { week: WEEK, cells: [p.cells[1]] }), { kind: 'write', cells: [p.cells[0]], unchanged: 1, skipped: [] });
   });
 
-  it('refuses when a planned cell holds another value or the site has hours we do not book', () => {
+  it('holds back only the days where the site holds other hours, and writes the rest', () => {
     const r = diff(p, {
       week: WEEK,
       cells: [{ date: '2026-09-28', target: dev, hours: 2 }, { date: '2026-09-30', target: meet, hours: 0.5 }],
     });
     assert.deepEqual(r, {
-      kind: 'conflict',
-      reasons: [
-        '2026-09-28 #4242 · Development: 2.00 h already entered, plan says 7.30 h',
-        '2026-09-30 #101 · Meeting: 0.50 h entered that the timesheet does not book',
-      ],
+      kind: 'write',
+      cells: [p.cells[1]],
+      unchanged: 0,
+      skipped: [],
+      held: {
+        '2026-09-28': ['2026-09-28 #4242 · Development: 2.00 h already entered, plan says 7.30 h'],
+        '2026-09-30': ['2026-09-30 #101 · Meeting: 0.50 h entered that the timesheet does not book'],
+      },
     });
+  });
+
+  it('refuses when every difference is held back and nothing is left to write', () => {
+    const r = diff(p, { week: WEEK, cells: [{ date: '2026-09-28', target: dev, hours: 2 }, p.cells[1]] });
+    assert.deepEqual(r, {
+      kind: 'conflict',
+      reasons: ['2026-09-28 #4242 · Development: 2.00 h already entered, plan says 7.30 h'],
+      held: { '2026-09-28': ['2026-09-28 #4242 · Development: 2.00 h already entered, plan says 7.30 h'] },
+    });
+  });
+
+  it('leaves hours on a day off as they are', () => {
+    const r = diff({ ...p, off: ['2026-09-30'] }, { week: WEEK, cells: [{ date: '2026-09-30', target: meet, hours: 8 }] });
+    assert.deepEqual(r, { kind: 'write', cells: p.cells, unchanged: 0, skipped: ['2026-09-30: day off; 8.00 h in Redmine left as it is'] });
   });
 
   it('refuses a snapshot of another week or with duplicate cells', () => {

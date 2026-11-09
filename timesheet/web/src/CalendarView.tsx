@@ -348,7 +348,7 @@ export function CalendarView({ meta, active = true }: { meta: Meta; active?: boo
         </Scheduler>
         <LoadingOverlay active={loading && !!range} label="Loading activity" />
       </div>
-      <BlockDetails open={detailsOpen} onClose={() => setDetailsOpen(false)} value={details} repos={report?.repos ?? {}} meta={meta} />
+      <BlockDetails open={detailsOpen} onClose={() => setDetailsOpen(false)} value={details} repos={report?.repos ?? {}} meta={meta} onChanged={() => reload()} />
     </div>
   );
 }

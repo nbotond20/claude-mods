@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline/promises';
 import { Writable } from 'node:stream';
 import { parseArgs } from 'node:util';
 import { applyTimezone, CONFIG_PATH, computeKey, configExists, contractHome, expandDirs, expandHome, loadConfig, saveConfig, targetFor, validateConfig } from './core/config.ts';
-import { applySettingsChange, blockEditProblem, hoursEditProblem } from './core/edits.ts';
+import { applySettingsChange, blockCountProblem, blockEditProblem, hoursEditProblem } from './core/edits.ts';
 import { describeBackend } from './core/secrets.ts';
 import { packageRoot } from './core/paths.ts';
 import { listClaudeCommands, resolveInvocation } from './core/claude-runner.ts';
@@ -48,6 +48,7 @@ Usage:
   timesheet why <date> <category>        which blocks (and edits) make up a category's hours on a day
   timesheet edit <date> <category> <hours|clear> [--project P]   override booked hours
   timesheet block <date> <blockId> <category|clear>               recategorize a time block
+  timesheet count <date> <blockId> <yes|no|auto>                  whether a block counts towards the daily target (no = booked on top)
   timesheet confirm <date> [--clear]     accept a low-activity day as it is (or take that back)
   timesheet lock|unlock <date|week> [when]   keep days exactly as they are (submitted weeks lock themselves)
   timesheet undo [date]                  revert the last hand edit (of a day)
@@ -64,7 +65,7 @@ Usage:
   timesheet submit login <redmine|netsuite>     log in once in the submission browser (SSO/MFA); the session is kept
   timesheet submit inspect <redmine|netsuite>   save sanitized snapshots of pages you open (for building the automation)
   timesheet submit plan [week]                  what would be entered in Redmine and NetSuite (read-only, --json)
-  timesheet submit week [week] --system redmine  compare with the site, confirm, then enter the week (interactive)
+  timesheet submit week [week] --system <redmine|netsuite>  compare with the site, confirm, then enter the week (interactive)
   timesheet serve [--port 4280] [--open] local web app: timesheet, calendar, settings
                                          reuses a running server of this version, replaces an older one (--restart: always)
   timesheet install-skill                install the /timesheet Claude Code skill
@@ -551,7 +552,7 @@ async function submitCmd() {
   if (problems.length) fail(`fix the config first (timesheet doctor):\n${problems.map((p) => `  ✗ ${p}`).join('\n')}`);
   if (sub === 'plan') return submitPlan(arg);
   if (sub === 'week') return submitWeek(arg);
-  if (sub !== 'login' && sub !== 'inspect') fail('usage: timesheet submit login|inspect <redmine|netsuite> | plan [week] | week [week] --system redmine');
+  if (sub !== 'login' && sub !== 'inspect') fail('usage: timesheet submit login|inspect <redmine|netsuite> | plan [week] | week [week] --system redmine|netsuite');
   const system = systemArg(arg);
   if (!process.stdin.isTTY) fail(`submit ${sub} is interactive: run it in a terminal`);
   const url = loadConfig().submit[system].url;
@@ -840,6 +841,17 @@ async function blockCmd() {
   console.log(`Saved. Undo with \`timesheet undo ${date}\`.`);
 }
 
+async function countCmd() {
+  const [dateArg, id, value] = args;
+  if (!dateArg || !id || !['yes', 'no', 'auto'].includes(value ?? '')) fail('usage: timesheet count <date> <blockId> <yes|no|auto>');
+  const store = new Store();
+  const date = resolveDate(dateArg);
+  const problem = blockCountProblem(store, date, Number(id));
+  if (problem) fail(problem);
+  store.editBlockCount(date, Number(id), value === 'auto' ? null : value === 'yes');
+  console.log(`Saved. Undo with \`timesheet undo ${date}\`.`);
+}
+
 async function authCmd() {
   if (flags.logout || flags.forget) {
     disconnect({ forgetClient: flags.forget });
@@ -1122,6 +1134,8 @@ async function main() {
       return historyCmd();
     case 'edit':
       return editCmd();
+    case 'count':
+      return countCmd();
     case 'block':
       return blockCmd();
     case 'auth':

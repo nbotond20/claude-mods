@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.5
+- Entering starts with **Check NetSuite/Redmine**: it reads what the site already holds, without writing, and shows each week as a grid (rows × days) with what is already there, what will be entered (+h), and what differs. **Enter** writes exactly what the check showed: each week is read again first and must still match, or the run stops with "check again". The status shows the step (Check → Review → Enter & verify → Done) and one clear line on what is happening now. The long lists of entries are gone.
+- A day where the site holds other hours is held back on its own; the rest of the week is still entered (before, the whole week was refused). Weeks with nothing to enter show "already entered" instead of being skipped.
+- Days off (`holidays`) book nothing unless you set hours by hand; recorded work on them raises a warning. Hours already on the site for a day off are left as they are.
+- Meetings can be marked "don't count": their real hours are booked on top of the daily target instead of inside it. Use the switch in a meeting's details, `timesheet count <date> <block> no|yes|auto`, or title words in `calendar.uncounted` (Settings → Calendar).
+
+## 0.5.4
+- Automatic entry in one step: **Enter this week / Enter October in NetSuite (or Redmine)** shows the hours per week, and after you confirm, it opens the site, waits for you to log in if needed, then goes week by week and fills in and checks each one. It never presses Submit. With fill-only on, you press Save for each week. This replaces Prepare.
+- Month entry only enters the month's own days (e.g. Oct 1–4 of a week that starts in September). Weeks with nothing to enter, blocked weeks and weeks where the site holds other hours are skipped, with the reason. Any problem while entering stops the run.
+- NetSuite: days that are already approved are detected and skipped, with a note when the approved hours differ from the timesheet. New hours go on a new line of an approved timesheet. Timesheets pending approval are still left alone.
+- The login check waits for the single sign-on redirects to finish, and the protection lets those login steps through. Before, Prepare reported "not logged in" even after the automatic sign-in had completed.
+## 0.5.3
+- Submission in the month view: every week with a day in the month is listed with its Redmine and NetSuite status and expands to the same preview and Prepare → review → confirm run as the week view. Weeks are entered whole, so a week reaching into the next or previous month is marked.
+
+## 0.5.2
+- A GitHub rate limit stops all GitHub requests until it resets (the error says when) instead of every retry asking again and keeping the limit used up; the token is often shared with `gh`. Secondary limits (403 with retry-after) count too.
+- Connecting Google Calendar in Settings reloads the open reports, so days computed while signed out recompute right away instead of keeping "Not connected" warnings.
+
+## 0.5.1
+- An expired or revoked Google sign-in is now detected (Google's `invalid_grant` was never matched) and disconnects instead of staying "connected" with a dead token. Settings → Calendars shows **Reconnect** under the error, or **Try again** for other errors; the CLI points to `timesheet auth`.
+- Days whose calendar failed only for lack of a sign-in no longer recompute on every reload (they retried every 5 minutes): they wait and recompute once you reconnect. Other calendar errors still retry.
+
+## 0.5.0
+- NetSuite submission: `timesheet submit week [week] --system netsuite` (and the web app) fills in the weekly timesheet through the page's own SuiteScript record: new rows per project + task, empty days of existing rows, nothing else. Projects and their tasks are read from the site (Settings → Submission → Refresh from site). Fill-only by default: you press Save; Submit is never let through. Every write is intercepted: until the filled-in week is read back and matches the plan, nothing passes, and then only that exact save, once (record, employee, week, lines and minutes checked, not submitted). Approved weeks, weeks changed since the review, hours that are not whole quarters and duplicate rows stop with nothing saved.
+- Submission enters 0.25 h steps for Redmine and NetSuite: each day's hours are rebalanced to quarters keeping the day's total (rounded up to a quarter if needed), every booked entry keeps at least 0.25 h. The timesheet's own rounding (e.g. 0.1) is unchanged; the review notes a day whose total changed.
+
 ## 0.4.1
 - The timesheet skill asks every question (a low-activity day, unlocking a submitted day, any other choice) as selectable options instead of plain text.
 

@@ -48,6 +48,8 @@ export interface Plan<T> {
   cells: Cell<T>[];
   /** Shown in review, do not block (e.g. "2026-10-01 is today") */
   notes: string[];
+  /** Days off (holiday or out of office) that book nothing: hours the site holds there are left as they are */
+  off?: string[];
 }
 
 export type PlanResult<T> = { ok: true; plan: Plan<T> } | { ok: false; reasons: string[] };
@@ -56,9 +58,17 @@ export type PlanResult<T> = { ok: true; plan: Plan<T> } | { ok: false; reasons: 
 export interface Snapshot<T> {
   week: string;
   cells: Cell<T>[];
+  /**
+   * Days the site no longer lets change (approved or submitted), date → why. Their hours stay as
+   * they are: nothing is written on them and they never block the rest of the week.
+   */
+  frozen?: Record<string, string>;
 }
 
+/** Days not written because the site holds other hours there: date → why */
+export type Held = Record<string, string[]>;
+
 export type Diff<T> =
-  | { kind: 'noop' }
-  | { kind: 'write'; cells: Cell<T>[]; unchanged: number }
-  | { kind: 'conflict'; reasons: string[] };
+  | { kind: 'noop'; skipped: string[]; held?: Held }
+  | { kind: 'write'; cells: Cell<T>[]; unchanged: number; skipped: string[]; held?: Held }
+  | { kind: 'conflict'; reasons: string[]; held?: Held };

@@ -59,6 +59,14 @@ export function importClientFile(path: string): void {
   rmSync(path);
 }
 
+const NOT_CONNECTED = 'Not connected to Google Calendar';
+const EXPIRED = 'Google access expired or was revoked';
+
+/** A failure only a new sign-in fixes: retrying before that just repeats it. */
+export function isSignInError(message: string): boolean {
+  return message.includes(NOT_CONNECTED) || message.includes(EXPIRED);
+}
+
 export function isConnected(): boolean {
   return getSecret('google-token') !== null;
 }
@@ -79,7 +87,7 @@ async function tokenRequest(params: Record<string, string>): Promise<any> {
     body: new URLSearchParams(params),
   });
   const body = await res.json();
-  if (!res.ok) throw new Error(`Google token request failed: ${body.error_description ?? body.error ?? res.status}`);
+  if (!res.ok) throw Object.assign(new Error(`Google token request failed: ${body.error_description ?? body.error ?? res.status}`), { code: body.error });
   return body;
 }
 
@@ -141,7 +149,7 @@ export async function authorize(log: (msg: string) => void = console.log): Promi
 
 async function accessToken(): Promise<string> {
   const stored = getSecret('google-token');
-  if (!stored) throw new Error('Not connected to Google Calendar; run `timesheet auth`');
+  if (!stored) throw new Error(`${NOT_CONNECTED}; run \`timesheet auth\``);
   const token = JSON.parse(stored) as Token;
   if (token.expires_at - 60_000 > Date.now()) return token.access_token;
   const client = requireClient();
@@ -150,8 +158,12 @@ async function accessToken(): Promise<string> {
     client_id: client.client_id,
     client_secret: client.client_secret,
     grant_type: 'refresh_token',
-  }).catch((e: Error) => {
-    if (/invalid_grant/.test(e.message)) throw new Error('Google access was revoked or expired; run `timesheet auth` again');
+  }).catch((e: Error & { code?: string }) => {
+    if (e.code === 'invalid_grant') {
+      // The refresh token is dead for good; drop it so the status reads "not connected" and Connect is offered.
+      deleteSecret('google-token');
+      throw new Error(`${EXPIRED}; reconnect (Settings → Calendar → Connect, or \`timesheet auth\`)`);
+    }
     throw e;
   });
   saveToken({ ...token, access_token: t.access_token, expires_at: Date.now() + t.expires_in * 1000 });

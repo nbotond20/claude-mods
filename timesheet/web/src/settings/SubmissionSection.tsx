@@ -167,7 +167,7 @@ function SystemGroup({
         <Button variant="outline" size="sm" leadingIcon="camera" disabled={!browserOpen} loading={busy === `capture:${sys.id}`} onClick={onCapture}>Capture</Button>
       </Row>
       <Block>
-        <MappingEditor system={sys.id} config={config} update={update} enabled={sys.id === 'redmine'} />
+        <MappingEditor system={sys.id} config={config} update={update} enabled />
       </Block>
       <Block>
         <div className="flex flex-col gap-2">
