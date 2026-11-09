@@ -10,6 +10,7 @@ import { applySettingsChange, blockCountProblem, blockEditProblem, hoursEditProb
 import { describeBackend } from './core/secrets.ts';
 import { packageRoot } from './core/paths.ts';
 import { listClaudeCommands, resolveInvocation } from './core/claude-runner.ts';
+import { DEFAULT_LOCAL_ENDPOINT, isPrivateHost } from './core/local-runner.ts';
 import { alive, JobRunner } from './core/jobs.ts';
 import { openCodeAvailable } from './core/collectors/opencode.ts';
 import type { Config } from './core/config.ts';
@@ -1047,8 +1048,13 @@ function doctor() {
   for (const d of profiles) console.log(`      ${contractHome(d)}`);
   line(openCodeAvailable(config), `OpenCode ${config.opencodeDirs.map(contractHome).join(', ') || '(off)'}`);
   line(spawnSync('git', ['--version']).status === 0, 'git');
+  if (config.classifier.provider === 'local') {
+    const ep = config.classifier.endpoint || DEFAULT_LOCAL_ENDPOINT;
+    line(isPrivateHost(ep), `classifier: local model "${config.classifier.model}" at ${ep}${isPrivateHost(ep) ? '' : ' (NOT a private address)'}`);
+  } else {
   const known = listClaudeCommands();
   line(known.includes(config.classifier.command) || resolveInvocation(config.classifier.command, []).viaShell === false, `classifier command "${config.classifier.command}"${known.length ? ` (available: ${known.join(', ')})` : ''}`);
+  }
   console.log(`Work scope: ${config.scope.work.length} work rule(s), ${config.scope.personal.length} personal rule(s)`);
   console.log(`Credentials storage: ${describeBackend()}`);
   line(loadClient() !== null, 'Google OAuth client stored');

@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.5.6
+- Classification can run on a local model so work logs never leave your machine: set `classifier.provider` to `local` (or pick **Local model** in Settings → Classification) and point it at any OpenAI-compatible server such as Ollama (`http://localhost:11434/v1`, default model `qwen3:8b`). Claude stays the default. Endpoints outside loopback/private networks are refused unless `allowRemoteEndpoint` is set; `timesheet doctor` shows the active provider.
+
 ## 0.5.5
 - Entering starts with **Check NetSuite/Redmine**: it reads what the site already holds, without writing, and shows each week as a grid (rows × days) with what is already there, what will be entered (+h), and what differs. **Enter** writes exactly what the check showed: each week is read again first and must still match, or the run stops with "check again". The status shows the step (Check → Review → Enter & verify → Done) and one clear line on what is happening now. The long lists of entries are gone.
 - A day where the site holds other hours is held back on its own; the rest of the week is still entered (before, the whole week was refused). Weeks with nothing to enter show "already entered" instead of being skipped.

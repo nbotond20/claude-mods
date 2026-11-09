@@ -141,7 +141,7 @@ Every option is editable three ways, all validated before saving:
 | `rounding`, `decimalSeparator`, `dateFormat` | 0.25, `.`, `YYYY-MM-DD` | paste output |
 | `github` | off | `repos` to watch without a clone (`owner/name`, `owner/*`); `leadMinutes` (10) credited before each action |
 | `calendar` | off | `calendarIds` (`primary`), `project`; which replies count (`includeTentative` on, `includeUnanswered` on, `includeDeclined` off); `skipWithoutAttendees` (on: solo events ignored); `maxMeetingHours` (4) ignores longer meetings, 0 = no limit |
-| `classifier` | on: `claude`, `sonnet`, 240 s timeout, 3 days at once | `enabled`, `command`, `model`, `timeoutSeconds`, `concurrency`; `notes` adds team guidance to the prompt |
+| `classifier` | on: `claude`, `sonnet`, 240 s timeout, 3 days at once | `enabled`, `provider` (`claude` or `local`), `command`, `model`, `endpoint`, `timeoutSeconds`, `concurrency`; `notes` adds team guidance to the prompt. See [Local model](#local-model) |
 | `categories` | `[]` (none: hours are booked as Uncategorized until you add some) | `name`, `subtask`, `description`, `capex`; validity dates, classifier opt-out, color; `role`: `work` / `meeting` (defaults without classification), `fallback`, `no-code` (never claims coding time), `deploy` (capped at release time), `incident` (needs a production signal) |
 | `holidays` | `[]` | dates (`YYYY-MM-DD`) off work: no target, real hours only |
 | `lowActivityRatio` | 0.5 | flag workdays with recorded work below this share of the target; 0 = off |
@@ -151,6 +151,21 @@ Every option is editable three ways, all validated before saving:
 Changing a setting that shapes days recomputes cached days the next time they are shown (locked days excepted). To apply it only from a date on, keeping earlier days as they were: `timesheet config set gapMinutes 45 --from 2026-10-01`.
 
 Out-of-office calendar events covering the day's target make it a day off; shorter ones (a doctor's appointment) lower that day's target by their length.
+
+## Local model
+
+Classification is the only step that sends your work log to an LLM. To keep it in-house, run it on a local model through any OpenAI-compatible server (Ollama, LM Studio, llama.cpp, vLLM). Claude stays the default.
+
+```sh
+brew install ollama && ollama serve   # or the Ollama app
+ollama pull qwen3:8b
+```
+
+```json
+"classifier": { "provider": "local", "model": "qwen3:8b", "endpoint": "http://localhost:11434/v1" }
+```
+
+Or pick **Local model** under Settings → Classification and press Test. The endpoint must be loopback or a private-network address (`10.*`, `192.168.*`, `*.local`…); config validation rejects anything else unless `allowRemoteEndpoint` is `true`. `timesheet doctor` shows which provider is active. Bigger models (`qwen3:14b`, `qwen3:32b`) classify more accurately; raise `timeoutSeconds` and lower `concurrency` on slower machines. Calendar, GitHub and NetSuite/Redmine still talk to those services as before.
 
 ## Activity sources
 

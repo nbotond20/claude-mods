@@ -15,7 +15,8 @@ import { render } from '../core/format.ts';
 import { describeBackend } from '../core/secrets.ts';
 import { activeTokens, addToken, removeToken } from '../core/collectors/github.ts';
 import { packageRoot } from '../core/paths.ts';
-import { listClaudeCommandsAsync, runClaude } from '../core/claude-runner.ts';
+import { listClaudeCommandsAsync } from '../core/claude-runner.ts';
+import { runClassifier } from '../core/local-runner.ts';
 import { JobRunner } from '../core/jobs.ts';
 import { categoryHues } from '../core/palette.ts';
 import type { Store } from '../core/store.ts';
@@ -472,7 +473,7 @@ export function createApp(opts: AppOptions) {
           const c = { ...engine.config.classifier, ...(q.classifier ?? {}) };
           const started = Date.now();
           try {
-            const reply = await runClaude('Reply with exactly this JSON and nothing else: {"ok":true}', { command: c.command, model: c.model, cwd: CLASSIFIER_CWD, timeoutSeconds: Math.min(c.timeoutSeconds, 120) });
+            const reply = await runClassifier('Reply with exactly this JSON and nothing else: {"ok":true}', c, { cwd: CLASSIFIER_CWD, timeoutSeconds: Math.min(c.timeoutSeconds, 120) });
             return json(res, 200, { ok: /"ok"\s*:\s*true/.test(reply), seconds: (Date.now() - started) / 1000, reply: reply.slice(0, 200) });
           } catch (e) {
             return json(res, 200, { ok: false, seconds: (Date.now() - started) / 1000, error: (e as Error).message });

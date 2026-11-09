@@ -2,7 +2,7 @@ import { basename } from 'node:path';
 import { CLASSIFIER_CWD } from './config.ts';
 import { describeChanges, describeWork } from './changes.ts';
 import { MIN_FRACTION, enforce, inheritEmpty, isEmpty } from './guards.ts';
-import { runClaude } from './claude-runner.ts';
+import { runClassifier } from './local-runner.ts';
 import type { Category, Config } from './config.ts';
 import { fmtTime } from './dates.ts';
 import type { Allocation, Block, BlockItem, CommitRef, SessionWork } from './types.ts';
@@ -225,16 +225,10 @@ export function parseResponse(text: string): ClassifyOutput {
   return { allocations, summary: String(json.summary ?? ''), blockSummaries, itemSummaries };
 }
 
-/** Classifier backed by `claude -p` (or a profile wrapper), run from a dedicated directory that collection ignores. */
+/** Classifier backed by `claude -p` (or a profile wrapper, run from a dedicated directory that collection ignores) or a local model. */
 export function claudeClassifier(config: Config): Classifier {
   return async (input, opts = {}) => {
-    const text = await runClaude(buildPrompt(input), {
-      command: config.classifier.command,
-      model: config.classifier.model,
-      cwd: CLASSIFIER_CWD,
-      timeoutSeconds: config.classifier.timeoutSeconds,
-      signal: opts.signal,
-    }).catch((e: Error) => {
+    const text = await runClassifier(buildPrompt(input), config.classifier, { cwd: CLASSIFIER_CWD, signal: opts.signal }).catch((e: Error) => {
       if (e.name === 'AbortError') throw e;
       throw new Error(`Classifier failed: ${e.message}`);
     });

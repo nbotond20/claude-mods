@@ -89,7 +89,7 @@ function classificationKey(blocks: Block[], categories: Category[], config: Conf
     prompt: PROMPT_VERSION,
     blocks: blocks.map((b) => [b.id, b.kind, b.project, b.start, b.end, b.texts, b.paths, (b.items ?? []).map((it) => [it.id, it.path, it.texts, it.commits.map((c) => [c.added, c.removed]), it.work])]),
     categories: categories.map((c) => [c.name, c.classify !== false, ...(c.role ? [c.role] : [])]),
-    classifier: [config.classifier.model, config.classifier.notes ?? ''],
+    classifier: [config.classifier.model, config.classifier.notes ?? '', ...(config.classifier.provider === 'local' ? ['local'] : [])],
   };
   return createHash('sha256').update(JSON.stringify(input)).digest('hex').slice(0, 16);
 }

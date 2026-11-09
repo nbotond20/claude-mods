@@ -794,6 +794,8 @@ export function CalendarSection({ config, update }: SectionProps) {
 // ---------- classification ----------
 
 const MODELS = ['haiku', 'sonnet', 'opus'];
+const LOCAL_ENDPOINT = 'http://localhost:11434/v1';
+const LOCAL_MODEL = 'qwen3:8b';
 
 export function ClassifierSection({ config, update, detected }: SectionProps & { detected: Detected | null }) {
   const c = config.classifier;
@@ -818,10 +820,49 @@ export function ClassifierSection({ config, update, detected }: SectionProps & {
     }
   };
 
+  const local = c.provider === 'local';
+  const testLabel = local ? `${c.model} at ${c.endpoint || LOCAL_ENDPOINT}` : `"${c.command}"`;
+
   return (
     <>
+      <Group title="Provider" description="Claude sends each day's work log to Anthropic. A local model (Ollama, LM Studio, llama.cpp…) keeps everything on your machine or network.">
+        <SwitchRow label="Classify automatically" checked={c.enabled} onChange={(enabled) => set({ enabled })} />
+        <Row label="Run classification on" disabled={!c.enabled}>
+          <Select
+            size="sm"
+            className={CONTROL_W}
+            aria-label="Provider"
+            value={local ? 'local' : 'claude'}
+            onValueChange={(v) => {
+              setResult(null);
+              if (v === 'local') set({ provider: 'local', model: MODELS.includes(c.model) ? LOCAL_MODEL : c.model, endpoint: c.endpoint || LOCAL_ENDPOINT });
+              else set({ provider: 'claude', model: MODELS.includes(c.model) ? c.model : 'sonnet' });
+            }}
+            items={[
+              { value: 'claude', label: 'Claude (cloud)' },
+              { value: 'local', label: 'Local model' },
+            ]}
+          />
+        </Row>
+        {local && (
+          <>
+            <Row label="Endpoint" disabled={!c.enabled} hint="OpenAI-compatible base URL. Ollama: http://localhost:11434/v1, LM Studio: http://localhost:1234/v1.">
+              <Input size="sm" className="w-72 font-mono text-12" value={c.endpoint ?? ''} onChange={(e) => set({ endpoint: e.target.value })} placeholder={LOCAL_ENDPOINT} autoComplete="off" spellCheck={false} aria-label="Endpoint" />
+              <Button size="sm" variant="outline" loading={testing} disabled={!c.model} onClick={test}>Test</Button>
+            </Row>
+            <Row label="Model" disabled={!c.enabled} hint="Any model the server has, e.g. qwen3:8b or llama3.1:8b (ollama pull <name>). Bigger models classify better.">
+              <Input size="sm" className="w-72 font-mono text-12" value={c.model} onChange={(e) => set({ model: e.target.value })} placeholder={LOCAL_MODEL} autoComplete="off" spellCheck={false} aria-label="Local model" />
+            </Row>
+            {result && (
+              <Block>
+                <Alert tone={result.ok ? 'good' : 'danger'} title={result.ok ? `${testLabel} works` : `${testLabel} did not work`} description={result.text} dismissible onDismiss={() => setResult(null)} />
+              </Block>
+            )}
+          </>
+        )}
+      </Group>
+      {!local && (
       <Group title="Claude" description="One headless Claude call per day assigns task categories and writes the daily summary. Its own sessions never count as work. Without it, meetings and other work are booked under the categories with the Meetings and Work roles.">
-        <SwitchRow label="Classify with Claude" checked={c.enabled} onChange={(enabled) => set({ enabled })} />
         <Row label="Claude command" disabled={!c.enabled} hint="Profile wrappers (shell functions such as claude-work) run through your shell with their own login.">
           {!detected ? (
             <Skeleton width={224} height={32} />
@@ -870,6 +911,7 @@ export function ClassifierSection({ config, update, detected }: SectionProps & {
           />
         </Row>
       </Group>
+      )}
       <Group title="Runs" description="Each day is classified in its own Claude call.">
         <NumberRow label="Timeout per day" hint="A day that takes longer is retried later." disabled={!c.enabled} value={c.timeoutSeconds} min={10} unit="s" onChange={(timeoutSeconds) => set({ timeoutSeconds })} />
         <NumberRow label="Days in parallel" disabled={!c.enabled} hint="More is faster but starts more Claude processes at once." value={c.concurrency} min={1} max={8} onChange={(concurrency) => set({ concurrency })} />

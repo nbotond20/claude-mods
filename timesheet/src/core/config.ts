@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { DEFAULT_LOCAL_ENDPOINT, isPrivateHost } from './local-runner.ts';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -104,7 +105,22 @@ export interface Config {
     leadMinutes: number;
   };
   /** notes: extra guidance appended to the classification prompt, e.g. how your team tells two similar categories apart */
-  classifier: { enabled: boolean; command: string; model: string; timeoutSeconds: number; concurrency: number; notes?: string };
+  /**
+   * provider: 'claude' runs `command -p` (Claude Code); 'local' calls an OpenAI-compatible endpoint (Ollama, LM Studio, llama.cpp…)
+   * so nothing leaves your machine/network. endpoint: base URL for 'local', default http://localhost:11434/v1 (Ollama).
+   * allowRemoteEndpoint: permit a 'local' endpoint that is not loopback/private (off by default to keep data in-house).
+   */
+  classifier: {
+    enabled: boolean;
+    provider?: 'claude' | 'local';
+    command: string;
+    model: string;
+    endpoint?: string;
+    allowRemoteEndpoint?: boolean;
+    timeoutSeconds: number;
+    concurrency: number;
+    notes?: string;
+  };
   categories: Category[];
   /** Entering booked hours into Redmine (Worktime) and NetSuite (weekly timesheet) through the browser */
   submit: { redmine: SubmitSystemConfig<RedmineTarget>; netsuite: SubmitSystemConfig<NetsuiteTarget> };
@@ -143,7 +159,7 @@ export function defaultConfig(): Config {
     dateFormat: 'YYYY-MM-DD',
     calendar: { enabled: false, calendarIds: ['primary'], includeTentative: true, includeUnanswered: true, includeDeclined: false, skipWithoutAttendees: true, maxMeetingHours: 4, uncounted: [] },
     github: { enabled: false, repos: [], leadMinutes: 10 },
-    classifier: { enabled: true, command: 'claude', model: 'sonnet', timeoutSeconds: 240, concurrency: 3 },
+    classifier: { enabled: true, provider: 'claude', command: 'claude', model: 'sonnet', timeoutSeconds: 240, concurrency: 3 },
     categories: DEFAULT_CATEGORIES,
     submit: { redmine: { url: '', fillOnly: true, rules: [] }, netsuite: { url: '', fillOnly: true, rules: [] } },
   };
@@ -200,7 +216,7 @@ export function computeKey(c: Config, schema = SCHEMA): string {
     // Reply settings only when changed from the old behaviour (unanswered counted, declined not), so cached days keep their key.
     calendar: c.calendar.enabled ? [c.calendar.calendarIds, c.calendar.includeTentative, c.calendar.skipWithoutAttendees, c.calendar.project, c.calendar.maxMeetingHours, ...(c.calendar.includeUnanswered && !c.calendar.includeDeclined ? [] : [c.calendar.includeUnanswered, c.calendar.includeDeclined])] : null,
     categories: c.categories.map((x) => [x.name, x.classify !== false, x.validFrom, x.validTo, ...(x.role ? [x.role] : [])]),
-    classifier: c.classifier.enabled ? [c.classifier.model, c.classifier.notes ?? ''] : null,
+    classifier: c.classifier.enabled ? [c.classifier.model, c.classifier.notes ?? '', ...(c.classifier.provider === 'local' ? ['local'] : [])] : null,
     // Only present when on, so days computed before GitHub existed keep their key.
     ...(c.github.enabled ? { github: [c.github.repos, c.github.leadMinutes] } : {}),
     // Day bounds move with the time zone; only present when set, so existing keys hold.
@@ -252,7 +268,15 @@ export function validateConfig(c: Config): string[] {
     errors.push('github.repos entries must look like owner/name or owner/*');
   if (!isNum(c.github?.leadMinutes)) errors.push('github.leadMinutes must be a number ≥ 0');
 
-  if (!c.classifier?.command?.trim()) errors.push('classifier.command is required');
+  const provider = c.classifier?.provider ?? 'claude';
+  if (provider !== 'claude' && provider !== 'local') errors.push('classifier.provider must be "claude" or "local"');
+  if (provider === 'claude' && !c.classifier?.command?.trim()) errors.push('classifier.command is required');
+  if (provider === 'local') {
+    const ep = c.classifier.endpoint || DEFAULT_LOCAL_ENDPOINT;
+    if (!/^https?:\/\//.test(ep)) errors.push('classifier.endpoint must be an http(s) URL');
+    else if (!c.classifier.allowRemoteEndpoint && !isPrivateHost(ep))
+      errors.push(`classifier.endpoint ${ep} is not on this machine or a private network; set classifier.allowRemoteEndpoint to use it anyway`);
+  }
   if (!c.classifier?.model?.trim()) errors.push('classifier.model is required');
   if (!isNum(c.classifier?.timeoutSeconds, 10)) errors.push('classifier.timeoutSeconds must be ≥ 10');
   if (!isNum(c.classifier?.concurrency, 1)) errors.push('classifier.concurrency must be ≥ 1');
